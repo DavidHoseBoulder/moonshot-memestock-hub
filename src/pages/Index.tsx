@@ -1,12 +1,24 @@
-// Update this page (the content is just a fallback if you fail to update the page)
+import Navigation from "@/components/Navigation";
+import PortfolioOverview from "@/components/PortfolioOverview";
+import TrendingSection from "@/components/TrendingSection";
 
 const Index = () => {
   return (
-    <div className="min-h-screen flex items-center justify-center bg-background">
-      <div className="text-center">
-        <h1 className="text-4xl font-bold mb-4">Welcome to Your Blank App</h1>
-        <p className="text-xl text-muted-foreground">Start building your amazing project here!</p>
-      </div>
+    <div className="min-h-screen bg-background">
+      <Navigation />
+      <main className="max-w-7xl mx-auto p-6">
+        <div className="mb-8">
+          <h1 className="text-3xl font-bold mb-2 bg-gradient-primary bg-clip-text text-transparent">
+            Welcome back, Diamond Hands! 💎🙌
+          </h1>
+          <p className="text-muted-foreground">
+            Your meme portfolio is looking fire today. To the moon! 🚀
+          </p>
+        </div>
+        
+        <PortfolioOverview />
+        <TrendingSection />
+      </main>
     </div>
   );
 };
