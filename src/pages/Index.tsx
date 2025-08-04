@@ -1,6 +1,7 @@
 import Navigation from "@/components/Navigation";
 import PortfolioOverview from "@/components/PortfolioOverview";
 import TrendingSection from "@/components/TrendingSection";
+import SentimentDashboard from "@/components/SentimentDashboard";
 
 const Index = () => {
   return (
@@ -17,6 +18,7 @@ const Index = () => {
         </div>
         
         <PortfolioOverview />
+        <SentimentDashboard />
         <TrendingSection />
       </main>
     </div>
