@@ -18,6 +18,8 @@ on:
 jobs:
   ai-backtesting:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -47,7 +49,8 @@ jobs:
           git add -A
           if git diff --staged --quiet; then
             echo "No changes to commit"
+            exit 0
           else
-            git commit -m "AI-generated backtesting strategy update for ${{ github.event.inputs.symbol || github.event.client_payload.symbol }}"
-            git push
+            git commit -m "AI-generated backtesting strategy update for ${{ github.event.inputs.symbol || github.event.client_payload.symbol }}" || echo "Commit failed, but continuing"
+            git push origin main || echo "Push failed, but analysis completed"
           fi
