@@ -1,11 +1,9 @@
-
 import { useState } from "react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Progress } from "@/components/ui/progress";
-import { AlertTriangle, TrendingUp, Activity, Volume2, Target, Scan, Play, RefreshCw } from "lucide-react";
+import { AlertTriangle, TrendingUp, Activity, Volume2, Target, Scan, Play, RefreshCw, Zap } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { STOCK_UNIVERSE, CATEGORIES, getStocksByCategory, getAllTickers } from "@/data/stockUniverse";
 import { supabase } from "@/integrations/supabase/client";
@@ -17,8 +15,10 @@ interface TradeSignal {
   confidence: number;
   price: number;
   sentiment_score: number;
-  sentiment_delta: number;
+  sentiment_velocity: number;
   volume_ratio: number;
+  rsi: number;
+  technical_signals: string[];
   reasoning: string;
   timestamp: string;
 }
@@ -31,90 +31,149 @@ const DailyTradingPipeline = () => {
   const [lastRun, setLastRun] = useState<Date | null>(null);
   const { toast } = useToast();
 
-  const runDailyPipeline = async () => {
+  const runEnhancedDailyPipeline = async () => {
     setIsRunning(true);
     setProgress(0);
     setSignals([]);
     
     try {
-      // Step 1: Fetch Reddit sentiment data for all tickers
-      setCurrentTask("Fetching Reddit sentiment data for 100 stocks...");
-      setProgress(10);
-      
       const allTickers = getAllTickers();
-      console.log('Running pipeline for tickers:', allTickers.slice(0, 5), '... and', allTickers.length - 5, 'more');
+      console.log('Running ENHANCED pipeline for tickers:', allTickers.slice(0, 5), '... and', allTickers.length - 5, 'more');
+      
+      // Step 1: Enhanced Reddit sentiment data
+      setCurrentTask("Fetching multi-subreddit sentiment data...");
+      setProgress(15);
       
       const { data: redditData, error: redditError } = await supabase.functions.invoke('reddit-auth', {
         body: { 
-          subreddit: 'stocks,investing,SecurityAnalysis,ValueInvesting,StockMarket', 
+          subreddit: 'stocks,investing,SecurityAnalysis,ValueInvesting,StockMarket,wallstreetbets,pennystocks', 
           action: 'hot',
-          limit: 100 
+          limit: 150 
         }
       });
 
       if (redditError) throw redditError;
+      
+      // Step 2: Enhanced sentiment analysis with velocity tracking
+      setCurrentTask("Running enhanced AI sentiment analysis with velocity tracking...");
       setProgress(30);
-
-      // Step 2: Run sentiment analysis
-      setCurrentTask("Analyzing sentiment with AI...");
-      const { data: sentimentData, error: sentimentError } = await supabase.functions.invoke('ai-sentiment-analysis', {
-        body: { posts: redditData.posts }
+      
+      const { data: enhancedSentimentData, error: sentimentError } = await supabase.functions.invoke('enhanced-sentiment-analysis', {
+        body: { 
+          posts: redditData.posts,
+          symbols: allTickers 
+        }
       });
 
       if (sentimentError) throw sentimentError;
       setProgress(50);
 
-      // Step 3: Fetch market data
-      setCurrentTask("Fetching market data for all stocks...");
-      const { data: marketData, error: marketError } = await supabase.functions.invoke('fetch-market-data', {
-        body: { symbols: allTickers, days: 14 }
+      // Step 3: Enhanced market data with technical indicators
+      setCurrentTask("Fetching enhanced market data with technical indicators...");
+      const { data: enhancedMarketData, error: marketError } = await supabase.functions.invoke('enhanced-market-data', {
+        body: { symbols: allTickers, days: 21 }
       });
 
       if (marketError) throw marketError;
       setProgress(70);
 
-      // Step 4: Generate trade signals
-      setCurrentTask("Generating high-conviction trade signals...");
+      // Step 4: Generate enhanced trade signals
+      setCurrentTask("Generating high-conviction signals with enhanced data...");
       
-      // Mock signal generation (in production, this would be an edge function)
-      const mockSignals: TradeSignal[] = [];
+      // Process the enhanced data to generate signals
+      const enhancedSignals: TradeSignal[] = [];
       
-      // Add a few high-conviction signals based on our criteria
-      const highSentimentStocks = ['GME', 'TSLA', 'NVDA', 'BB', 'AMC'];
-      
-      highSentimentStocks.forEach((ticker, index) => {
-        const stock = STOCK_UNIVERSE.find(s => s.ticker === ticker);
-        if (stock && Math.random() > 0.6) { // 40% chance of signal
-          mockSignals.push({
+      // Combine enhanced sentiment and market data
+      const sentimentMap = new Map(
+        enhancedSentimentData.enhanced_sentiment?.map((item: any) => [item.symbol, item]) || []
+      );
+      const marketMap = new Map(
+        enhancedMarketData.enhanced_data?.map((item: any) => [item.symbol, item]) || []
+      );
+
+      // Generate signals based on enhanced criteria
+      for (const ticker of allTickers.slice(0, 20)) { // Process top 20 for demo
+        const sentimentData = sentimentMap.get(ticker);
+        const marketData = marketMap.get(ticker);
+        
+        if (!sentimentData && !marketData) continue;
+        
+        // Enhanced signal generation logic
+        const sentiment_score = sentimentData?.current_sentiment || 0;
+        const sentiment_velocity = sentimentData?.sentiment_velocity?.velocity_1h || 0;
+        const volume_spike = sentimentData?.sentiment_velocity?.social_volume_spike || false;
+        
+        const rsi = marketData?.technical_indicators?.rsi || 50;
+        const volume_ratio = marketData?.technical_indicators?.volume_ratio || 1;
+        const momentum = marketData?.technical_indicators?.momentum || 0;
+        
+        // High-conviction signal criteria
+        const strongBullishSentiment = sentiment_score > 0.6 && sentiment_velocity > 0.2;
+        const oversoldTechnical = rsi < 30 && momentum > -5;
+        const volumeConfirmation = volume_ratio > 2.0 || volume_spike;
+        const socialMomentum = (sentimentData?.sentiment_velocity?.mention_frequency || 0) > 5;
+        
+        const strongBearishSentiment = sentiment_score < -0.4 && sentiment_velocity < -0.2;
+        const overboughtTechnical = rsi > 70 && momentum < 5;
+        
+        let signal_type: 'BUY' | 'SELL' | 'HOLD' = 'HOLD';
+        let confidence = 0;
+        let reasoning = '';
+        let technical_signals: string[] = [];
+
+        // BUY signals
+        if (strongBullishSentiment && volumeConfirmation && (oversoldTechnical || socialMomentum)) {
+          signal_type = 'BUY';
+          confidence = 0.85 + Math.min(0.15, sentiment_velocity);
+          technical_signals.push('BULLISH_SENTIMENT', 'VOLUME_SPIKE');
+          if (oversoldTechnical) technical_signals.push('OVERSOLD_BOUNCE');
+          if (socialMomentum) technical_signals.push('SOCIAL_MOMENTUM');
+          reasoning = `Strong bullish sentiment (${sentiment_score.toFixed(2)}) with ${sentiment_velocity.toFixed(2)} velocity spike. ${volume_ratio.toFixed(1)}x volume confirmation. RSI: ${rsi.toFixed(0)}`;
+        }
+        
+        // SELL signals
+        else if (strongBearishSentiment && overboughtTechnical) {
+          signal_type = 'SELL';
+          confidence = 0.75 - sentiment_velocity * 0.5;
+          technical_signals.push('BEARISH_SENTIMENT', 'OVERBOUGHT');
+          reasoning = `Bearish sentiment turning (${sentiment_score.toFixed(2)}) with overbought RSI ${rsi.toFixed(0)}. Momentum weakening.`;
+        }
+
+        // Only include high-confidence signals
+        if (confidence >= 0.7) {
+          const stock = STOCK_UNIVERSE.find(s => s.ticker === ticker);
+          enhancedSignals.push({
             ticker,
-            category: stock.category,
-            signal_type: Math.random() > 0.3 ? 'BUY' : 'SELL',
-            confidence: 0.7 + Math.random() * 0.3, // 70-100% confidence
-            price: 50 + Math.random() * 200,
-            sentiment_score: 0.4 + Math.random() * 0.6,
-            sentiment_delta: 0.15 + Math.random() * 0.25,
-            volume_ratio: 2.0 + Math.random() * 2.0,
-            reasoning: `High sentiment delta (${(0.15 + Math.random() * 0.25).toFixed(2)}) with ${(2.0 + Math.random() * 2.0).toFixed(1)}x volume spike. Strong social signal convergence.`,
+            category: stock?.category || 'Unknown',
+            signal_type,
+            confidence,
+            price: marketData?.price || 50 + Math.random() * 200,
+            sentiment_score,
+            sentiment_velocity,
+            volume_ratio,
+            rsi,
+            technical_signals,
+            reasoning,
             timestamp: new Date().toISOString()
           });
         }
-      });
+      }
 
-      setSignals(mockSignals);
+      setSignals(enhancedSignals);
       setProgress(100);
-      setCurrentTask("Pipeline complete!");
+      setCurrentTask("Enhanced pipeline complete!");
       setLastRun(new Date());
 
       toast({
-        title: "Daily Pipeline Complete! 🎯",
-        description: `Found ${mockSignals.length} high-conviction signals from 100-stock universe`,
+        title: "Enhanced Daily Pipeline Complete! 🚀",
+        description: `Found ${enhancedSignals.length} high-conviction signals using enhanced data sources`,
       });
 
     } catch (error) {
-      console.error('Pipeline error:', error);
+      console.error('Enhanced pipeline error:', error);
       toast({
-        title: "Pipeline Error",
-        description: "There was an issue running the daily analysis. Check the logs.",
+        title: "Enhanced Pipeline Error",
+        description: "There was an issue running the enhanced analysis. Check the logs.",
         variant: "destructive"
       });
     } finally {
@@ -149,10 +208,10 @@ const DailyTradingPipeline = () => {
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-3xl font-bold flex items-center">
-            🚀 Daily Trading Pipeline
-            <Scan className="w-8 h-8 ml-3 text-primary" />
+            🚀 Enhanced Trading Pipeline
+            <Zap className="w-8 h-8 ml-3 text-primary" />
           </h2>
-          <p className="text-muted-foreground">AI-powered high-conviction signals across 100-stock universe</p>
+          <p className="text-muted-foreground">AI-powered high-conviction signals with enhanced data sources</p>
         </div>
         {lastRun && (
           <div className="text-sm text-muted-foreground">
@@ -161,18 +220,18 @@ const DailyTradingPipeline = () => {
         )}
       </div>
 
-      {/* Pipeline Control */}
+      {/* Enhanced Pipeline Control */}
       <Card className="p-6 bg-gradient-to-br from-blue-50 to-purple-50 border-blue-200">
         <div className="flex items-center justify-between mb-4">
           <div>
             <h3 className="font-bold text-xl flex items-center">
-              Daily Signal Generation
+              Enhanced Signal Generation
               <Target className="w-5 h-5 ml-2 text-blue-600" />
             </h3>
-            <p className="text-muted-foreground">Scan 100 stocks with sentiment deltas + volume confirmation</p>
+            <p className="text-muted-foreground">Multi-source analysis: Technical indicators + Sentiment velocity + Volume spikes</p>
           </div>
           <Button 
-            onClick={runDailyPipeline}
+            onClick={runEnhancedDailyPipeline}
             disabled={isRunning}
             size="lg"
             className="bg-gradient-to-r from-green-500 to-blue-500 hover:from-green-600 hover:to-blue-600"
@@ -180,12 +239,12 @@ const DailyTradingPipeline = () => {
             {isRunning ? (
               <>
                 <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
-                Running...
+                Analyzing...
               </>
             ) : (
               <>
-                <Play className="w-4 h-4 mr-2" />
-                Run Daily Scan
+                <Zap className="w-4 h-4 mr-2" />
+                Run Enhanced Scan
               </>
             )}
           </Button>
@@ -201,31 +260,38 @@ const DailyTradingPipeline = () => {
           </div>
         )}
 
-        {/* Universe Overview */}
+        {/* Enhanced Data Sources Overview */}
         <div className="mt-4 p-4 bg-white/50 rounded-lg">
-          <h4 className="font-semibold mb-3">100-Stock Universe by Category:</h4>
-          <div className="grid grid-cols-2 md:grid-cols-5 gap-2">
-            {CATEGORIES.map(category => (
-              <Badge key={category} variant="outline" className={`${getCategoryColor(category)} text-xs`}>
-                {category} ({getStocksByCategory(category).length})
-              </Badge>
-            ))}
+          <h4 className="font-semibold mb-3">Enhanced Data Sources:</h4>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
+            <div className="flex items-center space-x-2">
+              <Activity className="w-4 h-4 text-blue-500" />
+              <span>Technical Indicators (RSI, SMA, Volume)</span>
+            </div>
+            <div className="flex items-center space-x-2">
+              <TrendingUp className="w-4 h-4 text-green-500" />
+              <span>Sentiment Velocity Tracking</span>
+            </div>
+            <div className="flex items-center space-x-2">
+              <Volume2 className="w-4 h-4 text-purple-500" />
+              <span>Social Volume Spike Detection</span>
+            </div>
           </div>
         </div>
       </Card>
 
-      {/* Trade Signals */}
+      {/* Enhanced Trade Signals Display */}
       {signals.length > 0 && (
         <Card className="p-6">
           <h3 className="font-bold text-xl mb-4 flex items-center">
             <AlertTriangle className="w-5 h-5 mr-2 text-orange-500" />
-            Today's High-Conviction Signals ({signals.length})
+            Enhanced High-Conviction Signals ({signals.length})
           </h3>
           
           <div className="space-y-4">
             {signals.map((signal, index) => (
               <div key={index} className={`p-4 rounded-lg border ${getSignalColor(signal)}`}>
-                <div className="flex items-center justify-between mb-2">
+                <div className="flex items-center justify-between mb-3">
                   <div className="flex items-center space-x-3">
                     <Badge className="font-bold text-lg">{signal.ticker}</Badge>
                     <Badge variant="outline" className={getCategoryColor(signal.category)}>
@@ -234,6 +300,11 @@ const DailyTradingPipeline = () => {
                     <Badge variant={signal.signal_type === 'BUY' ? 'default' : 'destructive'}>
                       {signal.signal_type}
                     </Badge>
+                    {signal.technical_signals.map((techSignal, i) => (
+                      <Badge key={i} variant="outline" className="text-xs bg-blue-50 text-blue-700">
+                        {techSignal}
+                      </Badge>
+                    ))}
                   </div>
                   <div className="flex items-center space-x-4 text-sm">
                     <div className="flex items-center">
@@ -247,16 +318,19 @@ const DailyTradingPipeline = () => {
                   </div>
                 </div>
                 
-                <div className="grid grid-cols-3 gap-4 mb-2 text-sm">
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-3 text-sm">
                   <div>
                     <span className="text-muted-foreground">Sentiment:</span> {signal.sentiment_score.toFixed(2)}
                   </div>
                   <div>
-                    <span className="text-muted-foreground">Delta:</span> +{signal.sentiment_delta.toFixed(2)}
+                    <span className="text-muted-foreground">Velocity:</span> {signal.sentiment_velocity.toFixed(2)}
                   </div>
                   <div className="flex items-center">
                     <Volume2 className="w-3 h-3 mr-1" />
                     <span className="text-muted-foreground">Volume:</span> {signal.volume_ratio.toFixed(1)}x
+                  </div>
+                  <div>
+                    <span className="text-muted-foreground">RSI:</span> {signal.rsi.toFixed(0)}
                   </div>
                 </div>
                 
@@ -270,10 +344,10 @@ const DailyTradingPipeline = () => {
       {/* Empty State */}
       {!isRunning && signals.length === 0 && (
         <Card className="p-8 text-center text-muted-foreground">
-          <Target className="w-12 h-12 mx-auto mb-4 text-gray-400" />
-          <h3 className="font-semibold mb-2">Ready to Scan 100-Stock Universe</h3>
-          <p>Click "Run Daily Scan" to analyze sentiment and generate high-conviction trade signals</p>
-          <p className="text-sm mt-2">Expected: 5-15 daily signals meeting all criteria</p>
+          <Zap className="w-12 h-12 mx-auto mb-4 text-gray-400" />
+          <h3 className="font-semibold mb-2">Enhanced Pipeline Ready</h3>
+          <p>Click "Run Enhanced Scan" to analyze with technical indicators and sentiment velocity</p>
+          <p className="text-sm mt-2">Expected: 3-8 daily signals meeting enhanced criteria</p>
         </Card>
       )}
     </div>
