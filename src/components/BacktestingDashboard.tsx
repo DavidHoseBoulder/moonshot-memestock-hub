@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from "react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -117,44 +116,10 @@ const BacktestingDashboard = () => {
   };
 
   const triggerAIAnalysis = async () => {
-    setIsLoading(true);
-    
-    try {
-      // Trigger GitHub Actions workflow via repository dispatch
-      const response = await fetch(`https://api.github.com/repos/${process.env.GITHUB_REPOSITORY || 'YOUR_USERNAME/YOUR_REPO'}/dispatches`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `token ${process.env.GITHUB_TOKEN}`,
-          'Content-Type': 'application/json',
-          'Accept': 'application/vnd.github.v3+json'
-        },
-        body: JSON.stringify({
-          event_type: 'run-ai-backtest',
-          client_payload: {
-            symbol: symbol,
-            days: days
-          }
-        })
-      });
-
-      if (response.ok) {
-        toast({
-          title: "AI Analysis Started!",
-          description: `GitHub Actions is analyzing ${symbol} and will update the strategy automatically.`,
-        });
-      } else {
-        throw new Error('Failed to trigger AI analysis');
-      }
-    } catch (error) {
-      console.error('Error triggering AI analysis:', error);
-      toast({
-        title: "AI Analysis Failed",
-        description: "Could not start automated analysis. Check console for details.",
-        variant: "destructive",
-      });
-    } finally {
-      setIsLoading(false);
-    }
+    toast({
+      title: "AI Analysis Instructions",
+      description: "Go to your GitHub repository → Actions tab → Run 'AI-Powered Backtesting Analysis' workflow manually with your symbol and days parameters.",
+    });
   };
 
   useEffect(() => {
@@ -233,7 +198,7 @@ const BacktestingDashboard = () => {
 
         <div className="text-sm text-muted-foreground space-y-1">
           <p>📈 Standard Strategy: Buy when Reddit sentiment &gt; 0.3, hold for 3 days</p>
-          <p>🤖 AI Optimize: Analyzes your data and automatically improves the strategy via GitHub Actions</p>
+          <p>🤖 AI Optimize: Go to your GitHub repo → Actions → Run the AI analysis workflow manually</p>
         </div>
       </Card>
 
