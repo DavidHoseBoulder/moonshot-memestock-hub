@@ -11,6 +11,22 @@ const SUPABASE_URL = process.env.SUPABASE_URL;
 const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY;
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
 
+// Validate required environment variables
+if (!SUPABASE_URL) {
+  console.error('Error: SUPABASE_URL environment variable is required');
+  process.exit(1);
+}
+
+if (!SUPABASE_ANON_KEY) {
+  console.error('Error: SUPABASE_ANON_KEY environment variable is required');
+  process.exit(1);
+}
+
+if (!OPENAI_API_KEY) {
+  console.error('Error: OPENAI_API_KEY environment variable is required');
+  process.exit(1);
+}
+
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 async function analyzeWithAI(marketData, sentimentData, symbol) {
