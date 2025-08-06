@@ -1,3 +1,4 @@
+
 import { useState } from "react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -93,7 +94,7 @@ const ParameterOptimization = () => {
               <Checkbox 
                 id="sentiment-delta"
                 checked={enableSentimentDelta}
-                onCheckedChange={setEnableSentimentDelta}
+                onCheckedChange={(checked) => setEnableSentimentDelta(checked === true)}
               />
               <Label htmlFor="sentiment-delta" className="text-sm">
                 <span className="font-medium text-purple-700">Sentiment Delta Analysis</span>
@@ -106,7 +107,7 @@ const ParameterOptimization = () => {
               <Checkbox 
                 id="volume-filter"
                 checked={enableVolumeFilter}
-                onCheckedChange={setEnableVolumeFilter}
+                onCheckedChange={(checked) => setEnableVolumeFilter(checked === true)}
               />
               <Label htmlFor="volume-filter" className="text-sm">
                 <span className="font-medium text-purple-700 flex items-center">

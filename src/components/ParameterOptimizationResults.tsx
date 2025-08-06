@@ -142,10 +142,18 @@ const ParameterOptimizationResults = () => {
   const getFeatureIcons = (params: OptimizationResult['parameters']) => {
     const icons = [];
     if (params.enable_sentiment_delta) {
-      icons.push(<Activity key="delta" className="w-3 h-3 text-purple-500" title="Sentiment Delta Analysis" />);
+      icons.push(
+        <div key="delta" title="Sentiment Delta Analysis">
+          <Activity className="w-3 h-3 text-purple-500" />
+        </div>
+      );
     }
     if (params.enable_volume_filter) {
-      icons.push(<Volume2 key="volume" className="w-3 h-3 text-blue-500" title="Volume Filter" />);
+      icons.push(
+        <div key="volume" title="Volume Filter">
+          <Volume2 className="w-3 h-3 text-blue-500" />
+        </div>
+      );
     }
     return icons;
   };
