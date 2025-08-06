@@ -62,10 +62,10 @@ Format your response as JSON with these keys:
     "additional_filters": {}
   },
   "strategy_code": "TypeScript code for the new strategy function"
-}
-`;
+}`;
 
   try {
+    console.log('Making OpenAI API request...');
     const response = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
       headers: {
@@ -77,7 +77,7 @@ Format your response as JSON with these keys:
         messages: [
           {
             role: 'system',
-            content: 'You are an expert quantitative analyst specializing in sentiment-based trading strategies. Provide actionable, data-driven recommendations.'
+            content: 'You are an expert quantitative analyst specializing in sentiment-based trading strategies. Provide actionable, data-driven recommendations. Always respond with valid JSON only.'
           },
           {
             role: 'user',
@@ -89,6 +89,8 @@ Format your response as JSON with these keys:
       }),
     });
 
+    console.log(`OpenAI API Response Status: ${response.status}`);
+    
     if (!response.ok) {
       console.error('OpenAI API error:', response.status, response.statusText);
       const errorText = await response.text();
@@ -97,22 +99,84 @@ Format your response as JSON with these keys:
     }
 
     const data = await response.json();
-    console.log('OpenAI API response:', JSON.stringify(data, null, 2));
+    console.log('OpenAI API response structure:', {
+      hasChoices: !!data.choices,
+      choicesLength: data.choices?.length,
+      firstChoiceHasMessage: !!(data.choices?.[0]?.message),
+      contentLength: data.choices?.[0]?.message?.content?.length
+    });
 
-    if (!data.choices || !data.choices[0] || !data.choices[0].message) {
-      console.error('Unexpected OpenAI API response format:', data);
+    if (!data.choices || data.choices.length === 0) {
+      console.error('No choices in OpenAI response:', data);
       return null;
     }
+
+    if (!data.choices[0] || !data.choices[0].message) {
+      console.error('Invalid choice structure:', data.choices[0]);
+      return null;
+    }
+
+    const content = data.choices[0].message.content;
+    if (!content) {
+      console.error('Empty content in response');
+      return null;
+    }
+
+    console.log('Raw AI response content (first 500 chars):', content.substring(0, 500));
 
     try {
-      return JSON.parse(data.choices[0].message.content);
+      // Try to extract JSON if it's wrapped in markdown or has extra text
+      let jsonContent = content.trim();
+      
+      // Remove markdown code blocks if present
+      if (jsonContent.startsWith('```json')) {
+        jsonContent = jsonContent.replace(/^```json\n?/, '').replace(/\n?```$/, '');
+      } else if (jsonContent.startsWith('```')) {
+        jsonContent = jsonContent.replace(/^```\n?/, '').replace(/\n?```$/, '');
+      }
+      
+      // Try to find JSON object in the response
+      const jsonStart = jsonContent.indexOf('{');
+      const jsonEnd = jsonContent.lastIndexOf('}');
+      
+      if (jsonStart !== -1 && jsonEnd !== -1 && jsonEnd > jsonStart) {
+        jsonContent = jsonContent.substring(jsonStart, jsonEnd + 1);
+      }
+
+      const parsed = JSON.parse(jsonContent);
+      
+      // Validate the expected structure
+      if (!parsed.analysis || !parsed.parameters) {
+        console.error('Missing required fields in AI response:', Object.keys(parsed));
+        return {
+          analysis: parsed.analysis || 'AI analysis failed to provide detailed explanation',
+          parameters: parsed.parameters || {
+            sentiment_threshold: 0.4,
+            holding_period_days: 5,
+            position_size: 0.15
+          },
+          strategy_code: parsed.strategy_code || 'No enhanced strategy code provided'
+        };
+      }
+
+      return parsed;
     } catch (parseError) {
       console.error('Failed to parse AI response as JSON:', parseError);
-      console.error('Raw response content:', data.choices[0].message.content);
-      return null;
+      console.error('Content that failed to parse:', content);
+      
+      // Return a fallback response
+      return {
+        analysis: `Failed to parse AI response, but analysis was attempted for ${symbol} with ${marketData.length} market data points.`,
+        parameters: {
+          sentiment_threshold: 0.4,
+          holding_period_days: 5,
+          position_size: 0.15
+        },
+        strategy_code: '// AI response parsing failed - using default parameters'
+      };
     }
   } catch (error) {
-    console.error('AI Analysis failed:', error);
+    console.error('AI Analysis failed with error:', error);
     return null;
   }
 }
@@ -208,7 +272,8 @@ async function main() {
     const aiRecommendations = await analyzeWithAI(marketData, sentimentData || [], symbol);
     
     if (aiRecommendations) {
-      console.log('AI Analysis completed:', aiRecommendations.analysis);
+      console.log('AI Analysis completed successfully');
+      console.log('Analysis summary:', aiRecommendations.analysis.substring(0, 200) + '...');
       await updateBacktestingStrategy(aiRecommendations, symbol);
     } else {
       console.log('AI analysis failed or returned no recommendations');
