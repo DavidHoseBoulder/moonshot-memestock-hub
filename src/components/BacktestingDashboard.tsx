@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { TrendingUp, BarChart3, Target, Activity, Database, Calculator } from "lucide-react";
+import { TrendingUp, BarChart3, Target, Activity, Database, Calculator, Sparkles } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 
@@ -29,6 +29,7 @@ const BacktestingDashboard = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [symbol, setSymbol] = useState("AAPL");
   const [days, setDays] = useState(30);
+  const [lastRunTimestamp, setLastRunTimestamp] = useState<string | null>(null);
   const { toast } = useToast();
 
   const fetchBacktestResults = async () => {
@@ -52,6 +53,9 @@ const BacktestingDashboard = () => {
 
   const runBacktest = async () => {
     setIsLoading(true);
+    const runStartTime = new Date().toISOString();
+    setLastRunTimestamp(runStartTime);
+    
     try {
       // First fetch market data
       toast({
@@ -118,6 +122,14 @@ const BacktestingDashboard = () => {
   const formatPercent = (value: number) => `${(value || 0).toFixed(2)}%`;
   const formatNumber = (value: number) => (value || 0).toFixed(3);
 
+  // Check if a result is the latest run (within 30 seconds of the last run timestamp)
+  const isLatestResult = (result: BacktestResult) => {
+    if (!lastRunTimestamp) return false;
+    const resultTime = new Date(result.created_at).getTime();
+    const runTime = new Date(lastRunTimestamp).getTime();
+    return Math.abs(resultTime - runTime) < 30000; // Within 30 seconds
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -176,84 +188,120 @@ const BacktestingDashboard = () => {
       </Card>
 
       {/* Results Grid */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {backtestResults.map((result) => (
-          <Card key={result.id} className="p-6 bg-gradient-card border-border">
-            <div className="flex items-center justify-between mb-4">
-              <div>
-                <h3 className="font-bold text-lg">{result.symbol}</h3>
-                <p className="text-sm text-muted-foreground">
-                  {new Date(result.created_at).toLocaleDateString()}
-                </p>
-              </div>
-              <Badge 
-                variant={result.total_return > 0 ? "default" : "destructive"}
-                className="text-sm"
+      <div className="space-y-4">
+        {backtestResults.length > 0 && (
+          <div className="flex items-center justify-between">
+            <h3 className="text-lg font-semibold">Backtest Results</h3>
+            <p className="text-sm text-muted-foreground">
+              Showing {backtestResults.length} recent backtests
+            </p>
+          </div>
+        )}
+        
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          {backtestResults.map((result, index) => {
+            const isLatest = isLatestResult(result);
+            const isFirstResult = index === 0;
+            
+            return (
+              <Card 
+                key={result.id} 
+                className={`p-6 transition-all duration-300 ${
+                  isLatest 
+                    ? 'bg-gradient-to-br from-primary/5 to-accent/5 border-primary/30 shadow-lg' 
+                    : 'bg-gradient-card border-border'
+                }`}
               >
-                {formatPercent(result.total_return)}
-              </Badge>
-            </div>
-
-            <div className="grid grid-cols-2 gap-4 mb-4">
-              <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <span className="text-sm text-muted-foreground">Total Return</span>
-                  <span className={`font-semibold ${result.total_return > 0 ? 'text-success' : 'text-destructive'}`}>
+                <div className="flex items-center justify-between mb-4">
+                  <div className="flex items-center space-x-3">
+                    <div>
+                      <h3 className="font-bold text-lg">{result.symbol}</h3>
+                      <p className="text-sm text-muted-foreground">
+                        {new Date(result.created_at).toLocaleDateString()}
+                      </p>
+                    </div>
+                    {isLatest && (
+                      <Badge className="bg-primary/20 text-primary border-primary/30 flex items-center space-x-1">
+                        <Sparkles className="w-3 h-3" />
+                        <span>Latest</span>
+                      </Badge>
+                    )}
+                    {isFirstResult && !isLatest && (
+                      <Badge variant="outline" className="text-xs">
+                        Most Recent
+                      </Badge>
+                    )}
+                  </div>
+                  <Badge 
+                    variant={result.total_return > 0 ? "default" : "destructive"}
+                    className="text-sm"
+                  >
                     {formatPercent(result.total_return)}
-                  </span>
+                  </Badge>
                 </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-sm text-muted-foreground">Win Rate</span>
-                  <span className="font-semibold">{formatPercent(result.win_rate)}</span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-sm text-muted-foreground">Sharpe Ratio</span>
-                  <span className="font-semibold">{formatNumber(result.sharpe_ratio)}</span>
-                </div>
-              </div>
-              
-              <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <span className="text-sm text-muted-foreground">Sentiment Correlation</span>
-                  <span className={`font-semibold ${Math.abs(result.sentiment_correlation) > 0.3 ? 'text-primary' : 'text-muted-foreground'}`}>
-                    {formatNumber(result.sentiment_correlation)}
-                  </span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-sm text-muted-foreground">Max Drawdown</span>
-                  <span className="font-semibold text-destructive">{formatPercent(result.max_drawdown)}</span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-sm text-muted-foreground">Trades</span>
-                  <span className="font-semibold">{result.trades_data?.length || 0}</span>
-                </div>
-              </div>
-            </div>
 
-            {/* Sentiment Correlation Indicator */}
-            <div className="border-t border-border pt-3">
-              <div className="flex items-center justify-between text-sm">
-                <span className="text-muted-foreground">Sentiment Predictive Power</span>
-                <div className="flex items-center space-x-2">
-                  {Math.abs(result.sentiment_correlation) > 0.5 ? (
-                    <Activity className="w-4 h-4 text-success" />
-                  ) : Math.abs(result.sentiment_correlation) > 0.3 ? (
-                    <Activity className="w-4 h-4 text-primary" />
-                  ) : (
-                    <Activity className="w-4 h-4 text-muted-foreground" />
-                  )}
-                  <span className={`font-medium ${
-                    Math.abs(result.sentiment_correlation) > 0.5 ? 'text-success' : 
-                    Math.abs(result.sentiment_correlation) > 0.3 ? 'text-primary' : 'text-muted-foreground'
-                  }`}>
-                  {Math.abs(result.sentiment_correlation) > 0.5 ? 'Strong' : 
-                   Math.abs(result.sentiment_correlation) > 0.3 ? 'Moderate' : 'Weak'}
-                  </span>
+                <div className="grid grid-cols-2 gap-4 mb-4">
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm text-muted-foreground">Total Return</span>
+                      <span className={`font-semibold ${result.total_return > 0 ? 'text-success' : 'text-destructive'}`}>
+                        {formatPercent(result.total_return)}
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm text-muted-foreground">Win Rate</span>
+                      <span className="font-semibold">{formatPercent(result.win_rate)}</span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm text-muted-foreground">Sharpe Ratio</span>
+                      <span className="font-semibold">{formatNumber(result.sharpe_ratio)}</span>
+                    </div>
+                  </div>
+                  
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm text-muted-foreground">Sentiment Correlation</span>
+                      <span className={`font-semibold ${Math.abs(result.sentiment_correlation) > 0.3 ? 'text-primary' : 'text-muted-foreground'}`}>
+                        {formatNumber(result.sentiment_correlation)}
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm text-muted-foreground">Max Drawdown</span>
+                      <span className="font-semibold text-destructive">{formatPercent(result.max_drawdown)}</span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm text-muted-foreground">Trades</span>
+                      <span className="font-semibold">{result.trades_data?.length || 0}</span>
+                    </div>
+                  </div>
                 </div>
-              </div>
-            </div>
-          </Card>
-        ))}
+
+                {/* Sentiment Correlation Indicator */}
+                <div className="border-t border-border pt-3">
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="text-muted-foreground">Sentiment Predictive Power</span>
+                    <div className="flex items-center space-x-2">
+                      {Math.abs(result.sentiment_correlation) > 0.5 ? (
+                        <Activity className="w-4 h-4 text-success" />
+                      ) : Math.abs(result.sentiment_correlation) > 0.3 ? (
+                        <Activity className="w-4 h-4 text-primary" />
+                      ) : (
+                        <Activity className="w-4 h-4 text-muted-foreground" />
+                      )}
+                      <span className={`font-medium ${
+                        Math.abs(result.sentiment_correlation) > 0.5 ? 'text-success' : 
+                        Math.abs(result.sentiment_correlation) > 0.3 ? 'text-primary' : 'text-muted-foreground'
+                      }`}>
+                      {Math.abs(result.sentiment_correlation) > 0.5 ? 'Strong' : 
+                       Math.abs(result.sentiment_correlation) > 0.3 ? 'Moderate' : 'Weak'}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              </Card>
+            );
+          })}
+        </div>
       </div>
 
       {backtestResults.length === 0 && (
