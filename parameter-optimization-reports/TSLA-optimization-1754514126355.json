@@ -1,0 +1,2160 @@
+{
+  "symbol": "TSLA",
+  "days": 90,
+  "timestamp": "2025-08-06T21:02:06.355Z",
+  "total_combinations_tested": 125,
+  "top_performers": {
+    "by_return": [
+      {
+        "parameters": {
+          "sentiment_threshold": 0.6,
+          "holding_period_days": 5,
+          "position_size": 0.25
+        },
+        "performance": {
+          "total_return": 3.4345761034814735,
+          "annualized_return": 13.929114197452641,
+          "sharpe_ratio": 2.0693617776606326,
+          "win_rate": 100,
+          "max_drawdown": 0.5300444955435776,
+          "trades_count": 3,
+          "sentiment_correlation": -0.11370639326514076
+        }
+      },
+      {
+        "parameters": {
+          "sentiment_threshold": 0.2,
+          "holding_period_days": 7,
+          "position_size": 0.25
+        },
+        "performance": {
+          "total_return": 2.6522645355645915,
+          "annualized_return": 10.756406172011953,
+          "sharpe_ratio": 0.5357811118952029,
+          "win_rate": 66.66666666666666,
+          "max_drawdown": -1.0163571324871061,
+          "trades_count": 3,
+          "sentiment_correlation": 0.42602279266979604
+        }
+      },
+      {
+        "parameters": {
+          "sentiment_threshold": 0.3,
+          "holding_period_days": 7,
+          "position_size": 0.25
+        },
+        "performance": {
+          "total_return": 2.6522645355645915,
+          "annualized_return": 10.756406172011953,
+          "sharpe_ratio": 0.5357811118952029,
+          "win_rate": 66.66666666666666,
+          "max_drawdown": -1.0163571324871061,
+          "trades_count": 3,
+          "sentiment_correlation": -0.993155884556097
+        }
+      }
+    ],
+    "by_sharpe": [
+      {
+        "parameters": {
+          "sentiment_threshold": 0.6,
+          "holding_period_days": 5,
+          "position_size": 0.25
+        },
+        "performance": {
+          "total_return": 3.4345761034814735,
+          "annualized_return": 13.929114197452641,
+          "sharpe_ratio": 2.0693617776606326,
+          "win_rate": 100,
+          "max_drawdown": 0.5300444955435776,
+          "trades_count": 3,
+          "sentiment_correlation": -0.11370639326514076
+        }
+      },
+      {
+        "parameters": {
+          "sentiment_threshold": 0.5,
+          "holding_period_days": 1,
+          "position_size": 0.25
+        },
+        "performance": {
+          "total_return": 2.2517537660643914,
+          "annualized_return": 9.132112495705586,
+          "sharpe_ratio": 1.742107189764668,
+          "win_rate": 100,
+          "max_drawdown": 0.2755026962515185,
+          "trades_count": 4,
+          "sentiment_correlation": -0.9413601424610776
+        }
+      },
+      {
+        "parameters": {
+          "sentiment_threshold": 0.3,
+          "holding_period_days": 7,
+          "position_size": 0.05
+        },
+        "performance": {
+          "total_return": 0.435669616583039,
+          "annualized_return": 1.7668823339201025,
+          "sharpe_ratio": 1.6676024268236689,
+          "win_rate": 100,
+          "max_drawdown": 0.048640703222742,
+          "trades_count": 3,
+          "sentiment_correlation": 0.20028288360371507
+        }
+      }
+    ],
+    "by_win_rate": [
+      {
+        "parameters": {
+          "sentiment_threshold": 0.3,
+          "holding_period_days": 7,
+          "position_size": 0.05
+        },
+        "performance": {
+          "total_return": 0.435669616583039,
+          "annualized_return": 1.7668823339201025,
+          "sharpe_ratio": 1.6676024268236689,
+          "win_rate": 100,
+          "max_drawdown": 0.048640703222742,
+          "trades_count": 3,
+          "sentiment_correlation": 0.20028288360371507
+        }
+      },
+      {
+        "parameters": {
+          "sentiment_threshold": 0.4,
+          "holding_period_days": 7,
+          "position_size": 0.15
+        },
+        "performance": {
+          "total_return": 2.3470951104992444,
+          "annualized_return": 9.51877461480249,
+          "sharpe_ratio": 1.4077891699645335,
+          "win_rate": 100,
+          "max_drawdown": 0.14592210966822597,
+          "trades_count": 3,
+          "sentiment_correlation": -0.9893001423048918
+        }
+      },
+      {
+        "parameters": {
+          "sentiment_threshold": 0.5,
+          "holding_period_days": 1,
+          "position_size": 0.25
+        },
+        "performance": {
+          "total_return": 2.2517537660643914,
+          "annualized_return": 9.132112495705586,
+          "sharpe_ratio": 1.742107189764668,
+          "win_rate": 100,
+          "max_drawdown": 0.2755026962515185,
+          "trades_count": 4,
+          "sentiment_correlation": -0.9413601424610776
+        }
+      }
+    ]
+  },
+  "all_results": [
+    {
+      "parameters": {
+        "sentiment_threshold": 0.2,
+        "holding_period_days": 1,
+        "position_size": 0.05
+      },
+      "performance": {
+        "total_return": 0.3539872902826359,
+        "annualized_return": 1.4356151217018012,
+        "sharpe_ratio": 0.18234330741236177,
+        "win_rate": 63.63636363636363,
+        "max_drawdown": -0.40985100387910905,
+        "trades_count": 11,
+        "sentiment_correlation": -0.6026347173962131
+      }
+    },
+    {
+      "parameters": {
+        "sentiment_threshold": 0.2,
+        "holding_period_days": 1,
+        "position_size": 0.1
+      },
+      "performance": {
+        "total_return": 0.7079745805652718,
+        "annualized_return": 2.8712302434036023,
+        "sharpe_ratio": 0.18234330741236177,
+        "win_rate": 63.63636363636363,
+        "max_drawdown": -0.8197020077582181,
+        "trades_count": 11,
+        "sentiment_correlation": 0.0042147263065210015
+      }
+    },
+    {
+      "parameters": {
+        "sentiment_threshold": 0.2,
+        "holding_period_days": 1,
+        "position_size": 0.15
+      },
+      "performance": {
+        "total_return": 1.0619618708479077,
+        "annualized_return": 4.306845365105404,
+        "sharpe_ratio": 0.18234330741236174,
+        "win_rate": 63.63636363636363,
+        "max_drawdown": -1.229553011637327,
+        "trades_count": 11,
+        "sentiment_correlation": 0.19805359816040383
+      }
+    },
+    {
+      "parameters": {
+        "sentiment_threshold": 0.2,
+        "holding_period_days": 1,
+        "position_size": 0.2
+      },
+      "performance": {
+        "total_return": 1.4159491611305437,
+        "annualized_return": 5.742460486807205,
+        "sharpe_ratio": 0.18234330741236177,
+        "win_rate": 63.63636363636363,
+        "max_drawdown": -1.6394040155164362,
+        "trades_count": 11,
+        "sentiment_correlation": -0.1111672906124992
+      }
+    },
+    {
+      "parameters": {
+        "sentiment_threshold": 0.2,
+        "holding_period_days": 1,
+        "position_size": 0.25
+      },
+      "performance": {
+        "total_return": 1.7699364514131797,
+        "annualized_return": 7.1780756085090065,
+        "sharpe_ratio": 0.1823433074123618,
+        "win_rate": 63.63636363636363,
+        "max_drawdown": -2.049255019395545,
+        "trades_count": 11,
+        "sentiment_correlation": 0.23972452061099278
+      }
+    },
+    {
+      "parameters": {
+        "sentiment_threshold": 0.2,
+        "holding_period_days": 3,
+        "position_size": 0.05
+      },
+      "performance": {
+        "total_return": 0.13734076868867784,
+        "annualized_return": 0.5569931174596379,
+        "sharpe_ratio": 0.08130988528793599,
+        "win_rate": 66.66666666666666,
+        "max_drawdown": -0.3529788293360625,
+        "trades_count": 6,
+        "sentiment_correlation": -0.9066780695265536
+      }
+    },
+    {
+      "parameters": {
+        "sentiment_threshold": 0.2,
+        "holding_period_days": 3,
+        "position_size": 0.1
+      },
+      "performance": {
+        "total_return": 0.2746815373773557,
+        "annualized_return": 1.1139862349192757,
+        "sharpe_ratio": 0.08130988528793599,
+        "win_rate": 66.66666666666666,
+        "max_drawdown": -0.705957658672125,
+        "trades_count": 6,
+        "sentiment_correlation": -0.7371935106460082
+      }
+    },
+    {
+      "parameters": {
+        "sentiment_threshold": 0.2,
+        "holding_period_days": 3,
+        "position_size": 0.15
+      },
+      "performance": {
+        "total_return": 0.4120223060660331,
+        "annualized_return": 1.6709793523789118,
+        "sharpe_ratio": 0.08130988528793592,
+        "win_rate": 66.66666666666666,
+        "max_drawdown": -1.0589364880081875,
+        "trades_count": 6,
+        "sentiment_correlation": -0.2820225430038605
+      }
+    },
+    {
+      "parameters": {
+        "sentiment_threshold": 0.2,
+        "holding_period_days": 3,
+        "position_size": 0.2
+      },
+      "performance": {
+        "total_return": 0.5493630747547114,
+        "annualized_return": 2.2279724698385515,
+        "sharpe_ratio": 0.08130988528793599,
+        "win_rate": 66.66666666666666,
+        "max_drawdown": -1.41191531734425,
+        "trades_count": 6,
+        "sentiment_correlation": 0.7006316980295406
+      }
+    },
+    {
+      "parameters": {
+        "sentiment_threshold": 0.2,
+        "holding_period_days": 3,
+        "position_size": 0.25
+      },
+      "performance": {
+        "total_return": 0.6867038434433888,
+        "annualized_return": 2.7849655872981876,
+        "sharpe_ratio": 0.08130988528793595,
+        "win_rate": 66.66666666666666,
+        "max_drawdown": -1.7648941466803125,
+        "trades_count": 6,
+        "sentiment_correlation": -0.24349751926956226
+      }
+    },
+    {
+      "parameters": {
+        "sentiment_threshold": 0.2,
+        "holding_period_days": 5,
+        "position_size": 0.05
+      },
+      "performance": {
+        "total_return": 0.39145823361435694,
+        "annualized_return": 1.5875806141026698,
+        "sharpe_ratio": 0.3462998713720211,
+        "win_rate": 50,
+        "max_drawdown": -0.185865535275784,
+        "trades_count": 4,
+        "sentiment_correlation": -0.43923619841449235
+      }
+    },
+    {
+      "parameters": {
+        "sentiment_threshold": 0.2,
+        "holding_period_days": 5,
+        "position_size": 0.1
+      },
+      "performance": {
+        "total_return": 0.7829164672287139,
+        "annualized_return": 3.1751612282053396,
+        "sharpe_ratio": 0.3462998713720211,
+        "win_rate": 50,
+        "max_drawdown": -0.371731070551568,
+        "trades_count": 4,
+        "sentiment_correlation": -0.14634818289796148
+      }
+    },
+    {
+      "parameters": {
+        "sentiment_threshold": 0.2,
+        "holding_period_days": 5,
+        "position_size": 0.15
+      },
+      "performance": {
+        "total_return": 1.174374700843071,
+        "annualized_return": 4.76274184230801,
+        "sharpe_ratio": 0.3462998713720212,
+        "win_rate": 50,
+        "max_drawdown": -0.5575966058273519,
+        "trades_count": 4,
+        "sentiment_correlation": -0.965906014194842
+      }
+    },
+    {
+      "parameters": {
+        "sentiment_threshold": 0.2,
+        "holding_period_days": 5,
+        "position_size": 0.2
+      },
+      "performance": {
+        "total_return": 1.5658329344574278,
+        "annualized_return": 6.350322456410679,
+        "sharpe_ratio": 0.3462998713720211,
+        "win_rate": 50,
+        "max_drawdown": -0.743462141103136,
+        "trades_count": 4,
+        "sentiment_correlation": -0.4305931803255997
+      }
+    },
+    {
+      "parameters": {
+        "sentiment_threshold": 0.2,
+        "holding_period_days": 5,
+        "position_size": 0.25
+      },
+      "performance": {
+        "total_return": 1.9572911680717844,
+        "annualized_return": 7.9379030705133475,
+        "sharpe_ratio": 0.34629987137202106,
+        "win_rate": 50,
+        "max_drawdown": -0.92932767637892,
+        "trades_count": 4,
+        "sentiment_correlation": -0.09225886508054072
+      }
+    },
+    {
+      "parameters": {
+        "sentiment_threshold": 0.2,
+        "holding_period_days": 7,
+        "position_size": 0.05
+      },
+      "performance": {
+        "total_return": 0.5304529071129181,
+        "annualized_return": 2.1512812344023904,
+        "sharpe_ratio": 0.5357811118952027,
+        "win_rate": 66.66666666666666,
+        "max_drawdown": -0.20327142649742125,
+        "trades_count": 3,
+        "sentiment_correlation": -0.9998723672585735
+      }
+    },
+    {
+      "parameters": {
+        "sentiment_threshold": 0.2,
+        "holding_period_days": 7,
+        "position_size": 0.1
+      },
+      "performance": {
+        "total_return": 1.0609058142258363,
+        "annualized_return": 4.302562468804781,
+        "sharpe_ratio": 0.5357811118952027,
+        "win_rate": 66.66666666666666,
+        "max_drawdown": -0.4065428529948425,
+        "trades_count": 3,
+        "sentiment_correlation": 0.9994376966453692
+      }
+    },
+    {
+      "parameters": {
+        "sentiment_threshold": 0.2,
+        "holding_period_days": 7,
+        "position_size": 0.15
+      },
+      "performance": {
+        "total_return": 1.5913587213387546,
+        "annualized_return": 6.453843703207171,
+        "sharpe_ratio": 0.5357811118952028,
+        "win_rate": 66.66666666666666,
+        "max_drawdown": -0.6098142794922636,
+        "trades_count": 3,
+        "sentiment_correlation": 0.3179196084818913
+      }
+    },
+    {
+      "parameters": {
+        "sentiment_threshold": 0.2,
+        "holding_period_days": 7,
+        "position_size": 0.2
+      },
+      "performance": {
+        "total_return": 2.1218116284516726,
+        "annualized_return": 8.605124937609562,
+        "sharpe_ratio": 0.5357811118952027,
+        "win_rate": 66.66666666666666,
+        "max_drawdown": -0.813085705989685,
+        "trades_count": 3,
+        "sentiment_correlation": -0.9818146442719344
+      }
+    },
+    {
+      "parameters": {
+        "sentiment_threshold": 0.2,
+        "holding_period_days": 7,
+        "position_size": 0.25
+      },
+      "performance": {
+        "total_return": 2.6522645355645915,
+        "annualized_return": 10.756406172011953,
+        "sharpe_ratio": 0.5357811118952029,
+        "win_rate": 66.66666666666666,
+        "max_drawdown": -1.0163571324871061,
+        "trades_count": 3,
+        "sentiment_correlation": 0.42602279266979604
+      }
+    },
+    {
+      "parameters": {
+        "sentiment_threshold": 0.2,
+        "holding_period_days": 10,
+        "position_size": 0.05
+      },
+      "performance": {
+        "total_return": 0.3716712729140663,
+        "annualized_return": 1.5073334957070468,
+        "sharpe_ratio": 0.5311119909517825,
+        "win_rate": 50,
+        "max_drawdown": -0.06158042825918583,
+        "trades_count": 2,
+        "sentiment_correlation": 0.9999999999999999
+      }
+    },
+    {
+      "parameters": {
+        "sentiment_threshold": 0.2,
+        "holding_period_days": 10,
+        "position_size": 0.1
+      },
+      "performance": {
+        "total_return": 0.7433425458281326,
+        "annualized_return": 3.0146669914140936,
+        "sharpe_ratio": 0.5311119909517825,
+        "win_rate": 50,
+        "max_drawdown": -0.12316085651837166,
+        "trades_count": 2,
+        "sentiment_correlation": 0.9999999999999998
+      }
+    },
+    {
+      "parameters": {
+        "sentiment_threshold": 0.2,
+        "holding_period_days": 10,
+        "position_size": 0.15
+      },
+      "performance": {
+        "total_return": 1.1150138187421987,
+        "annualized_return": 4.522000487121139,
+        "sharpe_ratio": 0.5311119909517824,
+        "win_rate": 50,
+        "max_drawdown": -0.18474128477755747,
+        "trades_count": 2,
+        "sentiment_correlation": 1
+      }
+    },
+    {
+      "parameters": {
+        "sentiment_threshold": 0.2,
+        "holding_period_days": 10,
+        "position_size": 0.2
+      },
+      "performance": {
+        "total_return": 1.4866850916562653,
+        "annualized_return": 6.029333982828187,
+        "sharpe_ratio": 0.5311119909517825,
+        "win_rate": 50,
+        "max_drawdown": -0.24632171303674333,
+        "trades_count": 2,
+        "sentiment_correlation": 0.9999999999999999
+      }
+    },
+    {
+      "parameters": {
+        "sentiment_threshold": 0.2,
+        "holding_period_days": 10,
+        "position_size": 0.25
+      },
+      "performance": {
+        "total_return": 1.8583563645703314,
+        "annualized_return": 7.536667478535232,
+        "sharpe_ratio": 0.5311119909517825,
+        "win_rate": 50,
+        "max_drawdown": -0.30790214129592913,
+        "trades_count": 2,
+        "sentiment_correlation": -1
+      }
+    },
+    {
+      "parameters": {
+        "sentiment_threshold": 0.3,
+        "holding_period_days": 1,
+        "position_size": 0.05
+      },
+      "performance": {
+        "total_return": 0.028157368985324352,
+        "annualized_return": 0.11419377421825987,
+        "sharpe_ratio": 0.015461586815715883,
+        "win_rate": 50,
+        "max_drawdown": -0.40985100387910905,
+        "trades_count": 10,
+        "sentiment_correlation": 0.0033630462000462614
+      }
+    },
+    {
+      "parameters": {
+        "sentiment_threshold": 0.3,
+        "holding_period_days": 1,
+        "position_size": 0.1
+      },
+      "performance": {
+        "total_return": 0.2869209080530468,
+        "annualized_return": 1.1636236826595787,
+        "sharpe_ratio": 0.12023606958747816,
+        "win_rate": 44.44444444444444,
+        "max_drawdown": -0.3375758287898132,
+        "trades_count": 9,
+        "sentiment_correlation": 0.08342311082175866
+      }
+    },
+    {
+      "parameters": {
+        "sentiment_threshold": 0.3,
+        "holding_period_days": 1,
+        "position_size": 0.15
+      },
+      "performance": {
+        "total_return": 2.2444177127746503,
+        "annualized_return": 9.102360724030525,
+        "sharpe_ratio": 0.6004884814368083,
+        "win_rate": 80,
+        "max_drawdown": -0.5063637431847198,
+        "trades_count": 10,
+        "sentiment_correlation": -0.06303521538148307
+      }
+    },
+    {
+      "parameters": {
+        "sentiment_threshold": 0.3,
+        "holding_period_days": 1,
+        "position_size": 0.2
+      },
+      "performance": {
+        "total_return": 1.714287097833962,
+        "annualized_return": 6.952386563437734,
+        "sharpe_ratio": 0.22200420301567336,
+        "win_rate": 80,
+        "max_drawdown": -1.6394040155164362,
+        "trades_count": 10,
+        "sentiment_correlation": 0.41911432795747044
+      }
+    },
+    {
+      "parameters": {
+        "sentiment_threshold": 0.3,
+        "holding_period_days": 1,
+        "position_size": 0.25
+      },
+      "performance": {
+        "total_return": 2.227326428630282,
+        "annualized_return": 9.033046071667254,
+        "sharpe_ratio": 0.2461985391233042,
+        "win_rate": 70,
+        "max_drawdown": -2.049255019395545,
+        "trades_count": 10,
+        "sentiment_correlation": 0.2832314122446846
+      }
+    },
+    {
+      "parameters": {
+        "sentiment_threshold": 0.3,
+        "holding_period_days": 3,
+        "position_size": 0.05
+      },
+      "performance": {
+        "total_return": 0.13734076868867784,
+        "annualized_return": 0.5569931174596379,
+        "sharpe_ratio": 0.08130988528793599,
+        "win_rate": 66.66666666666666,
+        "max_drawdown": -0.3529788293360625,
+        "trades_count": 6,
+        "sentiment_correlation": -0.7913099947640073
+      }
+    },
+    {
+      "parameters": {
+        "sentiment_threshold": 0.3,
+        "holding_period_days": 3,
+        "position_size": 0.1
+      },
+      "performance": {
+        "total_return": 0.2746815373773557,
+        "annualized_return": 1.1139862349192757,
+        "sharpe_ratio": 0.08130988528793599,
+        "win_rate": 66.66666666666666,
+        "max_drawdown": -0.705957658672125,
+        "trades_count": 6,
+        "sentiment_correlation": -0.6354022170439235
+      }
+    },
+    {
+      "parameters": {
+        "sentiment_threshold": 0.3,
+        "holding_period_days": 3,
+        "position_size": 0.15
+      },
+      "performance": {
+        "total_return": 0.21992978870698132,
+        "annualized_return": 0.8919374764227576,
+        "sharpe_ratio": 0.06726989013536169,
+        "win_rate": 60,
+        "max_drawdown": -0.867216996766129,
+        "trades_count": 5,
+        "sentiment_correlation": -0.034653883401871775
+      }
+    },
+    {
+      "parameters": {
+        "sentiment_threshold": 0.3,
+        "holding_period_days": 3,
+        "position_size": 0.2
+      },
+      "performance": {
+        "total_return": -0.3062719503646558,
+        "annualized_return": -1.2421029098122152,
+        "sharpe_ratio": -0.06596828591440472,
+        "win_rate": 60,
+        "max_drawdown": -1.0639152016153133,
+        "trades_count": 5,
+        "sentiment_correlation": 0.542455309576259
+      }
+    },
+    {
+      "parameters": {
+        "sentiment_threshold": 0.3,
+        "holding_period_days": 3,
+        "position_size": 0.25
+      },
+      "performance": {
+        "total_return": 0.5960579310064246,
+        "annualized_return": 2.417346053526055,
+        "sharpe_ratio": 0.07269673221645453,
+        "win_rate": 66.66666666666666,
+        "max_drawdown": -1.7648941466803125,
+        "trades_count": 6,
+        "sentiment_correlation": 0.3904814539465836
+      }
+    },
+    {
+      "parameters": {
+        "sentiment_threshold": 0.3,
+        "holding_period_days": 5,
+        "position_size": 0.05
+      },
+      "performance": {
+        "total_return": 0.5336429271247851,
+        "annualized_return": 2.1642185377838508,
+        "sharpe_ratio": 0.6310839407148676,
+        "win_rate": 75,
+        "max_drawdown": -0.15327229357150962,
+        "trades_count": 4,
+        "sentiment_correlation": 0.5263463238112529
+      }
+    },
+    {
+      "parameters": {
+        "sentiment_threshold": 0.3,
+        "holding_period_days": 5,
+        "position_size": 0.1
+      },
+      "performance": {
+        "total_return": 0.41181194386861614,
+        "annualized_return": 1.6701262168004987,
+        "sharpe_ratio": 0.2000187406675703,
+        "win_rate": 50,
+        "max_drawdown": -0.371731070551568,
+        "trades_count": 4,
+        "sentiment_correlation": 0.7205483283321094
+      }
+    },
+    {
+      "parameters": {
+        "sentiment_threshold": 0.3,
+        "holding_period_days": 5,
+        "position_size": 0.15
+      },
+      "performance": {
+        "total_return": 0.9642263719736132,
+        "annualized_return": 3.910473619670764,
+        "sharpe_ratio": 0.30945627186672436,
+        "win_rate": 50,
+        "max_drawdown": -0.5575966058273519,
+        "trades_count": 4,
+        "sentiment_correlation": -0.02550470849931862
+      }
+    },
+    {
+      "parameters": {
+        "sentiment_threshold": 0.3,
+        "holding_period_days": 5,
+        "position_size": 0.2
+      },
+      "performance": {
+        "total_return": 1.5658329344574278,
+        "annualized_return": 6.350322456410679,
+        "sharpe_ratio": 0.3462998713720211,
+        "win_rate": 50,
+        "max_drawdown": -0.743462141103136,
+        "trades_count": 4,
+        "sentiment_correlation": -0.3236698080666564
+      }
+    },
+    {
+      "parameters": {
+        "sentiment_threshold": 0.3,
+        "holding_period_days": 5,
+        "position_size": 0.25
+      },
+      "performance": {
+        "total_return": 1.9572911680717844,
+        "annualized_return": 7.9379030705133475,
+        "sharpe_ratio": 0.34629987137202106,
+        "win_rate": 50,
+        "max_drawdown": -0.92932767637892,
+        "trades_count": 4,
+        "sentiment_correlation": 0.8226037289706571
+      }
+    },
+    {
+      "parameters": {
+        "sentiment_threshold": 0.3,
+        "holding_period_days": 7,
+        "position_size": 0.05
+      },
+      "performance": {
+        "total_return": 0.435669616583039,
+        "annualized_return": 1.7668823339201025,
+        "sharpe_ratio": 1.6676024268236689,
+        "win_rate": 100,
+        "max_drawdown": 0.048640703222742,
+        "trades_count": 3,
+        "sentiment_correlation": 0.20028288360371507
+      }
+    },
+    {
+      "parameters": {
+        "sentiment_threshold": 0.3,
+        "holding_period_days": 7,
+        "position_size": 0.1
+      },
+      "performance": {
+        "total_return": 1.0609058142258363,
+        "annualized_return": 4.302562468804781,
+        "sharpe_ratio": 0.5357811118952027,
+        "win_rate": 66.66666666666666,
+        "max_drawdown": -0.4065428529948425,
+        "trades_count": 3,
+        "sentiment_correlation": 0.03831607709635139
+      }
+    },
+    {
+      "parameters": {
+        "sentiment_threshold": 0.3,
+        "holding_period_days": 7,
+        "position_size": 0.15
+      },
+      "performance": {
+        "total_return": 1.5913587213387546,
+        "annualized_return": 6.453843703207171,
+        "sharpe_ratio": 0.5357811118952028,
+        "win_rate": 66.66666666666666,
+        "max_drawdown": -0.6098142794922636,
+        "trades_count": 3,
+        "sentiment_correlation": 0.3330116421854777
+      }
+    },
+    {
+      "parameters": {
+        "sentiment_threshold": 0.3,
+        "holding_period_days": 7,
+        "position_size": 0.2
+      },
+      "performance": {
+        "total_return": 2.1218116284516726,
+        "annualized_return": 8.605124937609562,
+        "sharpe_ratio": 0.5357811118952027,
+        "win_rate": 66.66666666666666,
+        "max_drawdown": -0.813085705989685,
+        "trades_count": 3,
+        "sentiment_correlation": 0.9954753900721482
+      }
+    },
+    {
+      "parameters": {
+        "sentiment_threshold": 0.3,
+        "holding_period_days": 7,
+        "position_size": 0.25
+      },
+      "performance": {
+        "total_return": 2.6522645355645915,
+        "annualized_return": 10.756406172011953,
+        "sharpe_ratio": 0.5357811118952029,
+        "win_rate": 66.66666666666666,
+        "max_drawdown": -1.0163571324871061,
+        "trades_count": 3,
+        "sentiment_correlation": -0.993155884556097
+      }
+    },
+    {
+      "parameters": {
+        "sentiment_threshold": 0.3,
+        "holding_period_days": 10,
+        "position_size": 0.05
+      },
+      "performance": {
+        "total_return": 0.3716712729140663,
+        "annualized_return": 1.5073334957070468,
+        "sharpe_ratio": 0.5311119909517825,
+        "win_rate": 50,
+        "max_drawdown": -0.06158042825918583,
+        "trades_count": 2,
+        "sentiment_correlation": -0.9999999999999999
+      }
+    },
+    {
+      "parameters": {
+        "sentiment_threshold": 0.3,
+        "holding_period_days": 10,
+        "position_size": 0.1
+      },
+      "performance": {
+        "total_return": 0.7433425458281326,
+        "annualized_return": 3.0146669914140936,
+        "sharpe_ratio": 0.5311119909517825,
+        "win_rate": 50,
+        "max_drawdown": -0.12316085651837166,
+        "trades_count": 2,
+        "sentiment_correlation": -1
+      }
+    },
+    {
+      "parameters": {
+        "sentiment_threshold": 0.3,
+        "holding_period_days": 10,
+        "position_size": 0.15
+      },
+      "performance": {
+        "total_return": 1.1150138187421987,
+        "annualized_return": 4.522000487121139,
+        "sharpe_ratio": 0.5311119909517824,
+        "win_rate": 50,
+        "max_drawdown": -0.18474128477755747,
+        "trades_count": 2,
+        "sentiment_correlation": 0.9999999999999998
+      }
+    },
+    {
+      "parameters": {
+        "sentiment_threshold": 0.3,
+        "holding_period_days": 10,
+        "position_size": 0.2
+      },
+      "performance": {
+        "total_return": 1.4866850916562653,
+        "annualized_return": 6.029333982828187,
+        "sharpe_ratio": 0.5311119909517825,
+        "win_rate": 50,
+        "max_drawdown": -0.24632171303674333,
+        "trades_count": 2,
+        "sentiment_correlation": -0.9999999999999999
+      }
+    },
+    {
+      "parameters": {
+        "sentiment_threshold": 0.3,
+        "holding_period_days": 10,
+        "position_size": 0.25
+      },
+      "performance": {
+        "total_return": 1.1339850481900642,
+        "annualized_return": 4.598939362104149,
+        "sharpe_ratio": 0.19038574546519513,
+        "win_rate": 50,
+        "max_drawdown": -1.5388597690482488,
+        "trades_count": 2,
+        "sentiment_correlation": -1
+      }
+    },
+    {
+      "parameters": {
+        "sentiment_threshold": 0.4,
+        "holding_period_days": 1,
+        "position_size": 0.05
+      },
+      "performance": {
+        "total_return": 0.18772431258700312,
+        "annualized_return": 0.7613263788250682,
+        "sharpe_ratio": 0.25331623982749163,
+        "win_rate": 71.42857142857143,
+        "max_drawdown": -0.1687879143949066,
+        "trades_count": 7,
+        "sentiment_correlation": 0.6673398431162937
+      }
+    },
+    {
+      "parameters": {
+        "sentiment_threshold": 0.4,
+        "holding_period_days": 1,
+        "position_size": 0.1
+      },
+      "performance": {
+        "total_return": -1.2380050176656763,
+        "annualized_return": -5.020798127199687,
+        "sharpe_ratio": -0.5266653357834847,
+        "win_rate": 25,
+        "max_drawdown": -0.8197020077582181,
+        "trades_count": 8,
+        "sentiment_correlation": 0.10480979895870819
+      }
+    },
+    {
+      "parameters": {
+        "sentiment_threshold": 0.4,
+        "holding_period_days": 1,
+        "position_size": 0.15
+      },
+      "performance": {
+        "total_return": -0.8743201368832444,
+        "annualized_return": -3.5458538884709356,
+        "sharpe_ratio": -0.18231231524735908,
+        "win_rate": 44.44444444444444,
+        "max_drawdown": -1.229553011637327,
+        "trades_count": 9,
+        "sentiment_correlation": 0.2196435779370602
+      }
+    },
+    {
+      "parameters": {
+        "sentiment_threshold": 0.4,
+        "holding_period_days": 1,
+        "position_size": 0.2
+      },
+      "performance": {
+        "total_return": 0.543833801930174,
+        "annualized_return": 2.205548196716817,
+        "sharpe_ratio": 0.17812081152671397,
+        "win_rate": 44.44444444444444,
+        "max_drawdown": -0.3862414160810117,
+        "trades_count": 9,
+        "sentiment_correlation": 0.29033430614406114
+      }
+    },
+    {
+      "parameters": {
+        "sentiment_threshold": 0.4,
+        "holding_period_days": 1,
+        "position_size": 0.25
+      },
+      "performance": {
+        "total_return": 2.1428588722924524,
+        "annualized_return": 8.690483204297168,
+        "sharpe_ratio": 0.22200420301567336,
+        "win_rate": 80,
+        "max_drawdown": -2.049255019395545,
+        "trades_count": 10,
+        "sentiment_correlation": 0.4254036032595737
+      }
+    },
+    {
+      "parameters": {
+        "sentiment_threshold": 0.4,
+        "holding_period_days": 3,
+        "position_size": 0.05
+      },
+      "performance": {
+        "total_return": -0.22031512494989552,
+        "annualized_return": -0.8935002289634651,
+        "sharpe_ratio": -0.17649039201583103,
+        "win_rate": 50,
+        "max_drawdown": -0.3529788293360625,
+        "trades_count": 4,
+        "sentiment_correlation": -0.5317829007760244
+      }
+    },
+    {
+      "parameters": {
+        "sentiment_threshold": 0.4,
+        "holding_period_days": 3,
+        "position_size": 0.1
+      },
+      "performance": {
+        "total_return": 0.9485427399682633,
+        "annualized_return": 3.846867778760179,
+        "sharpe_ratio": 0.39002616043413724,
+        "win_rate": 80,
+        "max_drawdown": -0.5781446645107526,
+        "trades_count": 5,
+        "sentiment_correlation": -0.03095750290004489
+      }
+    },
+    {
+      "parameters": {
+        "sentiment_threshold": 0.4,
+        "holding_period_days": 3,
+        "position_size": 0.15
+      },
+      "performance": {
+        "total_return": 0.02901541568894961,
+        "annualized_return": 0.1176736302940734,
+        "sharpe_ratio": 0.006413779059902762,
+        "win_rate": 60,
+        "max_drawdown": -1.0589364880081875,
+        "trades_count": 5,
+        "sentiment_correlation": -0.025270214170606948
+      }
+    },
+    {
+      "parameters": {
+        "sentiment_threshold": 0.4,
+        "holding_period_days": 3,
+        "position_size": 0.2
+      },
+      "performance": {
+        "total_return": -0.053686906487592445,
+        "annualized_return": -0.21773023186634713,
+        "sharpe_ratio": -0.008747950985628333,
+        "win_rate": 60,
+        "max_drawdown": -1.41191531734425,
+        "trades_count": 5,
+        "sentiment_correlation": 0.8132040611673883
+      }
+    },
+    {
+      "parameters": {
+        "sentiment_threshold": 0.4,
+        "holding_period_days": 3,
+        "position_size": 0.25
+      },
+      "performance": {
+        "total_return": -1.578819947527296,
+        "annualized_return": -6.402992009416256,
+        "sharpe_ratio": -0.27825311247669404,
+        "win_rate": 50,
+        "max_drawdown": -1.7648941466803125,
+        "trades_count": 4,
+        "sentiment_correlation": -0.7084513402697858
+      }
+    },
+    {
+      "parameters": {
+        "sentiment_threshold": 0.4,
+        "holding_period_days": 5,
+        "position_size": 0.05
+      },
+      "performance": {
+        "total_return": 0.40570355418708554,
+        "annualized_return": 1.645353303092069,
+        "sharpe_ratio": 0.48295940820313576,
+        "win_rate": 75,
+        "max_drawdown": -0.09816008698336419,
+        "trades_count": 4,
+        "sentiment_correlation": -0.34849456600436196
+      }
+    },
+    {
+      "parameters": {
+        "sentiment_threshold": 0.4,
+        "holding_period_days": 5,
+        "position_size": 0.1
+      },
+      "performance": {
+        "total_return": 0.8481029506372626,
+        "annualized_return": 3.4395286331400095,
+        "sharpe_ratio": 0.3898070240062747,
+        "win_rate": 50,
+        "max_drawdown": -0.30654458714301924,
+        "trades_count": 4,
+        "sentiment_correlation": 0.4006122532430536
+      }
+    },
+    {
+      "parameters": {
+        "sentiment_threshold": 0.4,
+        "holding_period_days": 5,
+        "position_size": 0.15
+      },
+      "performance": {
+        "total_return": 1.1544755443434238,
+        "annualized_return": 4.682039707614996,
+        "sharpe_ratio": 0.33857633316576974,
+        "win_rate": 50,
+        "max_drawdown": -0.5575966058273519,
+        "trades_count": 4,
+        "sentiment_correlation": 0.16496962148244584
+      }
+    },
+    {
+      "parameters": {
+        "sentiment_threshold": 0.4,
+        "holding_period_days": 5,
+        "position_size": 0.2
+      },
+      "performance": {
+        "total_return": 1.6696736926083293,
+        "annualized_return": 6.7714544200226685,
+        "sharpe_ratio": 0.3813609008906848,
+        "win_rate": 50,
+        "max_drawdown": -0.6130891742860385,
+        "trades_count": 4,
+        "sentiment_correlation": -0.09721005696658598
+      }
+    },
+    {
+      "parameters": {
+        "sentiment_threshold": 0.4,
+        "holding_period_days": 5,
+        "position_size": 0.25
+      },
+      "performance": {
+        "total_return": 1.9572911680717844,
+        "annualized_return": 7.9379030705133475,
+        "sharpe_ratio": 0.34629987137202106,
+        "win_rate": 50,
+        "max_drawdown": -0.92932767637892,
+        "trades_count": 4,
+        "sentiment_correlation": -0.5457505045123159
+      }
+    },
+    {
+      "parameters": {
+        "sentiment_threshold": 0.4,
+        "holding_period_days": 7,
+        "position_size": 0.05
+      },
+      "performance": {
+        "total_return": 0.5304529071129181,
+        "annualized_return": 2.1512812344023904,
+        "sharpe_ratio": 0.5357811118952027,
+        "win_rate": 66.66666666666666,
+        "max_drawdown": -0.20327142649742125,
+        "trades_count": 3,
+        "sentiment_correlation": -0.9844349358051622
+      }
+    },
+    {
+      "parameters": {
+        "sentiment_threshold": 0.4,
+        "holding_period_days": 7,
+        "position_size": 0.1
+      },
+      "performance": {
+        "total_return": 1.0609058142258363,
+        "annualized_return": 4.302562468804781,
+        "sharpe_ratio": 0.5357811118952027,
+        "win_rate": 66.66666666666666,
+        "max_drawdown": -0.4065428529948425,
+        "trades_count": 3,
+        "sentiment_correlation": 0.25749777765480064
+      }
+    },
+    {
+      "parameters": {
+        "sentiment_threshold": 0.4,
+        "holding_period_days": 7,
+        "position_size": 0.15
+      },
+      "performance": {
+        "total_return": 2.3470951104992444,
+        "annualized_return": 9.51877461480249,
+        "sharpe_ratio": 1.4077891699645335,
+        "win_rate": 100,
+        "max_drawdown": 0.14592210966822597,
+        "trades_count": 3,
+        "sentiment_correlation": -0.9893001423048918
+      }
+    },
+    {
+      "parameters": {
+        "sentiment_threshold": 0.4,
+        "holding_period_days": 7,
+        "position_size": 0.2
+      },
+      "performance": {
+        "total_return": 2.1218116284516726,
+        "annualized_return": 8.605124937609562,
+        "sharpe_ratio": 0.5357811118952027,
+        "win_rate": 66.66666666666666,
+        "max_drawdown": -0.813085705989685,
+        "trades_count": 3,
+        "sentiment_correlation": -0.9984340190339184
+      }
+    },
+    {
+      "parameters": {
+        "sentiment_threshold": 0.4,
+        "holding_period_days": 7,
+        "position_size": 0.25
+      },
+      "performance": {
+        "total_return": 0.8728468398129179,
+        "annualized_return": 3.5398788503523893,
+        "sharpe_ratio": 0.246944143143863,
+        "win_rate": 66.66666666666666,
+        "max_drawdown": -1.0622977269885667,
+        "trades_count": 3,
+        "sentiment_correlation": -0.24652113539948226
+      }
+    },
+    {
+      "parameters": {
+        "sentiment_threshold": 0.4,
+        "holding_period_days": 10,
+        "position_size": 0.05
+      },
+      "performance": {
+        "total_return": 0.3716712729140663,
+        "annualized_return": 1.5073334957070468,
+        "sharpe_ratio": 0.5311119909517825,
+        "win_rate": 50,
+        "max_drawdown": -0.06158042825918583,
+        "trades_count": 2,
+        "sentiment_correlation": -1
+      }
+    },
+    {
+      "parameters": {
+        "sentiment_threshold": 0.4,
+        "holding_period_days": 10,
+        "position_size": 0.1
+      },
+      "performance": {
+        "total_return": 0.21447833289973806,
+        "annualized_return": 0.8698287945378265,
+        "sharpe_ratio": 0.07621853672634714,
+        "win_rate": 50,
+        "max_drawdown": -0.8876571548709079,
+        "trades_count": 2,
+        "sentiment_correlation": -0.9999999999999999
+      }
+    },
+    {
+      "parameters": {
+        "sentiment_threshold": 0.4,
+        "holding_period_days": 10,
+        "position_size": 0.15
+      },
+      "performance": {
+        "total_return": 0.6803910289140386,
+        "annualized_return": 2.7593636172624896,
+        "sharpe_ratio": 0.1903857454651951,
+        "win_rate": 50,
+        "max_drawdown": -0.9233158614289493,
+        "trades_count": 2,
+        "sentiment_correlation": 1
+      }
+    },
+    {
+      "parameters": {
+        "sentiment_threshold": 0.4,
+        "holding_period_days": 10,
+        "position_size": 0.2
+      },
+      "performance": {
+        "total_return": 1.4866850916562653,
+        "annualized_return": 6.029333982828187,
+        "sharpe_ratio": 0.5311119909517825,
+        "win_rate": 50,
+        "max_drawdown": -0.24632171303674333,
+        "trades_count": 2,
+        "sentiment_correlation": 0.9999999999999999
+      }
+    },
+    {
+      "parameters": {
+        "sentiment_threshold": 0.4,
+        "holding_period_days": 10,
+        "position_size": 0.25
+      },
+      "performance": {
+        "total_return": 1.0037759968387725,
+        "annualized_return": 4.0708693205127995,
+        "sharpe_ratio": 0.15748665092612552,
+        "win_rate": 50,
+        "max_drawdown": -1.7515627225878423,
+        "trades_count": 2,
+        "sentiment_correlation": 1
+      }
+    },
+    {
+      "parameters": {
+        "sentiment_threshold": 0.5,
+        "holding_period_days": 1,
+        "position_size": 0.05
+      },
+      "performance": {
+        "total_return": 0.5583535839100937,
+        "annualized_return": 2.2644339791909354,
+        "sharpe_ratio": 0.6208327281340461,
+        "win_rate": 87.5,
+        "max_drawdown": -0.1687879143949066,
+        "trades_count": 8,
+        "sentiment_correlation": -0.4604906974276841
+      }
+    },
+    {
+      "parameters": {
+        "sentiment_threshold": 0.5,
+        "holding_period_days": 1,
+        "position_size": 0.1
+      },
+      "performance": {
+        "total_return": 0.4076238049466413,
+        "annualized_return": 1.653140986728045,
+        "sharpe_ratio": 0.13363313928665183,
+        "win_rate": 71.42857142857143,
+        "max_drawdown": -0.8197020077582181,
+        "trades_count": 7,
+        "sentiment_correlation": -0.34542818240932294
+      }
+    },
+    {
+      "parameters": {
+        "sentiment_threshold": 0.5,
+        "holding_period_days": 1,
+        "position_size": 0.15
+      },
+      "performance": {
+        "total_return": 0.12526794491213883,
+        "annualized_return": 0.5080311099214518,
+        "sharpe_ratio": 0.08132260930372266,
+        "win_rate": 33.33333333333333,
+        "max_drawdown": -0.2744339863302616,
+        "trades_count": 6,
+        "sentiment_correlation": -0.7489095382184193
+      }
+    },
+    {
+      "parameters": {
+        "sentiment_threshold": 0.5,
+        "holding_period_days": 1,
+        "position_size": 0.2
+      },
+      "performance": {
+        "total_return": 1.2542561169587623,
+        "annualized_return": 5.086705363221647,
+        "sharpe_ratio": 0.39829210982706187,
+        "win_rate": 66.66666666666666,
+        "max_drawdown": -0.36591198177368217,
+        "trades_count": 6,
+        "sentiment_correlation": -0.2738995068648698
+      }
+    },
+    {
+      "parameters": {
+        "sentiment_threshold": 0.5,
+        "holding_period_days": 1,
+        "position_size": 0.25
+      },
+      "performance": {
+        "total_return": 2.2517537660643914,
+        "annualized_return": 9.132112495705586,
+        "sharpe_ratio": 1.742107189764668,
+        "win_rate": 100,
+        "max_drawdown": 0.2755026962515185,
+        "trades_count": 4,
+        "sentiment_correlation": -0.9413601424610776
+      }
+    },
+    {
+      "parameters": {
+        "sentiment_threshold": 0.5,
+        "holding_period_days": 3,
+        "position_size": 0.05
+      },
+      "performance": {
+        "total_return": 0.41282390961122717,
+        "annualized_return": 1.6742303000899768,
+        "sharpe_ratio": 0.37104943490047937,
+        "win_rate": 75,
+        "max_drawdown": -0.2890723322553763,
+        "trades_count": 4,
+        "sentiment_correlation": 0.26797156854050735
+      }
+    },
+    {
+      "parameters": {
+        "sentiment_threshold": 0.5,
+        "holding_period_days": 3,
+        "position_size": 0.1
+      },
+      "performance": {
+        "total_return": 0.023724938392178485,
+        "annualized_return": 0.09621780570161274,
+        "sharpe_ratio": 0.01196850488681505,
+        "win_rate": 50,
+        "max_drawdown": -0.5781446645107526,
+        "trades_count": 4,
+        "sentiment_correlation": 0.9918291912798681
+      }
+    },
+    {
+      "parameters": {
+        "sentiment_threshold": 0.5,
+        "holding_period_days": 3,
+        "position_size": 0.15
+      },
+      "performance": {
+        "total_return": -0.8412924694626375,
+        "annualized_return": -3.411908348376252,
+        "sharpe_ratio": -0.4639239275624838,
+        "win_rate": 33.33333333333333,
+        "max_drawdown": -0.867216996766129,
+        "trades_count": 3,
+        "sentiment_correlation": 0.20637577377907793
+      }
+    },
+    {
+      "parameters": {
+        "sentiment_threshold": 0.5,
+        "holding_period_days": 3,
+        "position_size": 0.2
+      },
+      "performance": {
+        "total_return": 1.3152923567054247,
+        "annualized_return": 5.334241224416444,
+        "sharpe_ratio": 0.26642777167419524,
+        "win_rate": 60,
+        "max_drawdown": -1.1562893290215053,
+        "trades_count": 5,
+        "sentiment_correlation": -0.8813714665356132
+      }
+    },
+    {
+      "parameters": {
+        "sentiment_threshold": 0.5,
+        "holding_period_days": 3,
+        "position_size": 0.25
+      },
+      "performance": {
+        "total_return": -2.3332428496029394,
+        "annualized_return": -9.462596001167476,
+        "sharpe_ratio": -0.7924047349110392,
+        "win_rate": 33.33333333333333,
+        "max_drawdown": -1.7648941466803125,
+        "trades_count": 3,
+        "sentiment_correlation": 0.9104086438221706
+      }
+    },
+    {
+      "parameters": {
+        "sentiment_threshold": 0.5,
+        "holding_period_days": 5,
+        "position_size": 0.05
+      },
+      "performance": {
+        "total_return": 0.5006412737671061,
+        "annualized_return": 2.0303784991665967,
+        "sharpe_ratio": 0.7072770000929204,
+        "win_rate": 66.66666666666666,
+        "max_drawdown": -0.10479313914991316,
+        "trades_count": 3,
+        "sentiment_correlation": 0.636079915873102
+      }
+    },
+    {
+      "parameters": {
+        "sentiment_threshold": 0.5,
+        "holding_period_days": 5,
+        "position_size": 0.1
+      },
+      "performance": {
+        "total_return": 0.694737960391193,
+        "annualized_return": 2.817548394919838,
+        "sharpe_ratio": 0.3467076175724225,
+        "win_rate": 50,
+        "max_drawdown": -0.30654458714301924,
+        "trades_count": 4,
+        "sentiment_correlation": 0.933219525102035
+      }
+    },
+    {
+      "parameters": {
+        "sentiment_threshold": 0.5,
+        "holding_period_days": 5,
+        "position_size": 0.15
+      },
+      "performance": {
+        "total_return": 1.979629588002638,
+        "annualized_return": 8.028497773566254,
+        "sharpe_ratio": 1.0275521914827537,
+        "win_rate": 100,
+        "max_drawdown": 0.021896984431333488,
+        "trades_count": 4,
+        "sentiment_correlation": 0.8727580966680074
+      }
+    },
+    {
+      "parameters": {
+        "sentiment_threshold": 0.5,
+        "holding_period_days": 5,
+        "position_size": 0.2
+      },
+      "performance": {
+        "total_return": 2.204027051108795,
+        "annualized_return": 8.938554151719002,
+        "sharpe_ratio": 0.7946684777833221,
+        "win_rate": 100,
+        "max_drawdown": 0.029195979241777987,
+        "trades_count": 4,
+        "sentiment_correlation": 0.2545867250581441
+      }
+    },
+    {
+      "parameters": {
+        "sentiment_threshold": 0.5,
+        "holding_period_days": 5,
+        "position_size": 0.25
+      },
+      "performance": {
+        "total_return": 0.45249743270415643,
+        "annualized_return": 1.8351284770779677,
+        "sharpe_ratio": 0.1154759456761422,
+        "win_rate": 33.33333333333333,
+        "max_drawdown": -0.92932767637892,
+        "trades_count": 3,
+        "sentiment_correlation": -0.9327624896907892
+      }
+    },
+    {
+      "parameters": {
+        "sentiment_threshold": 0.5,
+        "holding_period_days": 7,
+        "position_size": 0.05
+      },
+      "performance": {
+        "total_return": 0.5304529071129181,
+        "annualized_return": 2.1512812344023904,
+        "sharpe_ratio": 0.5357811118952027,
+        "win_rate": 66.66666666666666,
+        "max_drawdown": -0.20327142649742125,
+        "trades_count": 3,
+        "sentiment_correlation": 0.9110889022172006
+      }
+    },
+    {
+      "parameters": {
+        "sentiment_threshold": 0.5,
+        "holding_period_days": 7,
+        "position_size": 0.1
+      },
+      "performance": {
+        "total_return": 0.07083881449913665,
+        "annualized_return": 0.28729074769094304,
+        "sharpe_ratio": 0.03214803415542374,
+        "win_rate": 33.33333333333333,
+        "max_drawdown": -0.41225531901943796,
+        "trades_count": 3,
+        "sentiment_correlation": 0.09251861564415913
+      }
+    },
+    {
+      "parameters": {
+        "sentiment_threshold": 0.5,
+        "holding_period_days": 7,
+        "position_size": 0.15
+      },
+      "performance": {
+        "total_return": 0.927159116946524,
+        "annualized_return": 3.760145307616458,
+        "sharpe_ratio": 0.31623932083869877,
+        "win_rate": 66.66666666666666,
+        "max_drawdown": -0.7523259353896409,
+        "trades_count": 3,
+        "sentiment_correlation": -0.794275439818328
+      }
+    },
+    {
+      "parameters": {
+        "sentiment_threshold": 0.5,
+        "holding_period_days": 7,
+        "position_size": 0.2
+      },
+      "performance": {
+        "total_return": -0.20876799175229255,
+        "annualized_return": -0.8466701887731864,
+        "sharpe_ratio": -0.1024967373928826,
+        "win_rate": 50,
+        "max_drawdown": -0.8245106380388759,
+        "trades_count": 2,
+        "sentiment_correlation": 1.0000000000000002
+      }
+    },
+    {
+      "parameters": {
+        "sentiment_threshold": 0.5,
+        "holding_period_days": 7,
+        "position_size": 0.25
+      },
+      "performance": {
+        "total_return": 0.5489718954672866,
+        "annualized_return": 2.226386020506218,
+        "sharpe_ratio": 0.3919504633190301,
+        "win_rate": 50,
+        "max_drawdown": -0.22070641239094252,
+        "trades_count": 2,
+        "sentiment_correlation": -0.9999999999999999
+      }
+    },
+    {
+      "parameters": {
+        "sentiment_threshold": 0.5,
+        "holding_period_days": 10,
+        "position_size": 0.05
+      },
+      "performance": {
+        "total_return": 0.12547974736360235,
+        "annualized_return": 0.508890086530165,
+        "sharpe_ratio": 0.11973650188592873,
+        "win_rate": 50,
+        "max_drawdown": -0.3077719538096498,
+        "trades_count": 2,
+        "sentiment_correlation": -1
+      }
+    },
+    {
+      "parameters": {
+        "sentiment_threshold": 0.5,
+        "holding_period_days": 10,
+        "position_size": 0.1
+      },
+      "performance": {
+        "total_return": 0.16587831331136726,
+        "annualized_return": 0.6727287150961005,
+        "sharpe_ratio": 0.07484624320169425,
+        "win_rate": 50,
+        "max_drawdown": -0.700625089035137,
+        "trades_count": 2,
+        "sentiment_correlation": -1
+      }
+    },
+    {
+      "parameters": {
+        "sentiment_threshold": 0.5,
+        "holding_period_days": 10,
+        "position_size": 0.15
+      },
+      "performance": {
+        "total_return": 0.6803910289140386,
+        "annualized_return": 2.7593636172624896,
+        "sharpe_ratio": 0.1903857454651951,
+        "win_rate": 50,
+        "max_drawdown": -0.9233158614289493,
+        "trades_count": 2,
+        "sentiment_correlation": 0.9999999999999999
+      }
+    },
+    {
+      "parameters": {
+        "sentiment_threshold": 0.5,
+        "holding_period_days": 10,
+        "position_size": 0.2
+      },
+      "performance": {
+        "total_return": 0.4289566657994761,
+        "annualized_return": 1.739657589075653,
+        "sharpe_ratio": 0.07621853672634714,
+        "win_rate": 50,
+        "max_drawdown": -1.7753143097418158,
+        "trades_count": 2,
+        "sentiment_correlation": 0.9999999999999999
+      }
+    },
+    {
+      "parameters": {
+        "sentiment_threshold": 0.5,
+        "holding_period_days": 10,
+        "position_size": 0.25
+      },
+      "performance": {
+        "total_return": -1.5388597690482488,
+        "annualized_return": -6.240931285584565,
+        "sharpe_ratio": 0,
+        "win_rate": 0,
+        "max_drawdown": -1.5388597690482488,
+        "trades_count": 1,
+        "sentiment_correlation": 0
+      }
+    },
+    {
+      "parameters": {
+        "sentiment_threshold": 0.6,
+        "holding_period_days": 1,
+        "position_size": 0.05
+      },
+      "performance": {
+        "total_return": 0.16620153743957544,
+        "annualized_return": 0.674039568591627,
+        "sharpe_ratio": 0.4157656102696818,
+        "win_rate": 50,
+        "max_drawdown": -0.03512932004294241,
+        "trades_count": 4,
+        "sentiment_correlation": 0.9920947850903789
+      }
+    },
+    {
+      "parameters": {
+        "sentiment_threshold": 0.6,
+        "holding_period_days": 1,
+        "position_size": 0.1
+      },
+      "performance": {
+        "total_return": -0.8815926087631409,
+        "annualized_return": -3.5753478022060716,
+        "sharpe_ratio": -0.5352161336736329,
+        "win_rate": 25,
+        "max_drawdown": -0.8197020077582181,
+        "trades_count": 4,
+        "sentiment_correlation": -0.6201960507914095
+      }
+    },
+    {
+      "parameters": {
+        "sentiment_threshold": 0.6,
+        "holding_period_days": 1,
+        "position_size": 0.15
+      },
+      "performance": {
+        "total_return": -1.342550058753275,
+        "annualized_return": -5.4447863493882815,
+        "sharpe_ratio": -0.38017377111069095,
+        "win_rate": 20,
+        "max_drawdown": -1.229553011637327,
+        "trades_count": 5,
+        "sentiment_correlation": 0.4666732704416534
+      }
+    },
+    {
+      "parameters": {
+        "sentiment_threshold": 0.6,
+        "holding_period_days": 1,
+        "position_size": 0.2
+      },
+      "performance": {
+        "total_return": 1.4406417395262592,
+        "annualized_return": 5.84260261030094,
+        "sharpe_ratio": 0.452112098855886,
+        "win_rate": 80,
+        "max_drawdown": -0.6751516575796264,
+        "trades_count": 5,
+        "sentiment_correlation": 0.03970909368890336
+      }
+    },
+    {
+      "parameters": {
+        "sentiment_threshold": 0.6,
+        "holding_period_days": 1,
+        "position_size": 0.25
+      },
+      "performance": {
+        "total_return": -0.4363670796748533,
+        "annualized_return": -1.7697109342369048,
+        "sharpe_ratio": -0.17398738019311133,
+        "win_rate": 20,
+        "max_drawdown": -0.48280177010126457,
+        "trades_count": 5,
+        "sentiment_correlation": -0.7763343251651477
+      }
+    },
+    {
+      "parameters": {
+        "sentiment_threshold": 0.6,
+        "holding_period_days": 3,
+        "position_size": 0.05
+      },
+      "performance": {
+        "total_return": -0.16222525878348543,
+        "annualized_return": -0.6579135495108019,
+        "sharpe_ratio": -0.3466152318370765,
+        "win_rate": 25,
+        "max_drawdown": -0.15327229357150962,
+        "trades_count": 4,
+        "sentiment_correlation": -0.6445840600557321
+      }
+    },
+    {
+      "parameters": {
+        "sentiment_threshold": 0.6,
+        "holding_period_days": 3,
+        "position_size": 0.1
+      },
+      "performance": {
+        "total_return": -0.5694247064749434,
+        "annualized_return": -2.309333531815048,
+        "sharpe_ratio": -0.2817410978575545,
+        "win_rate": 25,
+        "max_drawdown": -0.5781446645107526,
+        "trades_count": 4,
+        "sentiment_correlation": 0.6063129847002182
+      }
+    },
+    {
+      "parameters": {
+        "sentiment_threshold": 0.6,
+        "holding_period_days": 3,
+        "position_size": 0.15
+      },
+      "performance": {
+        "total_return": -0.1391854630777486,
+        "annualized_return": -0.564474378037536,
+        "sharpe_ratio": -0.038951664219327733,
+        "win_rate": 50,
+        "max_drawdown": -0.7979364012114848,
+        "trades_count": 4,
+        "sentiment_correlation": 0.5388099176118872
+      }
+    },
+    {
+      "parameters": {
+        "sentiment_threshold": 0.6,
+        "holding_period_days": 3,
+        "position_size": 0.2
+      },
+      "performance": {
+        "total_return": 1.2875245139067515,
+        "annualized_return": 5.221627195288492,
+        "sharpe_ratio": 0.2474378801445442,
+        "win_rate": 75,
+        "max_drawdown": -1.41191531734425,
+        "trades_count": 4,
+        "sentiment_correlation": 0.0003572646058245759
+      }
+    },
+    {
+      "parameters": {
+        "sentiment_threshold": 0.6,
+        "holding_period_days": 3,
+        "position_size": 0.25
+      },
+      "performance": {
+        "total_return": -0.587992857434404,
+        "annualized_return": -2.384637699595083,
+        "sharpe_ratio": -0.10569229947855681,
+        "win_rate": 50,
+        "max_drawdown": -1.4453616612768816,
+        "trades_count": 4,
+        "sentiment_correlation": 0.4604395872788853
+      }
+    },
+    {
+      "parameters": {
+        "sentiment_threshold": 0.6,
+        "holding_period_days": 5,
+        "position_size": 0.05
+      },
+      "performance": {
+        "total_return": 0.7289192920642018,
+        "annualized_return": 2.956172684482596,
+        "sharpe_ratio": 1.1726813039729018,
+        "win_rate": 100,
+        "max_drawdown": 0.007298994810444497,
+        "trades_count": 4,
+        "sentiment_correlation": 0.10107157298229982
+      }
+    },
+    {
+      "parameters": {
+        "sentiment_threshold": 0.6,
+        "holding_period_days": 5,
+        "position_size": 0.1
+      },
+      "performance": {
+        "total_return": -0.32666617375653195,
+        "annualized_return": -1.3248128157903796,
+        "sharpe_ratio": -0.31961697436139574,
+        "win_rate": 50,
+        "max_drawdown": -0.371731070551568,
+        "trades_count": 4,
+        "sentiment_correlation": -0.7014095323581291
+      }
+    },
+    {
+      "parameters": {
+        "sentiment_threshold": 0.6,
+        "holding_period_days": 5,
+        "position_size": 0.15
+      },
+      "performance": {
+        "total_return": 1.2104819040995078,
+        "annualized_return": 4.909176611070226,
+        "sharpe_ratio": 0.45819022105465634,
+        "win_rate": 66.66666666666666,
+        "max_drawdown": -0.5575966058273519,
+        "trades_count": 3,
+        "sentiment_correlation": -0.8611226622925804
+      }
+    },
+    {
+      "parameters": {
+        "sentiment_threshold": 0.6,
+        "holding_period_days": 5,
+        "position_size": 0.2
+      },
+      "performance": {
+        "total_return": 2.3092950755605637,
+        "annualized_return": 9.36547447310673,
+        "sharpe_ratio": 0.7483616913718946,
+        "win_rate": 66.66666666666666,
+        "max_drawdown": -0.39264034793345676,
+        "trades_count": 3,
+        "sentiment_correlation": 0.7060070592079456
+      }
+    },
+    {
+      "parameters": {
+        "sentiment_threshold": 0.6,
+        "holding_period_days": 5,
+        "position_size": 0.25
+      },
+      "performance": {
+        "total_return": 3.4345761034814735,
+        "annualized_return": 13.929114197452641,
+        "sharpe_ratio": 2.0693617776606326,
+        "win_rate": 100,
+        "max_drawdown": 0.5300444955435776,
+        "trades_count": 3,
+        "sentiment_correlation": -0.11370639326514076
+      }
+    },
+    {
+      "parameters": {
+        "sentiment_threshold": 0.6,
+        "holding_period_days": 7,
+        "position_size": 0.05
+      },
+      "performance": {
+        "total_return": 0.17456936796258363,
+        "annualized_return": 0.707975770070478,
+        "sharpe_ratio": 0.24694414314386312,
+        "win_rate": 66.66666666666666,
+        "max_drawdown": -0.21245954539771336,
+        "trades_count": 3,
+        "sentiment_correlation": 0.6223412570441099
+      }
+    },
+    {
+      "parameters": {
+        "sentiment_threshold": 0.6,
+        "holding_period_days": 7,
+        "position_size": 0.1
+      },
+      "performance": {
+        "total_return": 0.463011812033856,
+        "annualized_return": 1.8777701265817492,
+        "sharpe_ratio": 1.2195940126576719,
+        "win_rate": 100,
+        "max_drawdown": 0.097281406445484,
+        "trades_count": 2,
+        "sentiment_correlation": 1
+      }
+    },
+    {
+      "parameters": {
+        "sentiment_threshold": 0.6,
+        "holding_period_days": 7,
+        "position_size": 0.15
+      },
+      "performance": {
+        "total_return": 0.27946615610873504,
+        "annualized_return": 1.1333905219965366,
+        "sharpe_ratio": 0.15621774037947575,
+        "win_rate": 50,
+        "max_drawdown": -0.4927572319981124,
+        "trades_count": 2,
+        "sentiment_correlation": -1
+      }
+    },
+    {
+      "parameters": {
+        "sentiment_threshold": 0.6,
+        "holding_period_days": 7,
+        "position_size": 0.2
+      },
+      "performance": {
+        "total_return": -0.08262647312106208,
+        "annualized_return": -0.3350962521020851,
+        "sharpe_ratio": -0.03302018172598175,
+        "win_rate": 33.33333333333333,
+        "max_drawdown": -0.7770865825397685,
+        "trades_count": 3,
+        "sentiment_correlation": 0.9993620113646023
+      }
+    },
+    {
+      "parameters": {
+        "sentiment_threshold": 0.6,
+        "holding_period_days": 7,
+        "position_size": 0.25
+      },
+      "performance": {
+        "total_return": 2.4147451090689627,
+        "annualized_return": 9.793132942335237,
+        "sharpe_ratio": 0.4504540135409437,
+        "win_rate": 66.66666666666666,
+        "max_drawdown": -1.2538765589827348,
+        "trades_count": 3,
+        "sentiment_correlation": 0.6041944218062323
+      }
+    },
+    {
+      "parameters": {
+        "sentiment_threshold": 0.6,
+        "holding_period_days": 10,
+        "position_size": 0.05
+      },
+      "performance": {
+        "total_return": 0.2267970096380128,
+        "annualized_return": 0.9197878724208297,
+        "sharpe_ratio": 0.19038574546519507,
+        "win_rate": 50,
+        "max_drawdown": -0.3077719538096498,
+        "trades_count": 2,
+        "sentiment_correlation": -1
+      }
+    },
+    {
+      "parameters": {
+        "sentiment_threshold": 0.6,
+        "holding_period_days": 10,
+        "position_size": 0.1
+      },
+      "performance": {
+        "total_return": -0.4098420933680958,
+        "annualized_return": -1.6621373786594995,
+        "sharpe_ratio": -0.21223582579065375,
+        "win_rate": 50,
+        "max_drawdown": -0.8876571548709079,
+        "trades_count": 2,
+        "sentiment_correlation": -1.0000000000000002
+      }
+    },
+    {
+      "parameters": {
+        "sentiment_threshold": 0.6,
+        "holding_period_days": 10,
+        "position_size": 0.15
+      },
+      "performance": {
+        "total_return": -0.33421504129848734,
+        "annualized_return": -1.3554276674883097,
+        "sharpe_ratio": -0.13369408816607925,
+        "win_rate": 50,
+        "max_drawdown": -1.0509376335527054,
+        "trades_count": 2,
+        "sentiment_correlation": 1
+      }
+    },
+    {
+      "parameters": {
+        "sentiment_threshold": 0.6,
+        "holding_period_days": 10,
+        "position_size": 0.2
+      },
+      "performance": {
+        "total_return": 0.3397901281116654,
+        "annualized_return": 1.3780377417861986,
+        "sharpe_ratio": 0,
+        "win_rate": 100,
+        "max_drawdown": 0.3397901281116654,
+        "trades_count": 1,
+        "sentiment_correlation": 0
+      }
+    },
+    {
+      "parameters": {
+        "sentiment_threshold": 0.6,
+        "holding_period_days": 10,
+        "position_size": 0.25
+      },
+      "performance": {
+        "total_return": 1.5022425051826354,
+        "annualized_return": 6.092427937685132,
+        "sharpe_ratio": 0,
+        "win_rate": 100,
+        "max_drawdown": 1.5022425051826354,
+        "trades_count": 1,
+        "sentiment_correlation": 0
+      }
+    }
+  ]
+}
