@@ -99,26 +99,38 @@ Format your response as JSON with these keys:
     }
 
     const data = await response.json();
-    console.log('OpenAI API response structure:', {
+    console.log('OpenAI API response received:', {
       hasChoices: !!data.choices,
       choicesLength: data.choices?.length,
       firstChoiceHasMessage: !!(data.choices?.[0]?.message),
       contentLength: data.choices?.[0]?.message?.content?.length
     });
 
-    if (!data.choices || data.choices.length === 0) {
-      console.error('No choices in OpenAI response:', data);
+    // Better error handling for response structure
+    if (!data || typeof data !== 'object') {
+      console.error('Invalid response format: not an object');
       return null;
     }
 
-    if (!data.choices[0] || !data.choices[0].message) {
-      console.error('Invalid choice structure:', data.choices[0]);
+    if (!data.choices || !Array.isArray(data.choices)) {
+      console.error('No choices array in OpenAI response:', data);
       return null;
     }
 
-    const content = data.choices[0].message.content;
-    if (!content) {
-      console.error('Empty content in response');
+    if (data.choices.length === 0) {
+      console.error('Empty choices array in OpenAI response');
+      return null;
+    }
+
+    const firstChoice = data.choices[0];
+    if (!firstChoice || !firstChoice.message) {
+      console.error('Invalid choice structure:', firstChoice);
+      return null;
+    }
+
+    const content = firstChoice.message.content;
+    if (!content || typeof content !== 'string') {
+      console.error('Empty or invalid content in response');
       return null;
     }
 
@@ -161,7 +173,7 @@ Format your response as JSON with these keys:
 
       return parsed;
     } catch (parseError) {
-      console.error('Failed to parse AI response as JSON:', parseError);
+      console.error('Failed to parse AI response as JSON:', parseError.message);
       console.error('Content that failed to parse:', content);
       
       // Return a fallback response
@@ -176,57 +188,71 @@ Format your response as JSON with these keys:
       };
     }
   } catch (error) {
-    console.error('AI Analysis failed with error:', error);
+    console.error('AI Analysis failed with error:', error.message);
+    console.error('Full error:', error);
     return null;
   }
 }
 
 async function updateBacktestingStrategy(aiRecommendations, symbol) {
-  if (!aiRecommendations) return;
+  if (!aiRecommendations) {
+    console.log('No AI recommendations to update strategy with');
+    return;
+  }
 
-  // Update the sentiment backtesting function with AI recommendations
-  const backtestingPath = path.join(__dirname, '../../supabase/functions/sentiment-backtesting/index.ts');
-  let backtestingCode = fs.readFileSync(backtestingPath, 'utf8');
+  try {
+    // Update the sentiment backtesting function with AI recommendations
+    const backtestingPath = path.join(__dirname, '../../supabase/functions/sentiment-backtesting/index.ts');
+    
+    if (!fs.existsSync(backtestingPath)) {
+      console.error('Backtesting function file not found:', backtestingPath);
+      return;
+    }
 
-  // Update default parameters in the backtesting function
-  const newDefaults = `
+    let backtestingCode = fs.readFileSync(backtestingPath, 'utf8');
+
+    // Update default parameters in the backtesting function
+    const newDefaults = `
     // AI-generated parameters based on analysis of ${symbol}
     // Analysis: ${aiRecommendations.analysis.slice(0, 200)}...
     sentiment_threshold: ${aiRecommendations.parameters.sentiment_threshold},
     holding_period_days: ${aiRecommendations.parameters.holding_period_days},
     position_size: ${aiRecommendations.parameters.position_size}`;
 
-  // Insert AI-generated strategy code if provided
-  if (aiRecommendations.strategy_code) {
-    const strategyComment = `
+    // Insert AI-generated strategy code if provided
+    if (aiRecommendations.strategy_code) {
+      const strategyComment = `
     // AI-Generated Enhanced Strategy for ${symbol}
     // Generated on: ${new Date().toISOString()}
     ${aiRecommendations.strategy_code}`;
-    
-    backtestingCode = backtestingCode.replace(
-      '// Run sentiment-based trading strategy',
-      strategyComment + '\n    // Run sentiment-based trading strategy'
-    );
+      
+      backtestingCode = backtestingCode.replace(
+        '// Run sentiment-based trading strategy',
+        strategyComment + '\n    // Run sentiment-based trading strategy'
+      );
+    }
+
+    fs.writeFileSync(backtestingPath, backtestingCode);
+
+    // Create a strategy report
+    const reportPath = path.join(__dirname, '../../ai-strategy-reports');
+    if (!fs.existsSync(reportPath)) {
+      fs.mkdirSync(reportPath, { recursive: true });
+    }
+
+    const reportFile = path.join(reportPath, `${symbol}-${Date.now()}.json`);
+    fs.writeFileSync(reportFile, JSON.stringify({
+      symbol,
+      timestamp: new Date().toISOString(),
+      analysis: aiRecommendations.analysis,
+      parameters: aiRecommendations.parameters,
+      strategy_code: aiRecommendations.strategy_code
+    }, null, 2));
+
+    console.log(`Strategy updated for ${symbol} and saved to ${reportFile}`);
+  } catch (error) {
+    console.error('Error updating backtesting strategy:', error.message);
   }
-
-  fs.writeFileSync(backtestingPath, backtestingCode);
-
-  // Create a strategy report
-  const reportPath = path.join(__dirname, '../../ai-strategy-reports');
-  if (!fs.existsSync(reportPath)) {
-    fs.mkdirSync(reportPath, { recursive: true });
-  }
-
-  const reportFile = path.join(reportPath, `${symbol}-${Date.now()}.json`);
-  fs.writeFileSync(reportFile, JSON.stringify({
-    symbol,
-    timestamp: new Date().toISOString(),
-    analysis: aiRecommendations.analysis,
-    parameters: aiRecommendations.parameters,
-    strategy_code: aiRecommendations.strategy_code
-  }, null, 2));
-
-  console.log(`Strategy updated for ${symbol} and saved to ${reportFile}`);
 }
 
 async function main() {
@@ -280,7 +306,8 @@ async function main() {
     }
 
   } catch (error) {
-    console.error('Error in AI backtesting:', error);
+    console.error('Error in AI backtesting:', error.message);
+    console.error('Full error:', error);
   }
 }
 
