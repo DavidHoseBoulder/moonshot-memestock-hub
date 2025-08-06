@@ -1,3 +1,4 @@
+
 import { useState, useEffect } from "react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -231,7 +232,7 @@ const BacktestingDashboard = () => {
         </div>
 
         <div className="text-sm text-muted-foreground space-y-1">
-          <p>📈 Standard Strategy: Buy when Reddit sentiment > 0.3, hold for 3 days</p>
+          <p>📈 Standard Strategy: Buy when Reddit sentiment &gt; 0.3, hold for 3 days</p>
           <p>🤖 AI Optimize: Analyzes your data and automatically improves the strategy via GitHub Actions</p>
         </div>
       </Card>
