@@ -115,6 +115,47 @@ const BacktestingDashboard = () => {
     }
   };
 
+  const triggerAIAnalysis = async () => {
+    setIsLoading(true);
+    
+    try {
+      // Trigger GitHub Actions workflow via repository dispatch
+      const response = await fetch(`https://api.github.com/repos/${process.env.GITHUB_REPOSITORY || 'YOUR_USERNAME/YOUR_REPO'}/dispatches`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `token ${process.env.GITHUB_TOKEN}`,
+          'Content-Type': 'application/json',
+          'Accept': 'application/vnd.github.v3+json'
+        },
+        body: JSON.stringify({
+          event_type: 'run-ai-backtest',
+          client_payload: {
+            symbol: symbol,
+            days: days
+          }
+        })
+      });
+
+      if (response.ok) {
+        toast({
+          title: "AI Analysis Started!",
+          description: `GitHub Actions is analyzing ${symbol} and will update the strategy automatically.`,
+        });
+      } else {
+        throw new Error('Failed to trigger AI analysis');
+      }
+    } catch (error) {
+      console.error('Error triggering AI analysis:', error);
+      toast({
+        title: "AI Analysis Failed",
+        description: "Could not start automated analysis. Check console for details.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   useEffect(() => {
     fetchBacktestResults();
   }, []);
@@ -142,7 +183,7 @@ const BacktestingDashboard = () => {
         </div>
       </div>
 
-      {/* Backtesting Controls */}
+      {/* Enhanced Backtesting Controls */}
       <Card className="p-6 bg-gradient-card border-border">
         <h3 className="font-bold text-lg mb-4 flex items-center">
           🧪 Run New Backtest
@@ -170,20 +211,28 @@ const BacktestingDashboard = () => {
               max="365"
             />
           </div>
-          <div className="flex items-end">
+          <div className="flex items-end gap-2">
             <Button 
               onClick={runBacktest}
               disabled={isLoading}
-              className="w-full"
+              className="flex-1"
             >
               {isLoading ? 'Running...' : 'Run Backtest'}
+            </Button>
+            <Button 
+              onClick={triggerAIAnalysis}
+              disabled={isLoading}
+              variant="secondary"
+              className="bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 text-white"
+            >
+              🤖 AI Optimize
             </Button>
           </div>
         </div>
 
-        <div className="text-sm text-muted-foreground">
-          <p>📈 Strategy: Buy when Reddit sentiment greater than 0.3, hold for 3 days</p>
-          <p>💰 Position Size: 10% of portfolio per trade</p>
+        <div className="text-sm text-muted-foreground space-y-1">
+          <p>📈 Standard Strategy: Buy when Reddit sentiment > 0.3, hold for 3 days</p>
+          <p>🤖 AI Optimize: Analyzes your data and automatically improves the strategy via GitHub Actions</p>
         </div>
       </Card>
 
