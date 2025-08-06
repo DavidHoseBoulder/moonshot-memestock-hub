@@ -38,10 +38,7 @@ jobs:
           SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
         run: |
-          node .github/scripts/ai-backtesting.js
-        with:
-          symbol: ${{ github.event.inputs.symbol || github.event.client_payload.symbol }}
-          days: ${{ github.event.inputs.days || github.event.client_payload.days }}
+          node .github/scripts/ai-backtesting.js "${{ github.event.inputs.symbol || github.event.client_payload.symbol }}" "${{ github.event.inputs.days || github.event.client_payload.days }}"
 
       - name: Commit AI-generated strategy updates
         run: |
