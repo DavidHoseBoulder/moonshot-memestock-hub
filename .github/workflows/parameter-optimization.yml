@@ -1,0 +1,73 @@
+
+name: Parameter Optimization
+
+on:
+  workflow_dispatch:
+    inputs:
+      symbol:
+        description: 'Stock symbol to optimize'
+        required: true
+        default: 'AAPL'
+      days:
+        description: 'Number of days to analyze'
+        required: true
+        default: '30'
+
+jobs:
+  parameter-optimization:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Run Parameter Optimization
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+        run: |
+          node .github/scripts/parameter-optimization.js "${{ github.event.inputs.symbol }}" "${{ github.event.inputs.days }}"
+
+      - name: Commit optimization results
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "Parameter Optimization Bot"
+          
+          # Pull latest changes to avoid conflicts
+          git pull origin main --rebase || echo "Pull failed or no changes to pull"
+          
+          # Add all changes
+          git add -A
+          
+          # Check if there are changes to commit
+          if git diff --staged --quiet; then
+            echo "No changes to commit"
+            exit 0
+          fi
+          
+          # Commit changes
+          git commit -m "Parameter optimization results for ${{ github.event.inputs.symbol }}" || echo "Commit failed, but continuing"
+          
+          # Push with retry logic
+          for i in {1..3}; do
+            if git push origin main; then
+              echo "Successfully pushed changes"
+              break
+            else
+              echo "Push attempt $i failed, retrying..."
+              git pull origin main --rebase || echo "Rebase failed on attempt $i"
+              sleep 2
+            fi
+          done

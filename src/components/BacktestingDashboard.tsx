@@ -4,9 +4,12 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { TrendingUp, BarChart3, Target, Activity, Database, Calculator, Sparkles } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
+import ParameterOptimization from "./ParameterOptimization";
+import ParameterOptimizationResults from "./ParameterOptimizationResults";
 
 interface BacktestResult {
   id: string;
@@ -149,188 +152,206 @@ const BacktestingDashboard = () => {
         </div>
       </div>
 
-      {/* Enhanced Backtesting Controls */}
-      <Card className="p-6 bg-gradient-card border-border">
-        <h3 className="font-bold text-lg mb-4 flex items-center">
-          🧪 Run New Backtest
-          <Target className="w-5 h-5 ml-2 text-accent" />
-        </h3>
+      <Tabs defaultValue="manual" className="w-full">
+        <TabsList className="grid w-full grid-cols-3">
+          <TabsTrigger value="manual">Manual Testing</TabsTrigger>
+          <TabsTrigger value="optimization">Parameter Optimization</TabsTrigger>
+          <TabsTrigger value="results">Results & Analysis</TabsTrigger>
+        </TabsList>
         
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
-          <div>
-            <Label htmlFor="symbol">Stock Symbol</Label>
-            <Input 
-              id="symbol"
-              value={symbol}
-              onChange={(e) => setSymbol(e.target.value.toUpperCase())}
-              placeholder="AAPL, TSLA, etc."
-            />
-          </div>
-          <div>
-            <Label htmlFor="days">Historical Days</Label>
-            <Input 
-              id="days"
-              type="number"
-              value={days}
-              onChange={(e) => setDays(parseInt(e.target.value) || 30)}
-              min="7"
-              max="365"
-            />
-          </div>
-          <div className="flex items-end gap-2">
-            <Button 
-              onClick={runBacktest}
-              disabled={isLoading}
-              className="flex-1"
-            >
-              {isLoading ? 'Running...' : 'Run Backtest'}
-            </Button>
-            <Button 
-              onClick={triggerAIAnalysis}
-              disabled={isLoading}
-              variant="secondary"
-              className="bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 text-white"
-            >
-              🤖 AI Optimize
-            </Button>
-          </div>
-        </div>
-
-        <div className="text-sm text-muted-foreground space-y-1">
-          <p>📈 Standard Strategy: Buy when Reddit sentiment &gt; 0.3, hold for 3 days</p>
-          <p>🤖 AI Optimize: Go to your GitHub repo → Actions → Run the AI analysis workflow manually</p>
-        </div>
-      </Card>
-
-      {/* Results Grid */}
-      <div className="space-y-4">
-        {backtestResults.length > 0 && (
-          <div className="flex items-center justify-between">
-            <h3 className="text-lg font-semibold">Backtest Results</h3>
-            <p className="text-sm text-muted-foreground">
-              Showing {backtestResults.length} recent backtests
-            </p>
-          </div>
-        )}
-        
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {backtestResults.map((result, index) => {
-            const isLatest = isLatestResult(result);
-            const isFirstResult = index === 0;
+        <TabsContent value="manual" className="space-y-6">
+          {/* Enhanced Backtesting Controls */}
+          <Card className="p-6 bg-gradient-card border-border">
+            <h3 className="font-bold text-lg mb-4 flex items-center">
+              🧪 Run New Backtest
+              <Target className="w-5 h-5 ml-2 text-accent" />
+            </h3>
             
-            return (
-              <Card 
-                key={result.id} 
-                className={`p-6 transition-all duration-300 ${
-                  isLatest 
-                    ? 'bg-gradient-to-br from-primary/5 to-accent/5 border-primary/30 shadow-lg' 
-                    : 'bg-gradient-card border-border'
-                }`}
-              >
-                <div className="flex items-center justify-between mb-4">
-                  <div className="flex items-center space-x-3">
-                    <div>
-                      <h3 className="font-bold text-lg">{result.symbol}</h3>
-                      <p className="text-sm text-muted-foreground">
-                        {new Date(result.created_at).toLocaleDateString()}
-                      </p>
-                    </div>
-                    {isLatest && (
-                      <Badge className="bg-primary/20 text-primary border-primary/30 flex items-center space-x-1">
-                        <Sparkles className="w-3 h-3" />
-                        <span>Latest</span>
-                      </Badge>
-                    )}
-                    {isFirstResult && !isLatest && (
-                      <Badge variant="outline" className="text-xs">
-                        Most Recent
-                      </Badge>
-                    )}
-                  </div>
-                  <Badge 
-                    variant={result.total_return > 0 ? "default" : "destructive"}
-                    className="text-sm"
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+              <div>
+                <Label htmlFor="symbol">Stock Symbol</Label>
+                <Input 
+                  id="symbol"
+                  value={symbol}
+                  onChange={(e) => setSymbol(e.target.value.toUpperCase())}
+                  placeholder="AAPL, TSLA, etc."
+                />
+              </div>
+              <div>
+                <Label htmlFor="days">Historical Days</Label>
+                <Input 
+                  id="days"
+                  type="number"
+                  value={days}
+                  onChange={(e) => setDays(parseInt(e.target.value) || 30)}
+                  min="7"
+                  max="365"
+                />
+              </div>
+              <div className="flex items-end gap-2">
+                <Button 
+                  onClick={runBacktest}
+                  disabled={isLoading}
+                  className="flex-1"
+                >
+                  {isLoading ? 'Running...' : 'Run Backtest'}
+                </Button>
+                <Button 
+                  onClick={triggerAIAnalysis}
+                  disabled={isLoading}
+                  variant="secondary"
+                  className="bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 text-white"
+                >
+                  🤖 AI Optimize
+                </Button>
+              </div>
+            </div>
+
+            <div className="text-sm text-muted-foreground space-y-1">
+              <p>📈 Standard Strategy: Buy when Reddit sentiment &gt; 0.3, hold for 3 days</p>
+              <p>🤖 AI Optimize: Go to your GitHub repo → Actions → Run the AI analysis workflow manually</p>
+            </div>
+          </Card>
+
+          {/* Results Grid */}
+          <div className="space-y-4">
+            {backtestResults.length > 0 && (
+              <div className="flex items-center justify-between">
+                <h3 className="text-lg font-semibold">Manual Backtest Results</h3>
+                <p className="text-sm text-muted-foreground">
+                  Showing {backtestResults.length} recent backtests
+                </p>
+              </div>
+            )}
+            
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              {backtestResults.map((result, index) => {
+                const isLatest = isLatestResult(result);
+                const isFirstResult = index === 0;
+                
+                return (
+                  <Card 
+                    key={result.id} 
+                    className={`p-6 transition-all duration-300 ${
+                      isLatest 
+                        ? 'bg-gradient-to-br from-primary/5 to-accent/5 border-primary/30 shadow-lg' 
+                        : 'bg-gradient-card border-border'
+                    }`}
                   >
-                    {formatPercent(result.total_return)}
-                  </Badge>
-                </div>
-
-                <div className="grid grid-cols-2 gap-4 mb-4">
-                  <div className="space-y-2">
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm text-muted-foreground">Total Return</span>
-                      <span className={`font-semibold ${result.total_return > 0 ? 'text-success' : 'text-destructive'}`}>
+                    <div className="flex items-center justify-between mb-4">
+                      <div className="flex items-center space-x-3">
+                        <div>
+                          <h3 className="font-bold text-lg">{result.symbol}</h3>
+                          <p className="text-sm text-muted-foreground">
+                            {new Date(result.created_at).toLocaleDateString()}
+                          </p>
+                        </div>
+                        {isLatest && (
+                          <Badge className="bg-primary/20 text-primary border-primary/30 flex items-center space-x-1">
+                            <Sparkles className="w-3 h-3" />
+                            <span>Latest</span>
+                          </Badge>
+                        )}
+                        {isFirstResult && !isLatest && (
+                          <Badge variant="outline" className="text-xs">
+                            Most Recent
+                          </Badge>
+                        )}
+                      </div>
+                      <Badge 
+                        variant={result.total_return > 0 ? "default" : "destructive"}
+                        className="text-sm"
+                      >
                         {formatPercent(result.total_return)}
-                      </span>
+                      </Badge>
                     </div>
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm text-muted-foreground">Win Rate</span>
-                      <span className="font-semibold">{formatPercent(result.win_rate)}</span>
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm text-muted-foreground">Sharpe Ratio</span>
-                      <span className="font-semibold">{formatNumber(result.sharpe_ratio)}</span>
-                    </div>
-                  </div>
-                  
-                  <div className="space-y-2">
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm text-muted-foreground">Sentiment Correlation</span>
-                      <span className={`font-semibold ${Math.abs(result.sentiment_correlation) > 0.3 ? 'text-primary' : 'text-muted-foreground'}`}>
-                        {formatNumber(result.sentiment_correlation)}
-                      </span>
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm text-muted-foreground">Max Drawdown</span>
-                      <span className="font-semibold text-destructive">{formatPercent(result.max_drawdown)}</span>
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm text-muted-foreground">Trades</span>
-                      <span className="font-semibold">{result.trades_data?.length || 0}</span>
-                    </div>
-                  </div>
-                </div>
 
-                {/* Sentiment Correlation Indicator */}
-                <div className="border-t border-border pt-3">
-                  <div className="flex items-center justify-between text-sm">
-                    <span className="text-muted-foreground">Sentiment Predictive Power</span>
-                    <div className="flex items-center space-x-2">
-                      {Math.abs(result.sentiment_correlation) > 0.5 ? (
-                        <Activity className="w-4 h-4 text-success" />
-                      ) : Math.abs(result.sentiment_correlation) > 0.3 ? (
-                        <Activity className="w-4 h-4 text-primary" />
-                      ) : (
-                        <Activity className="w-4 h-4 text-muted-foreground" />
-                      )}
-                      <span className={`font-medium ${
-                        Math.abs(result.sentiment_correlation) > 0.5 ? 'text-success' : 
-                        Math.abs(result.sentiment_correlation) > 0.3 ? 'text-primary' : 'text-muted-foreground'
-                      }`}>
-                      {Math.abs(result.sentiment_correlation) > 0.5 ? 'Strong' : 
-                       Math.abs(result.sentiment_correlation) > 0.3 ? 'Moderate' : 'Weak'}
-                      </span>
+                    <div className="grid grid-cols-2 gap-4 mb-4">
+                      <div className="space-y-2">
+                        <div className="flex items-center justify-between">
+                          <span className="text-sm text-muted-foreground">Total Return</span>
+                          <span className={`font-semibold ${result.total_return > 0 ? 'text-success' : 'text-destructive'}`}>
+                            {formatPercent(result.total_return)}
+                          </span>
+                        </div>
+                        <div className="flex items-center justify-between">
+                          <span className="text-sm text-muted-foreground">Win Rate</span>
+                          <span className="font-semibold">{formatPercent(result.win_rate)}</span>
+                        </div>
+                        <div className="flex items-center justify-between">
+                          <span className="text-sm text-muted-foreground">Sharpe Ratio</span>
+                          <span className="font-semibold">{formatNumber(result.sharpe_ratio)}</span>
+                        </div>
+                      </div>
+                      
+                      <div className="space-y-2">
+                        <div className="flex items-center justify-between">
+                          <span className="text-sm text-muted-foreground">Sentiment Correlation</span>
+                          <span className={`font-semibold ${Math.abs(result.sentiment_correlation) > 0.3 ? 'text-primary' : 'text-muted-foreground'}`}>
+                            {formatNumber(result.sentiment_correlation)}
+                          </span>
+                        </div>
+                        <div className="flex items-center justify-between">
+                          <span className="text-sm text-muted-foreground">Max Drawdown</span>
+                          <span className="font-semibold text-destructive">{formatPercent(result.max_drawdown)}</span>
+                        </div>
+                        <div className="flex items-center justify-between">
+                          <span className="text-sm text-muted-foreground">Trades</span>
+                          <span className="font-semibold">{result.trades_data?.length || 0}</span>
+                        </div>
+                      </div>
                     </div>
-                  </div>
-                </div>
-              </Card>
-            );
-          })}
-        </div>
-      </div>
 
-      {backtestResults.length === 0 && (
-        <Card className="p-8 text-center bg-gradient-card border-border">
-          <Database className="w-12 h-12 mx-auto text-muted-foreground mb-4" />
-          <h3 className="font-semibold text-lg mb-2">No Backtest Results Yet</h3>
-          <p className="text-muted-foreground mb-4">
-            Run your first backtest to see how Reddit sentiment correlates with market performance
-          </p>
-          <Button onClick={runBacktest} disabled={isLoading}>
-            Run Sample Backtest
-          </Button>
-        </Card>
-      )}
+                    {/* Sentiment Correlation Indicator */}
+                    <div className="border-t border-border pt-3">
+                      <div className="flex items-center justify-between text-sm">
+                        <span className="text-muted-foreground">Sentiment Predictive Power</span>
+                        <div className="flex items-center space-x-2">
+                          {Math.abs(result.sentiment_correlation) > 0.5 ? (
+                            <Activity className="w-4 h-4 text-success" />
+                          ) : Math.abs(result.sentiment_correlation) > 0.3 ? (
+                            <Activity className="w-4 h-4 text-primary" />
+                          ) : (
+                            <Activity className="w-4 h-4 text-muted-foreground" />
+                          )}
+                          <span className={`font-medium ${
+                            Math.abs(result.sentiment_correlation) > 0.5 ? 'text-success' : 
+                            Math.abs(result.sentiment_correlation) > 0.3 ? 'text-primary' : 'text-muted-foreground'
+                          }`}>
+                          {Math.abs(result.sentiment_correlation) > 0.5 ? 'Strong' : 
+                           Math.abs(result.sentiment_correlation) > 0.3 ? 'Moderate' : 'Weak'}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  </Card>
+                );
+              })}
+            </div>
+          </div>
+
+          {backtestResults.length === 0 && (
+            <Card className="p-8 text-center bg-gradient-card border-border">
+              <Database className="w-12 h-12 mx-auto text-muted-foreground mb-4" />
+              <h3 className="font-semibold text-lg mb-2">No Backtest Results Yet</h3>
+              <p className="text-muted-foreground mb-4">
+                Run your first backtest to see how Reddit sentiment correlates with market performance
+              </p>
+              <Button onClick={runBacktest} disabled={isLoading}>
+                Run Sample Backtest
+              </Button>
+            </Card>
+          )}
+        </TabsContent>
+
+        <TabsContent value="optimization" className="space-y-6">
+          <ParameterOptimization />
+        </TabsContent>
+
+        <TabsContent value="results" className="space-y-6">
+          <ParameterOptimizationResults />
+        </TabsContent>
+      </Tabs>
     </div>
   );
 };
