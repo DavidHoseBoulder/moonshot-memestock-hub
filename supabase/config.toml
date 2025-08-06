@@ -48,5 +48,8 @@ verify_jwt = false
 [functions.fetch-market-data]
 verify_jwt = false
 
+[functions.ai-sentiment-claude]
+verify_jwt = false
+
 [functions.sentiment-backtesting]
 verify_jwt = false
