@@ -216,12 +216,55 @@ const SentimentDashboard = () => {
 
       if (data?.posts) {
         setRedditPosts(data.posts);
-        const analyzedData = analyzeRedditPosts(data.posts);
-        setSentimentData(analyzedData);
+        
+        // Send posts to AI sentiment analysis
+        console.log('Sending posts for AI sentiment analysis...');
+        const { data: aiData, error: aiError } = await supabase.functions.invoke('ai-sentiment-analysis', {
+          body: { posts: data.posts }
+        });
+        
+        if (aiError) {
+          console.error('AI sentiment analysis error:', aiError);
+        } else {
+          console.log('AI analysis completed:', aiData);
+        }
+        
+        // Fetch stored sentiment data from database
+        const { data: sentimentData, error: sentimentError } = await supabase
+          .from('sentiment_analysis')
+          .select('*')
+          .eq('subreddit', subreddit)
+          .order('post_created_at', { ascending: false })
+          .limit(6);
+          
+        if (sentimentError) {
+          console.error('Error fetching sentiment data:', sentimentError);
+          // Fallback to simple analysis
+          const analyzedData = analyzeRedditPosts(data.posts);
+          setSentimentData(analyzedData);
+        } else {
+          // Convert database sentiment data to display format
+          const displayData = sentimentData.map(item => ({
+            symbol: item.symbols_mentioned?.[0] || `POST${item.id.slice(0,3)}`,
+            name: item.title.slice(0, 30) + '...',
+            hypeScore: Math.round((item.overall_sentiment + 1) * 50), // Convert -1 to 1 range to 0-100
+            sentiment: item.sentiment_label === 'bullish' || item.sentiment_label === 'very_bullish' ? 'bullish' as const :
+                      item.sentiment_label === 'bearish' || item.sentiment_label === 'very_bearish' ? 'bearish' as const : 'neutral' as const,
+            socialVolume: item.score + item.num_comments,
+            keyMentions: item.key_themes || [item.subreddit],
+            trendingEmojis: item.investment_signals?.includes('buy_signal') ? ['🚀', '💎'] : 
+                           item.investment_signals?.includes('sell_signal') ? ['📉', '😰'] : ['📈'],
+            influencerSentiment: Math.round(item.confidence_score * 100),
+            communityMood: item.sentiment_label === 'bullish' || item.sentiment_label === 'very_bullish' ? 'diamond_hands' as const :
+                          item.sentiment_label === 'bearish' || item.sentiment_label === 'very_bearish' ? 'paper_hands' as const : 'neutral' as const
+          }));
+          
+          setSentimentData(displayData);
+        }
         
         toast({
-          title: "Live data updated!",
-          description: `Fetched ${data.posts.length} posts from r/${subreddit}`,
+          title: "AI Sentiment Analysis Complete!",
+          description: `Analyzed ${data.posts.length} posts from r/${subreddit} with advanced AI`,
         });
       }
     } catch (error) {

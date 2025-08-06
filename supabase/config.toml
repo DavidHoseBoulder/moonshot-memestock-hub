@@ -41,3 +41,6 @@ enable_confirmations = false
 
 [functions.reddit-auth]
 verify_jwt = false
+
+[functions.ai-sentiment-analysis]
+verify_jwt = false

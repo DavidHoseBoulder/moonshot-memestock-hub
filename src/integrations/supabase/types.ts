@@ -14,7 +14,162 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      backtesting_results: {
+        Row: {
+          annualized_return: number | null
+          created_at: string
+          end_date: string
+          holding_period_days: number | null
+          id: string
+          max_drawdown: number | null
+          position_size: number | null
+          sentiment_accuracy: number | null
+          sentiment_correlation: number | null
+          sentiment_threshold: number | null
+          sharpe_ratio: number | null
+          start_date: string
+          strategy_name: string
+          symbol: string
+          total_return: number | null
+          trades_data: Json | null
+          volatility: number | null
+          win_rate: number | null
+        }
+        Insert: {
+          annualized_return?: number | null
+          created_at?: string
+          end_date: string
+          holding_period_days?: number | null
+          id?: string
+          max_drawdown?: number | null
+          position_size?: number | null
+          sentiment_accuracy?: number | null
+          sentiment_correlation?: number | null
+          sentiment_threshold?: number | null
+          sharpe_ratio?: number | null
+          start_date: string
+          strategy_name: string
+          symbol: string
+          total_return?: number | null
+          trades_data?: Json | null
+          volatility?: number | null
+          win_rate?: number | null
+        }
+        Update: {
+          annualized_return?: number | null
+          created_at?: string
+          end_date?: string
+          holding_period_days?: number | null
+          id?: string
+          max_drawdown?: number | null
+          position_size?: number | null
+          sentiment_accuracy?: number | null
+          sentiment_correlation?: number | null
+          sentiment_threshold?: number | null
+          sharpe_ratio?: number | null
+          start_date?: string
+          strategy_name?: string
+          symbol?: string
+          total_return?: number | null
+          trades_data?: Json | null
+          volatility?: number | null
+          win_rate?: number | null
+        }
+        Relationships: []
+      }
+      market_data: {
+        Row: {
+          asset_type: string
+          created_at: string
+          id: string
+          market_cap: number | null
+          price: number
+          source: string | null
+          symbol: string
+          timestamp: string
+          volume: number | null
+        }
+        Insert: {
+          asset_type: string
+          created_at?: string
+          id?: string
+          market_cap?: number | null
+          price: number
+          source?: string | null
+          symbol: string
+          timestamp: string
+          volume?: number | null
+        }
+        Update: {
+          asset_type?: string
+          created_at?: string
+          id?: string
+          market_cap?: number | null
+          price?: number
+          source?: string | null
+          symbol?: string
+          timestamp?: string
+          volume?: number | null
+        }
+        Relationships: []
+      }
+      sentiment_analysis: {
+        Row: {
+          author: string | null
+          confidence_score: number | null
+          content: string | null
+          created_at: string
+          id: string
+          investment_signals: string[] | null
+          key_themes: string[] | null
+          num_comments: number
+          overall_sentiment: number | null
+          post_created_at: string
+          post_id: string
+          score: number
+          sentiment_label: string | null
+          subreddit: string
+          symbols_mentioned: string[] | null
+          title: string
+        }
+        Insert: {
+          author?: string | null
+          confidence_score?: number | null
+          content?: string | null
+          created_at?: string
+          id?: string
+          investment_signals?: string[] | null
+          key_themes?: string[] | null
+          num_comments?: number
+          overall_sentiment?: number | null
+          post_created_at: string
+          post_id: string
+          score?: number
+          sentiment_label?: string | null
+          subreddit: string
+          symbols_mentioned?: string[] | null
+          title: string
+        }
+        Update: {
+          author?: string | null
+          confidence_score?: number | null
+          content?: string | null
+          created_at?: string
+          id?: string
+          investment_signals?: string[] | null
+          key_themes?: string[] | null
+          num_comments?: number
+          overall_sentiment?: number | null
+          post_created_at?: string
+          post_id?: string
+          score?: number
+          sentiment_label?: string | null
+          subreddit?: string
+          symbols_mentioned?: string[] | null
+          title?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
