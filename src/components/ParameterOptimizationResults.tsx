@@ -362,12 +362,14 @@ const ParameterOptimizationResults = () => {
               </div>
 
               <div className="mt-4 p-3 bg-gradient-to-r from-yellow-100 to-orange-100 rounded text-sm">
-                <strong>🚀 Enhanced Recommendation:</strong> 
-                {report.features_enabled?.sentiment_delta && report.features_enabled?.volume_filter ? (
-                  <span> The "Best Signal Quality" parameters use both sentiment deltas and volume filters for the most reliable trading signals. Consider these for live trading.</span>
-                ) : (
-                  <span> Consider enabling advanced features (sentiment deltas + volume filters) for more sophisticated signal detection in your next optimization.</span>
-                )}
+                <strong className="text-gray-800">🚀 Enhanced Recommendation:</strong> 
+                <span className="text-gray-700">
+                  {report.features_enabled?.sentiment_delta && report.features_enabled?.volume_filter ? (
+                    " The \"Best Signal Quality\" parameters use both sentiment deltas and volume filters for the most reliable trading signals. Consider these for live trading."
+                  ) : (
+                    " Consider enabling advanced features (sentiment deltas + volume filters) for more sophisticated signal detection in your next optimization."
+                  )}
+                </span>
               </div>
             </Card>
           ))}
