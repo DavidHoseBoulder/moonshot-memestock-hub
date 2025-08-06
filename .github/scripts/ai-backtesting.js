@@ -89,8 +89,28 @@ Format your response as JSON with these keys:
       }),
     });
 
+    if (!response.ok) {
+      console.error('OpenAI API error:', response.status, response.statusText);
+      const errorText = await response.text();
+      console.error('Error response:', errorText);
+      return null;
+    }
+
     const data = await response.json();
-    return JSON.parse(data.choices[0].message.content);
+    console.log('OpenAI API response:', JSON.stringify(data, null, 2));
+
+    if (!data.choices || !data.choices[0] || !data.choices[0].message) {
+      console.error('Unexpected OpenAI API response format:', data);
+      return null;
+    }
+
+    try {
+      return JSON.parse(data.choices[0].message.content);
+    } catch (parseError) {
+      console.error('Failed to parse AI response as JSON:', parseError);
+      console.error('Raw response content:', data.choices[0].message.content);
+      return null;
+    }
   } catch (error) {
     console.error('AI Analysis failed:', error);
     return null;
@@ -190,6 +210,8 @@ async function main() {
     if (aiRecommendations) {
       console.log('AI Analysis completed:', aiRecommendations.analysis);
       await updateBacktestingStrategy(aiRecommendations, symbol);
+    } else {
+      console.log('AI analysis failed or returned no recommendations');
     }
 
   } catch (error) {
