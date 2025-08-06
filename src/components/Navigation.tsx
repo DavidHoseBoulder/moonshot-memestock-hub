@@ -1,46 +1,41 @@
-import { Home, TrendingUp, Wallet, Search, Star } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import {
+  BarChart3,
+  FileText,
+  LayoutDashboard,
+  ListChecks,
+  MessageSquare,
+  Settings,
+  Target,
+  TrendingUp,
+} from "lucide-react"
+import { useLocation } from "react-router-dom"
 
-const Navigation = () => {
+import { MainNav } from "@/components/main-nav"
+import { Sidebar, SidebarNavItem } from "@/components/ui/sidebar"
+
+interface Props {
+  children: React.ReactNode
+}
+
+export function NavigationSidebar() {
+  const location = useLocation()
+
+  const navItems = [
+    { path: "/", icon: TrendingUp, label: "Dashboard" },
+    { path: "/trading-pipeline", icon: Target, label: "Daily Pipeline" },
+    { path: "/sentiment", icon: MessageSquare, label: "Sentiment Analysis" },
+    { path: "/backtesting", icon: BarChart3, label: "Strategy Testing" },
+    { path: "/parameter-optimization", icon: Settings, label: "Optimization" },
+    { path: "/reports", icon: FileText, label: "AI Reports" },
+  ];
+
   return (
-    <nav className="flex items-center justify-between p-4 bg-card border-b border-border">
-      <div className="flex items-center space-x-2">
-        <div className="w-8 h-8 bg-gradient-primary rounded-lg flex items-center justify-center shadow-glow">
-          <TrendingUp className="w-5 h-5 text-primary-foreground" />
-        </div>
-        <h1 className="text-xl font-bold bg-gradient-primary bg-clip-text text-transparent">
-          MemeTrader
-        </h1>
-      </div>
-      
-      <div className="flex items-center space-x-6">
-        <Button variant="ghost" size="sm" className="text-foreground hover:text-primary">
-          <Home className="w-4 h-4 mr-2" />
-          Dashboard
-        </Button>
-        <Button variant="ghost" size="sm" className="text-foreground hover:text-primary">
-          <Wallet className="w-4 h-4 mr-2" />
-          Portfolio
-        </Button>
-        <Button variant="ghost" size="sm" className="text-foreground hover:text-primary">
-          <Star className="w-4 h-4 mr-2" />
-          Watchlist
-        </Button>
-        <Button variant="ghost" size="sm" className="text-foreground hover:text-primary">
-          <Search className="w-4 h-4 mr-2" />
-          Discover
-        </Button>
-      </div>
-
-      <div className="flex items-center space-x-3">
-        <div className="text-right">
-          <div className="text-sm text-muted-foreground">Portfolio Value</div>
-          <div className="font-semibold text-success">$69,420.69</div>
-        </div>
-        <div className="w-8 h-8 bg-gradient-primary rounded-full"></div>
-      </div>
-    </nav>
-  );
-};
-
-export default Navigation;
+    <Sidebar className="w-60">
+      <MainNav className="flex flex-col space-y-6" />
+      <SidebarNavItem
+        items={navItems}
+        pathname={location.pathname}
+      />
+    </Sidebar>
+  )
+}
