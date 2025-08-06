@@ -1,6 +1,10 @@
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { TrendingUp, TrendingDown, MessageCircle, Users, Zap } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { TrendingUp, TrendingDown, MessageCircle, Users, Zap, RefreshCw } from "lucide-react";
+import { useState, useEffect } from "react";
+import { supabase } from "@/integrations/supabase/client";
+import { useToast } from "@/hooks/use-toast";
 
 interface SentimentData {
   symbol: string;
@@ -140,6 +144,102 @@ const SentimentCard = ({ data }: { data: SentimentData }) => {
 };
 
 const SentimentDashboard = () => {
+  const [sentimentData, setSentimentData] = useState<SentimentData[]>(mockSentimentData);
+  const [isLoading, setIsLoading] = useState(false);
+  const [redditPosts, setRedditPosts] = useState<any[]>([]);
+  const { toast } = useToast();
+
+  const analyzeRedditPosts = (posts: any[]): SentimentData[] => {
+    // Analyze Reddit posts and extract sentiment data
+    const analyzed = posts.slice(0, 6).map((post) => {
+      const title = post.title.toLowerCase();
+      const content = post.selftext?.toLowerCase() || '';
+      const text = title + ' ' + content;
+      
+      // Simple sentiment analysis based on keywords
+      const bullishKeywords = ['moon', 'rocket', 'diamond', 'hold', 'buy', 'bullish', 'pump', 'surge', 'breakout'];
+      const bearishKeywords = ['dump', 'crash', 'bear', 'sell', 'drop', 'down', 'bearish', 'dip', 'fall'];
+      
+      const bullishCount = bullishKeywords.filter(word => text.includes(word)).length;
+      const bearishCount = bearishKeywords.filter(word => text.includes(word)).length;
+      
+      let sentiment: 'bullish' | 'bearish' | 'neutral' = 'neutral';
+      if (bullishCount > bearishCount) sentiment = 'bullish';
+      else if (bearishCount > bullishCount) sentiment = 'bearish';
+      
+      // Extract potential stock symbols from title (simple regex for 3-5 uppercase letters)
+      const symbolMatch = title.match(/\b[A-Z]{3,5}\b/);
+      const symbol = symbolMatch ? symbolMatch[0] : `POST${Math.floor(Math.random() * 1000)}`;
+      
+      // Calculate hype score based on engagement
+      const hypeScore = Math.min(100, Math.max(1, 
+        Math.floor((post.score * 0.1) + (post.num_comments * 0.5) + (bullishCount * 10))
+      ));
+      
+      // Extract emojis from title
+      const emojiRegex = /[\p{Emoji}]/gu;
+      const emojis = post.title.match(emojiRegex) || ['📈'];
+      
+      return {
+        symbol,
+        name: post.title.slice(0, 30) + '...',
+        hypeScore,
+        sentiment,
+        socialVolume: post.score + post.num_comments,
+        keyMentions: [post.subreddit, `${post.num_comments} comments`, `${post.score} upvotes`],
+        trendingEmojis: emojis.slice(0, 3),
+        influencerSentiment: Math.min(100, hypeScore + Math.floor(Math.random() * 20)),
+        communityMood: sentiment === 'bullish' ? 'diamond_hands' as const : 
+                      sentiment === 'bearish' ? 'paper_hands' as const : 'neutral' as const
+      };
+    });
+    
+    return analyzed;
+  };
+
+  const fetchRedditData = async (subreddit = 'stocks') => {
+    setIsLoading(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('reddit-auth', {
+        body: { subreddit, action: 'hot', limit: 25 }
+      });
+
+      if (error) {
+        console.error('Reddit API error:', error);
+        toast({
+          title: "Error fetching Reddit data",
+          description: "Using mock data instead",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      if (data?.posts) {
+        setRedditPosts(data.posts);
+        const analyzedData = analyzeRedditPosts(data.posts);
+        setSentimentData(analyzedData);
+        
+        toast({
+          title: "Live data updated!",
+          description: `Fetched ${data.posts.length} posts from r/${subreddit}`,
+        });
+      }
+    } catch (error) {
+      console.error('Error:', error);
+      toast({
+        title: "Connection error",
+        description: "Check console for details",
+        variant: "destructive",
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchRedditData('stocks');
+  }, []);
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -148,15 +248,61 @@ const SentimentDashboard = () => {
             🧠 AI Sentiment Analysis
             <Zap className="w-6 h-6 ml-3 text-accent" />
           </h2>
-          <p className="text-muted-foreground">Real-time social media sentiment tracking</p>
+          <p className="text-muted-foreground">Real-time Reddit sentiment tracking</p>
         </div>
-        <Badge className="bg-gradient-primary text-primary-foreground">
-          Live Data
-        </Badge>
+        <div className="flex items-center gap-2">
+          <Button 
+            variant="outline" 
+            size="sm" 
+            onClick={() => fetchRedditData('stocks')}
+            disabled={isLoading}
+          >
+            <RefreshCw className={`w-4 h-4 mr-2 ${isLoading ? 'animate-spin' : ''}`} />
+            Refresh
+          </Button>
+          <Badge className="bg-gradient-primary text-primary-foreground">
+            Live Data
+          </Badge>
+        </div>
+      </div>
+
+      <div className="flex gap-2 mb-4">
+        <Button 
+          variant="outline" 
+          size="sm" 
+          onClick={() => fetchRedditData('stocks')}
+          disabled={isLoading}
+        >
+          r/stocks
+        </Button>
+        <Button 
+          variant="outline" 
+          size="sm" 
+          onClick={() => fetchRedditData('investing')}
+          disabled={isLoading}
+        >
+          r/investing
+        </Button>
+        <Button 
+          variant="outline" 
+          size="sm" 
+          onClick={() => fetchRedditData('wallstreetbets')}
+          disabled={isLoading}
+        >
+          r/wallstreetbets
+        </Button>
+        <Button 
+          variant="outline" 
+          size="sm" 
+          onClick={() => fetchRedditData('SecurityAnalysis')}
+          disabled={isLoading}
+        >
+          r/SecurityAnalysis
+        </Button>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-        {mockSentimentData.map((data) => (
+        {sentimentData.map((data) => (
           <SentimentCard key={data.symbol} data={data} />
         ))}
       </div>
@@ -167,18 +313,15 @@ const SentimentDashboard = () => {
           <span className="ml-2 w-2 h-2 bg-success rounded-full animate-pulse"></span>
         </h3>
         <div className="space-y-2">
-          <div className="flex items-center space-x-3 p-2 bg-success/10 rounded-lg border border-success/20">
-            <TrendingUp className="w-4 h-4 text-success" />
-            <span className="text-sm">DOGE sentiment spiking +47% in last hour - viral TikTok detected</span>
-          </div>
-          <div className="flex items-center space-x-3 p-2 bg-primary/10 rounded-lg border border-primary/20">
-            <MessageCircle className="w-4 h-4 text-primary" />
-            <span className="text-sm">GME: Ryan Cohen mentioned "power to the players" - engagement +234%</span>
-          </div>
-          <div className="flex items-center space-x-3 p-2 bg-destructive/10 rounded-lg border border-destructive/20">
-            <TrendingDown className="w-4 h-4 text-destructive" />
-            <span className="text-sm">AMC: Paper hands ratio increasing - community mood shifting</span>
-          </div>
+          {redditPosts.slice(0, 3).map((post, index) => (
+            <div key={index} className="flex items-center space-x-3 p-2 bg-primary/10 rounded-lg border border-primary/20">
+              <MessageCircle className="w-4 h-4 text-primary" />
+              <span className="text-sm">
+                r/{post.subreddit}: {post.title.slice(0, 60)}... 
+                ({post.score} upvotes, {post.num_comments} comments)
+              </span>
+            </div>
+          ))}
         </div>
       </Card>
     </div>
