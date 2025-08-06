@@ -2,6 +2,7 @@ import Navigation from "@/components/Navigation";
 import PortfolioOverview from "@/components/PortfolioOverview";
 import TrendingSection from "@/components/TrendingSection";
 import SentimentDashboard from "@/components/SentimentDashboard";
+import BacktestingDashboard from "@/components/BacktestingDashboard";
 
 const Index = () => {
   return (
@@ -19,6 +20,7 @@ const Index = () => {
         
         <PortfolioOverview />
         <SentimentDashboard />
+        <BacktestingDashboard />
         <TrendingSection />
       </main>
     </div>

@@ -44,3 +44,9 @@ verify_jwt = false
 
 [functions.ai-sentiment-analysis]
 verify_jwt = false
+
+[functions.fetch-market-data]
+verify_jwt = false
+
+[functions.sentiment-backtesting]
+verify_jwt = false
