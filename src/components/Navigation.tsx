@@ -1,3 +1,4 @@
+
 import {
   BarChart3,
   FileText,
@@ -8,34 +9,81 @@ import {
   Target,
   TrendingUp,
 } from "lucide-react"
-import { useLocation } from "react-router-dom"
+import { NavLink, useLocation } from "react-router-dom"
 
 import { MainNav } from "@/components/main-nav"
-import { Sidebar, SidebarNavItem } from "@/components/ui/sidebar"
+import { 
+  Sidebar, 
+  SidebarContent,
+  SidebarGroup,
+  SidebarGroupContent,
+  SidebarGroupLabel,
+  SidebarMenu,
+  SidebarMenuItem,
+  SidebarMenuButton,
+  SidebarProvider,
+  SidebarTrigger
+} from "@/components/ui/sidebar"
 
-interface Props {
-  children: React.ReactNode
-}
+const navItems = [
+  { path: "/", icon: TrendingUp, label: "Dashboard" },
+  { path: "/trading-pipeline", icon: Target, label: "Daily Pipeline" },
+  { path: "/sentiment", icon: MessageSquare, label: "Sentiment Analysis" },
+  { path: "/backtesting", icon: BarChart3, label: "Strategy Testing" },
+  { path: "/parameter-optimization", icon: Settings, label: "Optimization" },
+  { path: "/reports", icon: FileText, label: "AI Reports" },
+];
 
 export function NavigationSidebar() {
   const location = useLocation()
 
-  const navItems = [
-    { path: "/", icon: TrendingUp, label: "Dashboard" },
-    { path: "/trading-pipeline", icon: Target, label: "Daily Pipeline" },
-    { path: "/sentiment", icon: MessageSquare, label: "Sentiment Analysis" },
-    { path: "/backtesting", icon: BarChart3, label: "Strategy Testing" },
-    { path: "/parameter-optimization", icon: Settings, label: "Optimization" },
-    { path: "/reports", icon: FileText, label: "AI Reports" },
-  ];
-
   return (
     <Sidebar className="w-60">
-      <MainNav className="flex flex-col space-y-6" />
-      <SidebarNavItem
-        items={navItems}
-        pathname={location.pathname}
-      />
+      <SidebarContent>
+        <SidebarGroup>
+          <SidebarGroupLabel>
+            <MainNav />
+          </SidebarGroupLabel>
+          <SidebarGroupContent>
+            <SidebarMenu>
+              {navItems.map((item) => (
+                <SidebarMenuItem key={item.path}>
+                  <SidebarMenuButton asChild>
+                    <NavLink 
+                      to={item.path} 
+                      className={({ isActive }) =>
+                        isActive 
+                          ? "bg-sidebar-accent text-sidebar-accent-foreground" 
+                          : ""
+                      }
+                    >
+                      <item.icon className="w-4 h-4" />
+                      <span>{item.label}</span>
+                    </NavLink>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              ))}
+            </SidebarMenu>
+          </SidebarGroupContent>
+        </SidebarGroup>
+      </SidebarContent>
     </Sidebar>
   )
 }
+
+export function Navigation() {
+  return (
+    <SidebarProvider>
+      <div className="min-h-screen flex w-full">
+        <NavigationSidebar />
+        <div className="flex-1">
+          <header className="h-12 flex items-center border-b px-4">
+            <SidebarTrigger />
+          </header>
+        </div>
+      </div>
+    </SidebarProvider>
+  )
+}
+
+export default Navigation
