@@ -90,6 +90,33 @@ Deno.serve(async (req) => {
 
     console.log(`Found ${marketData.length} market data points and ${processedSentimentData?.length || 0} sentiment data points (${sentimentData?.length || 0} real, ${processedSentimentData?.length - (sentimentData?.length || 0) || 0} mock)`)
 
+    
+    // AI-Generated Enhanced Strategy for GME
+    // Generated on: 2025-08-06T20:01:44.451Z
+    function improvedTradingStrategy(marketData, sentimentData) {
+    const sentimentThreshold = 0.4;
+    const holdingPeriod = 5;
+    const positionSize = 0.15;
+    const trades = [];
+
+    for (let i = 0; i < marketData.length - holdingPeriod; i++) {
+        const currentPrice = marketData[i].price;
+        const futurePrices = marketData.slice(i + 1, i + holdingPeriod + 1);
+        const futureSentiment = sentimentData[i];
+
+        if (futureSentiment && futureSentiment.score > sentimentThreshold) {
+            const trade = {
+                entryPrice: currentPrice,
+                exitPrice: futurePrices[holdingPeriod - 1].price,
+                positionSize: positionSize,
+                entryDate: marketData[i].date,
+                exitDate: futurePrices[holdingPeriod - 1].date
+            };
+            trades.push(trade);
+        }
+    }
+    return trades;
+}
     // Run sentiment-based trading strategy
     const trades: Trade[] = []
     let currentPosition = null
