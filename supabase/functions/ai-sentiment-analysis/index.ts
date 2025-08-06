@@ -39,6 +39,8 @@ Deno.serve(async (req) => {
     )
 
     const openAIApiKey = Deno.env.get('OPENAI_API_KEY')
+    console.log('OpenAI API Key check:', openAIApiKey ? 'Key found' : 'Key missing')
+    
     if (!openAIApiKey) {
       console.error('Missing OpenAI API key')
       return new Response(
