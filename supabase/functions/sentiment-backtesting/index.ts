@@ -12,6 +12,10 @@ interface BacktestParams {
   sentiment_threshold: number
   holding_period_days: number
   position_size: number
+  sentiment_delta_threshold?: number
+  volume_multiplier?: number
+  enable_sentiment_delta?: boolean
+  enable_volume_filter?: boolean
 }
 
 interface Trade {
@@ -22,6 +26,8 @@ interface Trade {
   return_percent: number
   sentiment_score: number
   position_size: number
+  signal_type?: string
+  volume_ratio?: number
 }
 
 Deno.serve(async (req) => {
@@ -38,7 +44,8 @@ Deno.serve(async (req) => {
 
     const params: BacktestParams = await req.json()
     
-    console.log(`Running backtest for ${params.symbol} from ${params.start_date} to ${params.end_date}`)
+    console.log(`Running enhanced backtest for ${params.symbol} from ${params.start_date} to ${params.end_date}`)
+    console.log(`Enhanced features: Sentiment Delta=${params.enable_sentiment_delta}, Volume Filter=${params.enable_volume_filter}`)
 
     // Fetch market data for the symbol and time period
     const { data: marketData, error: marketError } = await supabase
@@ -88,50 +95,34 @@ Deno.serve(async (req) => {
       )
     }
 
-    console.log(`Found ${marketData.length} market data points and ${processedSentimentData?.length || 0} sentiment data points (${sentimentData?.length || 0} real, ${processedSentimentData?.length - (sentimentData?.length || 0) || 0} mock)`)
+    console.log(`Found ${marketData.length} market data points and ${processedSentimentData?.length || 0} sentiment data points`)
 
-    
-    // AI-Generated Enhanced Strategy for GME
-    // Generated on: 2025-08-06T20:01:44.451Z
-    function improvedTradingStrategy(marketData, sentimentData) {
-    const sentimentThreshold = 0.4;
-    const holdingPeriod = 5;
-    const positionSize = 0.15;
-    const trades = [];
+    // Calculate technical indicators for enhanced features
+    const volumes = marketData.map(d => d.volume || 0).filter(v => v > 0);
+    const avgVolume = volumes.length > 0 ? volumes.reduce((sum, v) => sum + v, 0) / volumes.length : 0;
 
-    for (let i = 0; i < marketData.length - holdingPeriod; i++) {
-        const currentPrice = marketData[i].price;
-        const futurePrices = marketData.slice(i + 1, i + holdingPeriod + 1);
-        const futureSentiment = sentimentData[i];
-
-        if (futureSentiment && futureSentiment.score > sentimentThreshold) {
-            const trade = {
-                entryPrice: currentPrice,
-                exitPrice: futurePrices[holdingPeriod - 1].price,
-                positionSize: positionSize,
-                entryDate: marketData[i].date,
-                exitDate: futurePrices[holdingPeriod - 1].date
-            };
-            trades.push(trade);
-        }
-    }
-    return trades;
-}
-    // Run sentiment-based trading strategy
+    // Enhanced sentiment-based trading strategy with advanced features
     const trades: Trade[] = []
     let currentPosition = null
     let totalReturn = 0
     const returns: number[] = []
+    let signalQuality = 0 // Track how well advanced signals perform
 
-    // Group sentiment by date for easier lookup
+    // Group sentiment by date for easier lookup and calculate sentiment deltas
     const sentimentByDate = new Map()
+    const sentimentHistory: number[] = []
+    
     if (processedSentimentData) {
-      for (const sentiment of processedSentimentData) {
+      for (let i = 0; i < processedSentimentData.length; i++) {
+        const sentiment = processedSentimentData[i]
         const date = new Date(sentiment.post_created_at).toDateString()
         if (!sentimentByDate.has(date)) {
           sentimentByDate.set(date, [])
         }
         sentimentByDate.get(date).push(sentiment)
+        
+        // Track sentiment history for delta calculations
+        sentimentHistory.push(sentiment.overall_sentiment || 0)
       }
     }
 
@@ -145,14 +136,58 @@ Deno.serve(async (req) => {
         ? daySentiments.reduce((sum, s) => sum + (s.overall_sentiment || 0), 0) / daySentiments.length
         : 0
 
-      // Trading logic: Enter position if sentiment exceeds threshold
-      if (!currentPosition && avgSentiment > params.sentiment_threshold) {
+      // Enhanced signal detection
+      let shouldEnter = false
+      let signalType = 'basic'
+      let signalStrength = 0
+
+      // Basic sentiment threshold signal
+      if (avgSentiment > params.sentiment_threshold) {
+        shouldEnter = true
+        signalStrength += 1
+      }
+
+      // Sentiment delta signal (sudden sentiment spikes)
+      if (params.enable_sentiment_delta && params.sentiment_delta_threshold) {
+        const recentSentiments = sentimentHistory.slice(-5) // Last 5 data points
+        if (recentSentiments.length >= 2) {
+          const previousAvg = recentSentiments.slice(0, -1).reduce((sum, s) => sum + s, 0) / (recentSentiments.length - 1)
+          const currentSentiment = recentSentiments[recentSentiments.length - 1]
+          const sentimentDelta = currentSentiment - previousAvg
+          
+          if (sentimentDelta > params.sentiment_delta_threshold) {
+            shouldEnter = true
+            signalType = 'sentiment_spike'
+            signalStrength += 2
+            console.log(`Sentiment spike detected: ${sentimentDelta.toFixed(3)} (threshold: ${params.sentiment_delta_threshold})`)
+          }
+        }
+      }
+
+      // Volume filter (combine with sentiment for stronger signals)
+      if (params.enable_volume_filter && params.volume_multiplier && currentData.volume && avgVolume > 0) {
+        const volumeRatio = currentData.volume / avgVolume
+        if (volumeRatio > params.volume_multiplier && shouldEnter) {
+          signalType = 'volume_confirmed'
+          signalStrength += 2
+          console.log(`Volume spike confirmed: ${volumeRatio.toFixed(2)}x average (threshold: ${params.volume_multiplier}x)`)
+        } else if (volumeRatio < params.volume_multiplier && params.enable_volume_filter) {
+          // If volume filter is enabled but volume is low, don't enter
+          shouldEnter = false
+          signalStrength = 0
+        }
+      }
+
+      // Trading logic: Enter position based on enhanced signals
+      if (!currentPosition && shouldEnter) {
         currentPosition = {
           entry_date: currentData.timestamp,
           entry_price: currentData.price,
-          sentiment_score: avgSentiment
+          sentiment_score: avgSentiment,
+          signal_type: signalType,
+          signal_strength: signalStrength
         }
-        console.log(`Enter position at ${currentData.price} on ${currentDate} (sentiment: ${avgSentiment.toFixed(2)})`)
+        console.log(`Enter position at ${currentData.price} on ${currentDate} (sentiment: ${avgSentiment.toFixed(2)}, signal: ${signalType})`)
       }
       
       // Exit position after holding period or if we reach the end
@@ -172,14 +207,21 @@ Deno.serve(async (req) => {
             exit_price: currentData.price,
             return_percent: returnPercent,
             sentiment_score: currentPosition.sentiment_score,
-            position_size: params.position_size
+            position_size: params.position_size,
+            signal_type: currentPosition.signal_type,
+            volume_ratio: currentData.volume && avgVolume > 0 ? currentData.volume / avgVolume : 1
           }
           
           trades.push(trade)
           returns.push(positionReturn)
           totalReturn += positionReturn
           
-          console.log(`Exit position at ${currentData.price} on ${currentDate} (return: ${returnPercent.toFixed(2)}%)`)
+          // Update signal quality metric
+          if (currentPosition.signal_strength > 1 && returnPercent > 0) {
+            signalQuality += currentPosition.signal_strength
+          }
+          
+          console.log(`Exit position at ${currentData.price} on ${currentDate} (return: ${returnPercent.toFixed(2)}%, signal: ${currentPosition.signal_type})`)
           currentPosition = null
         }
       }
@@ -213,10 +255,13 @@ Deno.serve(async (req) => {
       sentimentCorrelation = denomSent * denomRet > 0 ? numerator / (denomSent * denomRet) : 0
     }
 
+    // Normalize signal quality
+    const normalizedSignalQuality = trades.length > 0 ? signalQuality / trades.length : 0
+
     // Store backtest results
     const backtestResult = {
       symbol: params.symbol.toUpperCase(),
-      strategy_name: 'reddit_sentiment_strategy',
+      strategy_name: 'enhanced_reddit_sentiment_strategy',
       start_date: params.start_date,
       end_date: params.end_date,
       total_return: totalReturn,
@@ -227,9 +272,14 @@ Deno.serve(async (req) => {
       win_rate: winRate,
       sentiment_correlation: sentimentCorrelation,
       sentiment_accuracy: winRate, // Simplified accuracy metric
+      signal_quality: normalizedSignalQuality,
       sentiment_threshold: params.sentiment_threshold,
       holding_period_days: params.holding_period_days,
       position_size: params.position_size,
+      sentiment_delta_threshold: params.sentiment_delta_threshold,
+      volume_multiplier: params.volume_multiplier,
+      enable_sentiment_delta: params.enable_sentiment_delta,
+      enable_volume_filter: params.enable_volume_filter,
       trades_data: trades
     }
 
@@ -240,7 +290,7 @@ Deno.serve(async (req) => {
     if (storeError) {
       console.error('Error storing backtest results:', storeError)
     } else {
-      console.log('Backtest results stored successfully')
+      console.log('Enhanced backtest results stored successfully')
     }
 
     return new Response(
@@ -249,7 +299,11 @@ Deno.serve(async (req) => {
         backtest_results: backtestResult,
         trades_count: trades.length,
         sentiment_data_points: sentimentData?.length || 0,
-        market_data_points: marketData.length
+        market_data_points: marketData.length,
+        advanced_features_used: {
+          sentiment_delta: params.enable_sentiment_delta,
+          volume_filter: params.enable_volume_filter
+        }
       }),
       { 
         status: 200, 
@@ -258,7 +312,7 @@ Deno.serve(async (req) => {
     )
 
   } catch (error) {
-    console.error('Error in backtesting function:', error)
+    console.error('Error in enhanced backtesting function:', error)
     return new Response(
       JSON.stringify({ error: 'Internal server error', details: error.message }),
       { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
