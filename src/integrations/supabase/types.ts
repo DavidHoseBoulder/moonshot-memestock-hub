@@ -77,6 +77,48 @@ export type Database = {
         }
         Relationships: []
       }
+      enhanced_market_data: {
+        Row: {
+          created_at: string | null
+          data_date: string
+          id: string
+          price: number | null
+          price_change_1d: number | null
+          price_change_5d: number | null
+          symbol: string
+          technical_indicators: Json | null
+          timestamp: string
+          updated_at: string | null
+          volume: number | null
+        }
+        Insert: {
+          created_at?: string | null
+          data_date?: string
+          id?: string
+          price?: number | null
+          price_change_1d?: number | null
+          price_change_5d?: number | null
+          symbol: string
+          technical_indicators?: Json | null
+          timestamp: string
+          updated_at?: string | null
+          volume?: number | null
+        }
+        Update: {
+          created_at?: string | null
+          data_date?: string
+          id?: string
+          price?: number | null
+          price_change_1d?: number | null
+          price_change_5d?: number | null
+          symbol?: string
+          technical_indicators?: Json | null
+          timestamp?: string
+          updated_at?: string | null
+          volume?: number | null
+        }
+        Relationships: []
+      }
       market_data: {
         Row: {
           asset_type: string
@@ -175,7 +217,10 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      is_market_data_fresh: {
+        Args: { symbol_param: string; hours_threshold?: number }
+        Returns: boolean
+      }
     }
     Enums: {
       [_ in never]: never
