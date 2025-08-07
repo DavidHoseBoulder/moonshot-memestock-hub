@@ -1,12 +1,13 @@
 import DataSourceStatus from "./DataSourceStatus";
 import PerformanceTracker from "./PerformanceTracker";
+import SentimentStackingEngine, { StackingVisualizer, StackingResult, DEFAULT_STACKING_CONFIG } from "./SentimentStackingEngine";
 import { useState } from "react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { AlertTriangle, TrendingUp, Activity, Volume2, Target, Scan, Play, RefreshCw, Zap } from "lucide-react";
+import { AlertTriangle, TrendingUp, Activity, Volume2, Target, Scan, Play, RefreshCw, Zap, Layers } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { STOCK_UNIVERSE, CATEGORIES, getStocksByCategory, getAllTickers } from "@/data/stockUniverse";
 import { supabase } from "@/integrations/supabase/client";
@@ -58,9 +59,11 @@ const DailyTradingPipeline = () => {
   const [progress, setProgress] = useState(0);
   const [currentTask, setCurrentTask] = useState("");
   const [signals, setSignals] = useState<TradeSignal[]>([]);
+  const [stackingResults, setStackingResults] = useState<StackingResult[]>([]);
   const [lastRun, setLastRun] = useState<Date | null>(null);
   const [debugInfo, setDebugInfo] = useState<DebugInfo[]>([]);
   const [showDebug, setShowDebug] = useState(false);
+  const [stackingEngine] = useState(() => new SentimentStackingEngine(DEFAULT_STACKING_CONFIG));
   const { toast } = useToast();
 
   const addDebugInfo = (step: string, data: any) => {
@@ -247,60 +250,124 @@ const DailyTradingPipeline = () => {
         sampleResults: enhancedSentimentData?.enhanced_sentiment?.slice(0, 3) || []
       });
 
-      // Step 3: Fetch market data from Yahoo Finance (Polygon disabled due to rate limits)
-      setCurrentTask("Fetching market data from Yahoo Finance...");
+      // Step 3: Fetch market data from multiple sources with resilient stacking
+      setCurrentTask("Fetching market data from all available sources...");
       let enhancedMarketData;
-      let marketError;
+      let marketDataErrors: { [key: string]: string } = {};
       
       try {
-        // Only use Yahoo Finance (reliable and fast)
-        const [yahooResponse] = await Promise.allSettled([
+        // Try both Polygon and Yahoo in parallel with error capture
+        const [polygonResponse, yahooResponse] = await Promise.allSettled([
+          supabase.functions.invoke('polygon-market-data', {
+            body: { symbols: allTickers, days: 21 }
+          }),
           supabase.functions.invoke('enhanced-market-data', {
             body: { symbols: allTickers, days: 21 }
           })
         ]);
         
+        let polygonData = [];
         let yahooData = [];
+        let polygonAvailable = false;
+        let yahooAvailable = false;
         
-        // Process Yahoo results (only source now)
+        // Process Polygon results (high priority when available)
+        if (polygonResponse.status === 'fulfilled' && 
+            !polygonResponse.value.error && 
+            polygonResponse.value.data?.success) {
+          polygonData = polygonResponse.value.data.enhanced_data || [];
+          polygonAvailable = polygonData.length > 0;
+          addDebugInfo("POLYGON_DATA_SUCCESS", { 
+            dataCount: polygonData.length,
+            source: "polygon"
+          });
+        } else {
+          const errorMsg = polygonResponse.status === 'fulfilled' ? 
+            polygonResponse.value.error?.message || 'Unknown error' : 
+            'Promise rejected';
+          marketDataErrors.polygon = errorMsg;
+          addDebugInfo("POLYGON_DATA_FAILED", { error: errorMsg });
+        }
+        
+        // Process Yahoo results (reliable fallback)
         if (yahooResponse.status === 'fulfilled' && 
             !yahooResponse.value.error && 
             yahooResponse.value.data?.success) {
           yahooData = yahooResponse.value.data.enhanced_data || [];
+          yahooAvailable = yahooData.length > 0;
           addDebugInfo("YAHOO_DATA_SUCCESS", { 
             dataCount: yahooData.length,
             source: "yahoo"
           });
         } else {
-          addDebugInfo("YAHOO_DATA_FAILED", { 
-            error: yahooResponse.status === 'fulfilled' ? 
-              yahooResponse.value.error?.message : 
-              'Promise rejected'
-          });
+          const errorMsg = yahooResponse.status === 'fulfilled' ? 
+            yahooResponse.value.error?.message || 'Unknown error' : 
+            'Promise rejected';
+          marketDataErrors.yahoo = errorMsg;
+          addDebugInfo("YAHOO_DATA_FAILED", { error: errorMsg });
         }
         
-        addDebugInfo("POLYGON_DISABLED", {
-          reason: "Rate limits on free tier - too many 429 errors",
-          note: "Using only Yahoo Finance for reliable data"
+        // Combine data with Polygon taking priority for overlaps
+        const combinedData = new Map();
+        
+        // Add Yahoo data first (lower priority)
+        yahooData.forEach((item: any) => {
+          if (item?.symbol) {
+            combinedData.set(item.symbol, { 
+              ...item, 
+              source: 'yahoo',
+              polygon_available: false,
+              yahoo_available: true 
+            });
+          }
         });
         
-        if (yahooData.length === 0) {
-          throw new Error('No market data available from Yahoo Finance');
+        // Add Polygon data (higher priority - will overwrite Yahoo for same symbols)
+        polygonData.forEach((item: any) => {
+          if (item?.symbol) {
+            const existing = combinedData.get(item.symbol) || {};
+            combinedData.set(item.symbol, { 
+              ...existing,
+              ...item, 
+              source: 'polygon',
+              polygon_available: true,
+              yahoo_available: existing.yahoo_available || false
+            });
+          }
+        });
+        
+        const finalData = Array.from(combinedData.values());
+        
+        addDebugInfo("MARKET_DATA_STACKED", {
+          polygonCount: polygonData.length,
+          yahooCount: yahooData.length,
+          combinedCount: finalData.length,
+          polygonAvailable,
+          yahooAvailable,
+          errors: marketDataErrors
+        });
+        
+        if (finalData.length === 0) {
+          throw new Error('No market data available from any source');
         }
         
         enhancedMarketData = {
           success: true,
-          enhanced_data: yahooData,
-          total_processed: yahooData.length,
+          enhanced_data: finalData,
+          total_processed: finalData.length,
           symbols_requested: allTickers.length,
-          sources_used: ['yahoo']
+          sources_used: [
+            ...(polygonAvailable ? ['polygon'] : []),
+            ...(yahooAvailable ? ['yahoo'] : [])
+          ],
+          errors: marketDataErrors
         };
         
       } catch (error) {
-        marketError = error;
+        throw error;
       }
 
-      if (marketError) throw marketError;
+      // marketError check removed - handled in catch block
       setProgress(70);
 
       addDebugInfo("MARKET_DATA", {
@@ -309,15 +376,15 @@ const DailyTradingPipeline = () => {
         sampleData: enhancedMarketData?.enhanced_data?.slice(0, 3) || []
       });
 
-      // Step 4: Generate enhanced trade signals with fallback data
-      setCurrentTask("Generating high-conviction signals with enhanced multi-source data...");
+      // Step 4: Apply sentiment stacking engine for robust signal generation
+      setCurrentTask("Applying sentiment stacking engine for multi-source consensus...");
       
       let sentimentResults = enhancedSentimentData?.enhanced_sentiment || [];
       let marketResults = enhancedMarketData?.enhanced_data || [];
       
-      // Use sample data if APIs failed
+      // Use sample data if ALL APIs failed
       if (sentimentResults.length === 0 && marketResults.length === 0) {
-        setCurrentTask("APIs failed - using sample data for testing...");
+        setCurrentTask("All APIs failed - using sample data for testing...");
         const { sampleSentiment, sampleMarket } = generateSampleData();
         sentimentResults = sampleSentiment;
         marketResults = sampleMarket;
@@ -325,33 +392,34 @@ const DailyTradingPipeline = () => {
         addDebugInfo("FALLBACK_DATA_GENERATED", {
           sentimentCount: sentimentResults.length,
           marketCount: marketResults.length,
-          note: "Using sample data due to API failures"
+          note: "Using sample data due to complete API failure"
         });
       }
       
-      // Process the enhanced data to generate signals
+      // Apply sentiment stacking engine to generate consensus signals
       const enhancedSignals: TradeSignal[] = [];
+      const stackingResults: StackingResult[] = [];
       
-      addDebugInfo("SIGNAL_GENERATION_INPUT", {
+      addDebugInfo("STACKING_ENGINE_INPUT", {
         sentimentResultsCount: sentimentResults.length,
         marketResultsCount: marketResults.length,
         sentimentSample: sentimentResults.slice(0, 2),
         marketSample: marketResults.slice(0, 2)
       });
       
-      // Create maps for efficient lookup with proper typing
-      const sentimentMap = new Map<string, SentimentData>();
-      const marketMap = new Map<string, MarketData>();
+      // Create comprehensive data maps
+      const sentimentMap = new Map<string, any>();
+      const marketMap = new Map<string, any>();
       
       sentimentResults.forEach((item: any) => {
         if (item && item.symbol) {
-          sentimentMap.set(item.symbol, item as SentimentData);
+          sentimentMap.set(item.symbol, item);
         }
       });
       
       marketResults.forEach((item: any) => {
         if (item && item.symbol) {
-          marketMap.set(item.symbol, item as MarketData);
+          marketMap.set(item.symbol, item);
         }
       });
 
@@ -362,131 +430,107 @@ const DailyTradingPipeline = () => {
         marketKeys: Array.from(marketMap.keys()).slice(0, 10)
       });
 
-      // Generate signals only for symbols with valid market data
-      // Realistic validation for legitimate market data
-      const validMarketSymbols = Array.from(marketMap.entries())
-        .filter(([symbol, data]) => {
-          // Basic validation for real market data
-          const rsi = data?.technical_indicators?.rsi;
-          const volume_ratio = data?.technical_indicators?.volume_ratio;
-          const momentum = data?.technical_indicators?.momentum;
-          
-          const hasValidRSI = rsi && rsi > 0 && rsi <= 100; // Valid RSI range
-          const hasValidPrice = data?.price && data.price > 0;
-          const hasValidVolume = data?.volume && data.volume > 0;
-          const hasValidVolumeRatio = volume_ratio && volume_ratio > 0; // Positive volume ratio
-          const hasValidMomentum = momentum !== undefined; // Momentum can be 0, negative, or positive
-          
-          // All conditions must pass for valid data
-          const isValid = hasValidRSI && hasValidPrice && hasValidVolume && 
-                          hasValidVolumeRatio && hasValidMomentum;
-          
-          if (!isValid) {
-            addDebugInfo(`FILTERED_OUT_${symbol}`, {
-              reason: "Insufficient/default market data",
-              rsi: rsi,
-              price: data?.price,
-              volume: data?.volume,
-              volume_ratio: volume_ratio,
-              momentum: momentum,
-              checks: {
-                hasValidRSI,
-                hasValidPrice, 
-                hasValidVolume,
-                hasValidVolumeRatio,
-                hasValidMomentum
-              }
-            });
-            return false;
-          }
-          return true;
-        })
-        .map(([symbol, _]) => symbol);
-
-      // Only process symbols with valid market data
-      const processedTickers = validMarketSymbols.slice(0, 15); // Reduced to focus on quality
+      // Get all unique symbols from both data sources
+      const allSymbols = new Set([...sentimentMap.keys(), ...marketMap.keys()]);
+      const processedTickers = Array.from(allSymbols).slice(0, 20); // Process more symbols with stacking
       let signalsGenerated = 0;
       
-      addDebugInfo("FILTERED_SYMBOLS", {
-        totalSymbols: Array.from(new Set([...sentimentMap.keys(), ...marketMap.keys()])).length,
-        validMarketSymbols: validMarketSymbols.length,
+      addDebugInfo("STACKING_SYMBOLS", {
+        totalSymbols: allSymbols.size,
         processedTickers: processedTickers.length,
-        filteredSymbols: processedTickers
+        stackingConfig: stackingEngine.getConfig()
       });
       
       for (const ticker of processedTickers) {
         const sentimentData = sentimentMap.get(ticker);
         const marketData = marketMap.get(ticker);
         
-        addDebugInfo(`TICKER_${ticker}`, {
-          hasSentiment: !!sentimentData,
-          hasMarket: !!marketData,
-          sentimentScore: sentimentData?.current_sentiment,
-          marketPrice: marketData?.price,
-          marketRSI: marketData?.technical_indicators?.rsi
+        // Prepare stacking data - extract sentiment from multiple sources
+        const redditSentiment = sentimentData?.sources?.reddit?.sentiment;
+        const stocktwitsSentiment = sentimentData?.sources?.stocktwits?.sentiment;
+        const newsSentiment = sentimentData?.sources?.news?.sentiment;
+        
+        // Get market data with availability flags
+        const rsi = marketData?.technical_indicators?.rsi;
+        const volumeRatio = marketData?.technical_indicators?.volume_ratio;
+        const polygonAvailable = marketData?.polygon_available || false;
+        const yahooAvailable = marketData?.yahoo_available || false;
+        
+        // Apply sentiment stacking engine
+        const stackingResult = stackingEngine.stackSentiment({
+          symbol: ticker,
+          reddit_sentiment: redditSentiment,
+          stocktwits_sentiment: stocktwitsSentiment,
+          news_sentiment: newsSentiment,
+          rsi: rsi,
+          volume_ratio: volumeRatio,
+          polygon_available: polygonAvailable,
+          yahoo_available: yahooAvailable,
+          errors: {
+            ...enhancedMarketData?.errors,
+            reddit: sentimentData?.sources?.reddit?.error,
+            stocktwits: sentimentData?.sources?.stocktwits?.error,
+            news: sentimentData?.sources?.news?.error
+          }
         });
         
-        // Skip if no market data (should be filtered out above, but double-check)
-        if (!marketData) continue;
+        stackingResults.push(stackingResult);
         
-        // Enhanced signal generation logic with safe property access
-        const sentiment_score = sentimentData?.current_sentiment || 0;
+        addDebugInfo(`STACKING_${ticker}`, {
+          totalVotes: stackingResult.totalVotes,
+          maxVotes: stackingResult.maxPossibleVotes,
+          confidence: stackingResult.confidenceScore,
+          strength: stackingResult.signalStrength,
+          recommend: stackingResult.recommendAction,
+          breakdown: stackingResult.votingBreakdown
+        });
+        
+        // Only generate signals for recommended actions
+        if (!stackingResult.recommendAction || !marketData) continue;
+        
+        // Use stacking engine results for signal generation
+        const sentiment_score = redditSentiment || stocktwitsSentiment || newsSentiment || 0;
         const sentiment_velocity = sentimentData?.sentiment_velocity?.velocity_1h || 0;
         const volume_spike = sentimentData?.sentiment_velocity?.social_volume_spike || false;
         
-        const rsi = marketData?.technical_indicators?.rsi || 50;
-        const volume_ratio = marketData?.technical_indicators?.volume_ratio || 1;
         const momentum = marketData?.technical_indicators?.momentum || 0;
         
-        // High-conviction signal criteria
-        const strongBullishSentiment = sentiment_score > 0.6 && sentiment_velocity > 0.2;
-        const oversoldTechnical = rsi < 30 && momentum > -5;
-        const volumeConfirmation = volume_ratio > 2.0 || volume_spike;
-        const socialMomentum = (sentimentData?.sentiment_velocity?.mention_frequency || 0) > 5;
-        
-        const strongBearishSentiment = sentiment_score < -0.4 && sentiment_velocity < -0.2;
-        const overboughtTechnical = rsi > 70 && momentum < 5;
-        
+        // Determine signal type based on stacking consensus
         let signal_type: 'BUY' | 'SELL' | 'HOLD' = 'HOLD';
-        let confidence = 0;
+        let confidence = stackingResult.confidenceScore;
         let reasoning = '';
         let technical_signals: string[] = [];
 
-        // BUY signals
-        if (strongBullishSentiment && volumeConfirmation && (oversoldTechnical || socialMomentum)) {
+        // Enhanced reasoning based on voting breakdown
+        const sentimentVotes = stackingResult.votingBreakdown.sentiment;
+        const technicalVotes = stackingResult.votingBreakdown.technical;
+        const dataVotes = stackingResult.votingBreakdown.market_data;
+        
+        // Determine signal direction from winning sources
+        const bullishSources = stackingResult.sources.filter(s => 
+          s.passed && ['sentiment_reddit', 'sentiment_stocktwits', 'sentiment_news', 'rsi_oversold', 'volume_spike'].includes(s.name)
+        );
+        const bearishSources = stackingResult.sources.filter(s => 
+          s.passed && ['rsi_overbought'].includes(s.name)
+        );
+        
+        if (bullishSources.length > bearishSources.length && sentiment_score >= 0) {
           signal_type = 'BUY';
-          confidence = 0.85 + Math.min(0.15, sentiment_velocity);
-          technical_signals.push('BULLISH_SENTIMENT', 'VOLUME_SPIKE');
-          if (oversoldTechnical) technical_signals.push('OVERSOLD_BOUNCE');
-          if (socialMomentum) technical_signals.push('SOCIAL_MOMENTUM');
-          reasoning = `Strong bullish sentiment (${sentiment_score.toFixed(2)}) with ${sentiment_velocity.toFixed(2)} velocity spike. ${volume_ratio.toFixed(1)}x volume confirmation. RSI: ${rsi.toFixed(0)}`;
-        }
-        // SELL signals
-        else if (strongBearishSentiment && overboughtTechnical) {
+          technical_signals = bullishSources.map(s => s.name.toUpperCase());
+          reasoning = `Multi-source consensus: ${bullishSources.length} bullish signals. Sentiment: ${sentiment_score.toFixed(2)}, RSI: ${rsi?.toFixed(0) || 'N/A'}, Volume: ${volumeRatio?.toFixed(1) || 'N/A'}x. Sources: ${stackingResult.sources.filter(s => s.passed).map(s => s.name).join(', ')}`;
+        } else if (bearishSources.length > 0 && sentiment_score < 0) {
           signal_type = 'SELL';
-          confidence = 0.75 - sentiment_velocity * 0.5;
-          technical_signals.push('BEARISH_SENTIMENT', 'OVERBOUGHT');
-          reasoning = `Bearish sentiment turning (${sentiment_score.toFixed(2)}) with overbought RSI ${rsi.toFixed(0)}. Momentum weakening.`;
-        }
-        // Moderate signals - lowered thresholds for better signal generation
-        else if (Math.abs(sentiment_score) > 0.15 || Math.abs(sentiment_velocity) > 0.05 || rsi < 35 || rsi > 65) {
-          if (sentiment_score > 0.15 || (rsi < 35 && sentiment_score > 0)) {
-            signal_type = 'BUY';
-            confidence = 0.4 + sentiment_score * 0.4 + (rsi < 35 ? 0.1 : 0);
-            technical_signals.push('MODERATE_BULLISH');
-            if (rsi < 35) technical_signals.push('OVERSOLD');
-            reasoning = `Moderate bullish sentiment (${sentiment_score.toFixed(2)}) with RSI ${rsi.toFixed(0)}. Volume: ${volume_ratio.toFixed(1)}x`;
-          } else if (sentiment_score < -0.15 || (rsi > 65 && sentiment_score < 0)) {
-            signal_type = 'SELL';
-            confidence = 0.4 + Math.abs(sentiment_score) * 0.4 + (rsi > 65 ? 0.1 : 0);
-            technical_signals.push('MODERATE_BEARISH');
-            if (rsi > 65) technical_signals.push('OVERBOUGHT');
-            reasoning = `Moderate bearish sentiment (${sentiment_score.toFixed(2)}) with RSI ${rsi.toFixed(0)}. Momentum: ${momentum.toFixed(1)}`;
-          }
+          technical_signals = bearishSources.map(s => s.name.toUpperCase());
+          reasoning = `Multi-source consensus: ${bearishSources.length} bearish signals. Sentiment: ${sentiment_score.toFixed(2)}, RSI: ${rsi?.toFixed(0) || 'N/A'}. Sources: ${stackingResult.sources.filter(s => s.passed).map(s => s.name).join(', ')}`;
+        } else {
+          // Mixed signals - use confidence to determine strength
+          signal_type = sentiment_score >= 0 ? 'BUY' : 'SELL';
+          technical_signals.push('MIXED_SIGNALS');
+          reasoning = `Mixed signals with ${stackingResult.totalVotes.toFixed(1)} total votes. Primary sentiment: ${sentiment_score.toFixed(2)}. Confidence: ${(confidence * 100).toFixed(1)}%`;
         }
 
-        // Include signals with confidence >= 0.4 (lowered for better signal generation)
-        if (confidence >= 0.4) {
+        // Use stacking confidence as signal confidence
+        if (confidence >= 0.3) { // Lower threshold due to stacking validation
           const stock = STOCK_UNIVERSE.find(s => s.ticker === ticker);
           enhancedSignals.push({
             ticker,
@@ -496,7 +540,7 @@ const DailyTradingPipeline = () => {
             price: marketData?.price || 50 + Math.random() * 200,
             sentiment_score,
             sentiment_velocity,
-            volume_ratio,
+            volume_ratio: volumeRatio,
             rsi,
             technical_signals,
             reasoning,
@@ -506,14 +550,19 @@ const DailyTradingPipeline = () => {
         }
       }
 
-      addDebugInfo("SIGNAL_GENERATION_COMPLETE", {
+      addDebugInfo("STACKING_ENGINE_COMPLETE", {
         tickersProcessed: processedTickers.length,
+        stackingResults: stackingResults.length,
         signalsGenerated,
         finalSignalsCount: enhancedSignals.length,
-        usedMultiSourceData: allContent.length > 1
+        averageConfidence: stackingResults.reduce((sum, r) => sum + r.confidenceScore, 0) / stackingResults.length,
+        strongSignals: stackingResults.filter(r => r.signalStrength === 'STRONG').length,
+        moderateSignals: stackingResults.filter(r => r.signalStrength === 'MODERATE').length,
+        weakSignals: stackingResults.filter(r => r.signalStrength === 'WEAK').length
       });
 
       setSignals(enhancedSignals);
+      setStackingResults(stackingResults);
 
       // Store signals in database for performance tracking
       if (enhancedSignals.length > 0) {
@@ -560,8 +609,8 @@ const DailyTradingPipeline = () => {
       setLastRun(new Date());
 
       toast({
-        title: enhancedSignals.length > 0 ? "Enhanced Multi-Source Pipeline Complete! 🚀" : "Pipeline Complete - No Signals Found",
-        description: `Found ${enhancedSignals.length} signals using ${allContent.length} data sources (Reddit: ${redditData?.posts?.length || 'unavailable'}, News: ${newsData?.articles?.length || 0}, StockTwits: ${stocktwitsData?.messages?.length || 0})`,
+        title: enhancedSignals.length > 0 ? "Sentiment Stacking Engine Complete! 🧱" : "Pipeline Complete - No Signals Found",
+        description: `Generated ${enhancedSignals.length} signals from ${stackingResults.length} symbols using multi-source consensus. Strong: ${stackingResults.filter(r => r.signalStrength === 'STRONG').length}, Moderate: ${stackingResults.filter(r => r.signalStrength === 'MODERATE').length}`,
       });
 
     } catch (error) {
