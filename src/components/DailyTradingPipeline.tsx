@@ -191,6 +191,16 @@ const DailyTradingPipeline = () => {
         }))
       ];
 
+      addDebugInfo("COMBINED_CONTENT", {
+        totalContentPieces: allContent.length,
+        redditPosts: redditData?.posts?.length || 0,
+        newsArticles: newsData?.articles?.length || 0,
+        stocktwitsMessages: stocktwitsData?.messages?.length || 0,
+        sampleContent: allContent.slice(0, 2)
+      });
+
+      console.log('About to call enhanced-sentiment-analysis with:', allContent.length, 'content pieces');
+      
       const { data: enhancedSentimentData, error: sentimentError } = await supabase.functions.invoke('enhanced-sentiment-analysis', {
         body: { 
           posts: allContent,
@@ -198,6 +208,8 @@ const DailyTradingPipeline = () => {
         }
       });
 
+      console.log('Enhanced sentiment response:', enhancedSentimentData, 'Error:', sentimentError);
+      
       if (sentimentError) throw sentimentError;
       setProgress(50);
 
