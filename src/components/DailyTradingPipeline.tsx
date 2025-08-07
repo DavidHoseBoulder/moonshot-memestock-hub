@@ -251,38 +251,38 @@ const DailyTradingPipeline = () => {
       let marketError;
       
       try {
-        // Try Yahoo Finance first
-        const yahooResponse = await supabase.functions.invoke('enhanced-market-data', {
+        // Try Polygon API first (more reliable)
+        const polygonResponse = await supabase.functions.invoke('polygon-market-data', {
           body: { symbols: allTickers, days: 21 }
         });
         
-        if (yahooResponse.error || !yahooResponse.data?.success || yahooResponse.data.enhanced_data?.length < 5) {
-          console.warn('Yahoo Finance insufficient, trying Polygon...');
-          addDebugInfo("YAHOO_INSUFFICIENT", { 
-            error: yahooResponse.error?.message,
-            dataCount: yahooResponse.data?.enhanced_data?.length || 0,
-            note: "Falling back to Polygon API"
+        if (polygonResponse.error || !polygonResponse.data?.success || polygonResponse.data.enhanced_data?.length < 5) {
+          console.warn('Polygon API insufficient, trying Yahoo Finance fallback...');
+          addDebugInfo("POLYGON_INSUFFICIENT", { 
+            error: polygonResponse.error?.message,
+            dataCount: polygonResponse.data?.enhanced_data?.length || 0,
+            note: "Falling back to Yahoo Finance"
           });
           
-          // Fallback to Polygon.io
-          const polygonResponse = await supabase.functions.invoke('polygon-market-data', {
+          // Fallback to Yahoo Finance
+          const yahooResponse = await supabase.functions.invoke('enhanced-market-data', {
             body: { symbols: allTickers, days: 21 }
           });
           
-          if (polygonResponse.error || !polygonResponse.data?.success) {
-            marketError = polygonResponse.error;
+          if (yahooResponse.error || !yahooResponse.data?.success) {
+            marketError = yahooResponse.error;
           } else {
-            enhancedMarketData = polygonResponse.data;
-            addDebugInfo("POLYGON_SUCCESS", { 
+            enhancedMarketData = yahooResponse.data;
+            addDebugInfo("YAHOO_FALLBACK_SUCCESS", { 
               dataCount: enhancedMarketData.enhanced_data?.length || 0,
-              source: "polygon"
+              source: "yahoo_fallback"
             });
           }
         } else {
-          enhancedMarketData = yahooResponse.data;
-          addDebugInfo("YAHOO_SUCCESS", { 
+          enhancedMarketData = polygonResponse.data;
+          addDebugInfo("POLYGON_PRIMARY_SUCCESS", { 
             dataCount: enhancedMarketData.enhanced_data?.length || 0,
-            source: "yahoo"
+            source: "polygon_primary"
           });
         }
       } catch (error) {
