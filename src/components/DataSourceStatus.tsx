@@ -45,19 +45,25 @@ const DataSourceStatus = () => {
         };
       }
 
-      // Check if response indicates mock data
+      // Check if this is mock data based on response structure
       const isMockData = data?.isMockData || 
                         data?.mock || 
-                        (data?.posts && data.posts.length === 1 && data.posts[0]?.title?.includes('Sample')) ||
-                        (data?.articles && data.articles.length === 0) ||
-                        (data?.messages && data.messages.length === 0);
+                        (data?.posts && data.posts.length === 1 && data.posts[0]?.title?.includes('Sample'));
 
       // Determine status based on response
       let status: 'available' | 'partial' | 'unavailable' = 'available';
       if (isMockData) {
         status = 'partial'; // Partial means working but returning mock data
-      } else if (!data || (Array.isArray(data) && data.length === 0)) {
+      } else if (!data) {
         status = 'unavailable';
+      } else {
+        // Check if we got actual data
+        const hasData = (data?.posts && data.posts.length > 0) ||
+                       (data?.articles && data.articles.length > 0) ||
+                       (data?.messages && data.messages.length > 0);
+        if (!hasData) {
+          status = 'unavailable';
+        }
       }
 
       return {
