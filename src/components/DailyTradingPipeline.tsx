@@ -524,14 +524,38 @@ const DailyTradingPipeline = () => {
           });
         });
         
-        // Average sentiments per symbol and calculate confidence
-        symbolSentiments.forEach((sentiments, symbol) => {
+        // Average sentiments per symbol, calculate confidence, and store in history
+        for (const [symbol, sentiments] of symbolSentiments.entries()) {
           const avgSentiment = sentiments.reduce((a, b) => a + b, 0) / sentiments.length;
           const confidence = Math.min(1.0, sentiments.length / 5); // Higher confidence with more messages
           
           stocktwitsSentimentMap.set(symbol, avgSentiment);
           stocktwitsConfidenceMap.set(symbol, confidence);
-        });
+          
+          // Store in sentiment history
+          try {
+            await supabase.from('sentiment_history').insert({
+              symbol,
+              source: 'stocktwits',
+              sentiment_score: avgSentiment,
+              raw_sentiment: avgSentiment,
+              confidence_score: confidence,
+              data_timestamp: new Date().toISOString(),
+              metadata: {
+                content_id: `stocktwits_${symbol}_${Date.now()}`,
+                message_count: sentiments.length
+              },
+              content_snippet: `StockTwits sentiment from ${sentiments.length} messages`,
+              volume_indicator: sentiments.length,
+              engagement_score: confidence
+            });
+          } catch (error) {
+            // Ignore duplicate key errors
+            if (!error.message?.includes('duplicate key')) {
+              console.warn('Error storing StockTwits sentiment data:', error);
+            }
+          }
+        }
       }
       
       // Process News sentiment with better analysis
@@ -551,10 +575,10 @@ const DailyTradingPipeline = () => {
           });
         });
         
-        symbolArticles.forEach((articles, symbol) => {
+        for (const [symbol, articles] of symbolArticles.entries()) {
           // Analyze sentiment based on keywords in headlines and descriptions
           let totalSentiment = 0;
-          articles.forEach(article => {
+          for (const article of articles) {
             const text = (article.title + ' ' + article.description).toLowerCase();
             let sentiment = 0.5; // neutral
             
@@ -575,30 +599,78 @@ const DailyTradingPipeline = () => {
             }
             
             totalSentiment += Math.max(0.1, Math.min(0.9, sentiment));
-          });
+          }
           
           const avgSentiment = totalSentiment / articles.length;
           const confidence = Math.min(1.0, articles.length / 3); // More articles = higher confidence
           
           newsSentimentMap.set(symbol, avgSentiment);
           newsConfidenceMap.set(symbol, confidence);
-        });
+          
+          // Store in sentiment history
+          try {
+            await supabase.from('sentiment_history').insert({
+              symbol,
+              source: 'news',
+              sentiment_score: avgSentiment,
+              raw_sentiment: avgSentiment,
+              confidence_score: confidence,
+              data_timestamp: new Date().toISOString(),
+              metadata: {
+                content_id: `news_${symbol}_${Date.now()}`,
+                article_count: articles.length,
+                sample_headlines: articles.slice(0, 3).map(a => a.title)
+              },
+              content_snippet: articles[0]?.title || 'News sentiment analysis',
+              volume_indicator: articles.length,
+              engagement_score: confidence
+            });
+          } catch (error) {
+            if (!error.message?.includes('duplicate key')) {
+              console.warn('Error storing news sentiment data:', error);
+            }
+          }
+        }
       }
       
-      // Process Google Trends data
+      // Process Google Trends data and store in history
       const googleTrendsMap = new Map<string, number>();
       if (trendsData?.trends) {
-        trendsData.trends.forEach((trend: any) => {
+        for (const trend of trendsData.trends) {
           googleTrendsMap.set(trend.symbol, trend.interest);
-        });
+          
+          // Store in sentiment history
+          try {
+            await supabase.from('sentiment_history').insert({
+              symbol: trend.symbol,
+              source: 'google_trends',
+              sentiment_score: trend.interest, // Google Trends is already 0-1
+              raw_sentiment: trend.interest,
+              confidence_score: 0.8, // Google Trends is quite reliable
+              data_timestamp: new Date().toISOString(),
+              metadata: {
+                content_id: `trends_${trend.symbol}_${Date.now()}`,
+                search_volume: trend.interest
+              },
+              content_snippet: `Google Trends interest: ${trend.interest}`,
+              volume_indicator: 1,
+              engagement_score: trend.interest
+            });
+          } catch (error) {
+            // Ignore duplicate key errors, log others
+            if (!error.message?.includes('duplicate key')) {
+              console.warn('Error storing Google Trends data:', error);
+            }
+          }
+        }
       }
       
-      // Process YouTube sentiment data with better validation
+      // Process YouTube sentiment data with better validation and store in history
       const youtubeSentimentMap = new Map<string, number>();
       const youtubeConfidenceMap = new Map<string, number>();
       
       if (youtubeData?.youtube_sentiment) {
-        youtubeData.youtube_sentiment.forEach((yt: any) => {
+        for (const yt of youtubeData.youtube_sentiment) {
           // Only include YouTube data if it has meaningful sentiment and comment count
           if (yt.comment_count && yt.comment_count > 2 && typeof yt.sentiment === 'number') {
             const normalizedSentiment = Math.max(0.1, Math.min(0.9, yt.sentiment + 0.5));
@@ -606,8 +678,32 @@ const DailyTradingPipeline = () => {
             
             youtubeSentimentMap.set(yt.symbol, normalizedSentiment);
             youtubeConfidenceMap.set(yt.symbol, confidence);
+            
+            // Store in sentiment history
+            try {
+              await supabase.from('sentiment_history').insert({
+                symbol: yt.symbol,
+                source: 'youtube',
+                sentiment_score: normalizedSentiment,
+                raw_sentiment: yt.sentiment,
+                confidence_score: confidence,
+                data_timestamp: new Date().toISOString(),
+                metadata: {
+                  content_id: `youtube_${yt.symbol}_${Date.now()}`,
+                  comment_count: yt.comment_count,
+                  avg_likes: yt.avg_likes || 0
+                },
+                content_snippet: `YouTube sentiment from ${yt.comment_count} comments`,
+                volume_indicator: yt.comment_count,
+                engagement_score: (yt.avg_likes || 0) / Math.max(1, yt.comment_count)
+              });
+            } catch (error) {
+              if (!error.message?.includes('duplicate key')) {
+                console.warn('Error storing YouTube sentiment data:', error);
+              }
+            }
           }
-        });
+        }
       }
 
       // Create comprehensive data maps

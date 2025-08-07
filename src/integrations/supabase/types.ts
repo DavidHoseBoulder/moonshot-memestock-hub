@@ -212,6 +212,57 @@ export type Database = {
         }
         Relationships: []
       }
+      sentiment_history: {
+        Row: {
+          collected_at: string
+          confidence_score: number | null
+          content_snippet: string | null
+          created_at: string
+          data_timestamp: string
+          engagement_score: number | null
+          id: string
+          metadata: Json | null
+          raw_sentiment: number | null
+          sentiment_score: number | null
+          source: string
+          symbol: string
+          updated_at: string
+          volume_indicator: number | null
+        }
+        Insert: {
+          collected_at?: string
+          confidence_score?: number | null
+          content_snippet?: string | null
+          created_at?: string
+          data_timestamp: string
+          engagement_score?: number | null
+          id?: string
+          metadata?: Json | null
+          raw_sentiment?: number | null
+          sentiment_score?: number | null
+          source: string
+          symbol: string
+          updated_at?: string
+          volume_indicator?: number | null
+        }
+        Update: {
+          collected_at?: string
+          confidence_score?: number | null
+          content_snippet?: string | null
+          created_at?: string
+          data_timestamp?: string
+          engagement_score?: number | null
+          id?: string
+          metadata?: Json | null
+          raw_sentiment?: number | null
+          sentiment_score?: number | null
+          source?: string
+          symbol?: string
+          updated_at?: string
+          volume_indicator?: number | null
+        }
+        Relationships: []
+      }
       trading_signals: {
         Row: {
           actual_return: number | null
