@@ -1,3 +1,4 @@
+import DataSourceStatus from "./DataSourceStatus";
 import ImportProgressMonitor from "./ImportProgressMonitor";
 import BulkHistoricalImport from "./BulkHistoricalImport";
 import { useState } from "react";
@@ -440,6 +441,9 @@ const DailyTradingPipeline = () => {
           </div>
         )}
       </div>
+
+      {/* Data Source Status */}
+      <DataSourceStatus />
 
       {/* Bulk Historical Import Component */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
