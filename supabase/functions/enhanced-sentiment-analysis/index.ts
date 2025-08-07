@@ -58,6 +58,10 @@ Deno.serve(async (req) => {
 
     console.log(`Enhanced sentiment analysis for ${posts.length} posts, tracking ${symbols?.length || 0} symbols`)
 
+    // Limit posts to avoid timeout - process most recent/relevant posts
+    const limitedPosts = posts.slice(0, 50) // Process max 50 posts to avoid timeout
+    console.log(`Processing ${limitedPosts.length} posts (limited from ${posts.length} to avoid timeout)`)
+
     // Get historical sentiment data for velocity calculation
     const { data: historicalData } = await supabase
       .from('sentiment_analysis')
@@ -70,23 +74,33 @@ Deno.serve(async (req) => {
     // Process each symbol mentioned in posts
     const symbolMentions = new Map<string, any[]>()
     
-    // First pass: basic sentiment analysis and symbol extraction
-    for (const post of posts) {
-      try {
-        const text = `${post.title}\n\n${post.selftext || ''}`.slice(0, 3000)
-        
-        const response = await fetch('https://api.openai.com/v1/chat/completions', {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${openAIApiKey}`,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            model: 'gpt-4.1-2025-04-14',
-            messages: [
-              {
-                role: 'system',
-                content: `You are a financial sentiment expert. Extract stock symbols and analyze sentiment with social momentum indicators.
+    // Process posts in batches of 10 for parallel processing
+    const batchSize = 10
+    const batches = []
+    for (let i = 0; i < limitedPosts.length; i += batchSize) {
+      batches.push(limitedPosts.slice(i, i + batchSize))
+    }
+
+    console.log(`Processing ${batches.length} batches of ${batchSize} posts each`)
+
+    // First pass: basic sentiment analysis and symbol extraction with batching
+    for (const batch of batches) {
+      const batchPromises = batch.map(async (post) => {
+        try {
+          const text = `${post.title}\n\n${post.selftext || ''}`.slice(0, 3000)
+          
+          const response = await fetch('https://api.openai.com/v1/chat/completions', {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${openAIApiKey}`,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              model: 'gpt-4o-mini', // Use faster model to reduce timeout risk
+              messages: [
+                {
+                  role: 'system',
+                  content: `You are a financial sentiment expert. Extract stock symbols and analyze sentiment with social momentum indicators.
 
 Return JSON in this format:
 {
@@ -100,53 +114,69 @@ Return JSON in this format:
 }
 
 Social signals can be: "momentum", "volume_spike", "breaking_news", "technical_breakout", "reversal_signal", "institutional_interest"`
-              },
-              {
-                role: 'user',
-                content: `Analyze this Reddit post from r/${post.subreddit}:
+                },
+                {
+                  role: 'user',
+                  content: `Analyze this Reddit post from r/${post.subreddit}:
 
 Title: ${post.title}
 Content: ${post.selftext || 'No additional content'}
 Engagement: ${post.score} upvotes, ${post.num_comments} comments
 Time: ${new Date(post.created_utc * 1000).toISOString()}`
-              }
-            ],
-            temperature: 0.3
-          }),
-        })
-
-        if (!response.ok) {
-          console.error('OpenAI API error:', await response.text())
-          continue
-        }
-
-        const data = await response.json()
-        const analysisText = data.choices[0].message.content
-
-        let analysis
-        try {
-          analysis = JSON.parse(analysisText)
-        } catch (parseError) {
-          console.error('Failed to parse OpenAI response:', analysisText)
-          continue
-        }
-
-        // Group by symbols for velocity analysis
-        for (const symbol of analysis.symbols_mentioned || []) {
-          if (!symbolMentions.has(symbol)) {
-            symbolMentions.set(symbol, [])
-          }
-          symbolMentions.get(symbol)?.push({
-            ...analysis,
-            post_data: post,
-            timestamp: new Date(post.created_utc * 1000).toISOString()
+                }
+              ],
+              temperature: 0.3
+            }),
           })
-        }
 
-      } catch (error) {
-        console.error('Error analyzing post:', error)
-        continue
+          if (!response.ok) {
+            console.error('OpenAI API error:', await response.text())
+            return null
+          }
+
+          const data = await response.json()
+          const analysisText = data.choices[0].message.content
+
+          let analysis
+          try {
+            analysis = JSON.parse(analysisText)
+          } catch (parseError) {
+            console.error('Failed to parse OpenAI response:', analysisText)
+            return null
+          }
+
+          return {
+            post,
+            analysis
+          }
+
+        } catch (error) {
+          console.error('Error analyzing post:', error)
+          return null
+        }
+      })
+
+      // Wait for batch to complete
+      const batchResults = await Promise.all(batchPromises)
+      
+      // Process successful results
+      for (const result of batchResults) {
+        if (result && result.analysis) {
+          // Group by symbols for velocity analysis
+          for (const symbol of result.analysis.symbols_mentioned || []) {
+            if (!symbolMentions.has(symbol)) {
+              symbolMentions.set(symbol, [])
+            }
+            symbolMentions.get(symbol)?.push({
+              ...result.analysis,
+              post_data: result.post,
+              timestamp: new Date(result.post.created_utc * 1000).toISOString()
+            })
+          }
+        }
       }
+
+      console.log(`Completed batch processing. Symbols found so far: ${symbolMentions.size}`)
     }
 
     // Second pass: calculate velocity and enhanced metrics for each symbol
@@ -234,7 +264,8 @@ Time: ${new Date(post.created_utc * 1000).toISOString()}`
         success: true, 
         enhanced_sentiment: enhancedResults,
         total_symbols_analyzed: enhancedResults.length,
-        total_posts_processed: posts.length
+        total_posts_processed: limitedPosts.length,
+        total_posts_available: posts.length
       }),
       { 
         status: 200, 
