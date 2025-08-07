@@ -1,6 +1,4 @@
 import DataSourceStatus from "./DataSourceStatus";
-import ImportProgressMonitor from "./ImportProgressMonitor";
-import BulkHistoricalImport from "./BulkHistoricalImport";
 import { useState } from "react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -445,11 +443,6 @@ const DailyTradingPipeline = () => {
       {/* Data Source Status */}
       <DataSourceStatus />
 
-      {/* Bulk Historical Import Component */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <BulkHistoricalImport />
-        <ImportProgressMonitor />
-      </div>
 
       {/* Enhanced Pipeline Control */}
       <Card className="p-6 bg-gradient-to-br from-blue-50 to-purple-50 border-blue-200">

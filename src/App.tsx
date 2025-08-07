@@ -7,6 +7,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import Index from "./pages/Index";
 import TradingPipeline from "./pages/TradingPipeline";
+import BulkImport from "./pages/BulkImport";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -21,6 +22,7 @@ const App: React.FC = () => {
           <Routes>
             <Route path="/" element={<Index />} />
             <Route path="/trading-pipeline" element={<TradingPipeline />} />
+            <Route path="/bulk-import" element={<BulkImport />} />
             <Route path="*" element={<NotFound />} />
           </Routes>
         </BrowserRouter>
