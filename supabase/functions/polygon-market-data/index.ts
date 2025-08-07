@@ -78,7 +78,7 @@ Deno.serve(async (req) => {
       const batchPromises = batch.map(async (symbol) => {
         try {
           const toDate = new Date().toISOString().split('T')[0]
-          const fromDate = new Date(Date.now() - (days * 24 * 60 * 60 * 1000)).toISOString().split('T')[0]
+          const fromDate = new Date(Date.now() - (days * 2 * 24 * 60 * 60 * 1000)).toISOString().split('T')[0] // Double the days to account for weekends
           
           // Get aggregated bars (daily data) - Using query parameter for API key, not Authorization header
           const barsUrl = `https://api.polygon.io/v2/aggs/ticker/${symbol}/range/1/day/${fromDate}/${toDate}?adjusted=true&sort=asc&limit=5000&apikey=${polygonApiKey}`
@@ -102,8 +102,8 @@ Deno.serve(async (req) => {
             return null
           }
           
-          if (data.results.length < 20) {
-            console.log(`Insufficient Polygon data for ${symbol}: only ${data.results.length} bars, need at least 20`)
+          if (data.results.length < 10) {
+            console.log(`Insufficient Polygon data for ${symbol}: only ${data.results.length} bars, need at least 10 (lowered requirement)`)
             return null
           }
 
@@ -116,18 +116,23 @@ Deno.serve(async (req) => {
           const validPrices = prices.filter((p: number) => p > 0)
           const validVolumes = volumes.filter((v: number) => v > 0)
 
-          if (validPrices.length < 20) {
-            console.log(`Insufficient valid data for ${symbol}, skipping`)
+          if (validPrices.length < 10) {
+            console.log(`Insufficient valid price data for ${symbol}: only ${validPrices.length} valid prices, need at least 10`)
             return null
           }
 
-          // Calculate RSI (simplified 14-period)
-          const rsi = calculateRSI(validPrices.slice(-14))
+          // Calculate RSI with adaptive period based on available data
+          const rsiPeriod = Math.min(14, Math.floor(validPrices.length / 2))
+          const rsi = validPrices.length >= 2 ? calculateRSI(validPrices.slice(-rsiPeriod)) : 50
         
-          // Calculate moving averages
-          const sma_20 = validPrices.slice(-20).reduce((sum: number, p: number) => sum + p, 0) / 20
-          const sma_50 = validPrices.length >= 50 ? 
-            validPrices.slice(-50).reduce((sum: number, p: number) => sum + p, 0) / 50 : sma_20
+          // Calculate moving averages with adaptive periods
+          const sma20Period = Math.min(20, validPrices.length)
+          const sma_20 = sma20Period > 0 ? 
+            validPrices.slice(-sma20Period).reduce((sum: number, p: number) => sum + p, 0) / sma20Period : validPrices[validPrices.length - 1]
+            
+          const sma50Period = Math.min(50, validPrices.length)  
+          const sma_50 = sma50Period > 0 ? 
+            validPrices.slice(-sma50Period).reduce((sum: number, p: number) => sum + p, 0) / sma50Period : sma_20
 
           // Volume analysis
           const avgVolume = validVolumes.length > 0 ? 
@@ -155,16 +160,25 @@ Deno.serve(async (req) => {
             volatility
           }
 
-          console.log(`Polygon data calculated for ${symbol}: RSI=${rsi.toFixed(2)}, Volume Ratio=${volume_ratio.toFixed(2)}`)
+          console.log(`✅ Polygon data calculated for ${symbol}: Price=$${currentPrice.toFixed(2)}, RSI=${rsi.toFixed(1)}, Volume Ratio=${volume_ratio.toFixed(2)}x, Data Points=${validPrices.length}`)
 
           return {
             symbol: symbol.toUpperCase(),
-            price: currentPrice,
-            volume: currentVolume,
+            price: Math.round(currentPrice * 100) / 100,
+            volume: Math.round(currentVolume),
             timestamp: new Date(timestamps[timestamps.length - 1]).toISOString(),
-            technical_indicators: technicalIndicators,
-            price_change_1d,
-            price_change_5d
+            technical_indicators: {
+              rsi: Math.max(0, Math.min(100, rsi)),
+              sma_20,
+              sma_50, 
+              volume_ratio: Math.max(0.1, volume_ratio),
+              momentum,
+              volatility
+            },
+            price_change_1d: Math.round(price_change_1d * 100) / 100,
+            price_change_5d: Math.round(price_change_5d * 100) / 100,
+            polygon_available: true,
+            data_points: validPrices.length
           }
 
         } catch (error) {
