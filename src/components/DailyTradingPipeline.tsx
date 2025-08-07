@@ -739,11 +739,19 @@ const DailyTradingPipeline = () => {
           news_sentiment: newsSentimentMap.get(ticker),
           google_trends: googleTrendsMap.get(ticker),
           youtube_sentiment: youtubeSentimentMap.get(ticker),
+          technical_indicators: marketData?.technical_indicators, // Pass full technical indicators object
           rsi: marketData?.technical_indicators?.rsi > 0 ? marketData.technical_indicators.rsi : undefined,
           volume_ratio: marketData?.technical_indicators?.volume_ratio > 0 ? marketData.technical_indicators.volume_ratio : undefined,
           polygon_available: marketData?.polygon_available || false,
           yahoo_available: marketData?.yahoo_available || false,
-          errors: marketDataErrors
+          errors: {
+            ...marketDataErrors,
+            reddit: !redditSentimentMap.get(ticker) ? 'No Reddit sentiment data' : undefined,
+            stocktwits: !stocktwitsSentimentMap.get(ticker) ? 'No Stocktwits sentiment data' : undefined,
+            news: !newsSentimentMap.get(ticker) ? 'No news sentiment data' : undefined,
+            google_trends: !googleTrendsMap.get(ticker) ? 'No Google Trends data' : undefined,
+            youtube: !youtubeSentimentMap.get(ticker) ? 'No YouTube sentiment data' : undefined
+          }
         });
         
         stackingResults.push(stackingResult);

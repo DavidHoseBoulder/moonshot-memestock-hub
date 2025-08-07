@@ -124,6 +124,10 @@ export class SentimentStackingEngine {
     stocktwits_sentiment?: number;
     news_sentiment?: number;
     rsi?: number;
+    technical_indicators?: {
+      rsi?: number;
+      volume_ratio?: number;
+    };
     volume_ratio?: number;
     polygon_available?: boolean;
     yahoo_available?: boolean;
@@ -132,16 +136,23 @@ export class SentimentStackingEngine {
     errors?: { [key: string]: string };
   }): StackingResult {
     
+    // Extract technical indicators with fallbacks
+    const actualRSI = data.technical_indicators?.rsi ?? data.rsi;
+    const actualVolumeRatio = data.technical_indicators?.volume_ratio ?? data.volume_ratio;
+    
     const sources: DataSource[] = [
-      // Sentiment sources
-      this.evaluateSource('sentiment_reddit', data.reddit_sentiment, data.reddit_sentiment !== undefined, data.errors?.reddit),
-      this.evaluateSource('sentiment_stocktwits', data.stocktwits_sentiment, data.stocktwits_sentiment !== undefined, data.errors?.stocktwits),
-      this.evaluateSource('sentiment_news', data.news_sentiment, data.news_sentiment !== undefined, data.errors?.news),
+      // Sentiment sources - only include if they have meaningful values
+      this.evaluateSource('sentiment_reddit', data.reddit_sentiment, 
+        data.reddit_sentiment !== undefined && Math.abs(data.reddit_sentiment) > 0.01, data.errors?.reddit),
+      this.evaluateSource('sentiment_stocktwits', data.stocktwits_sentiment, 
+        data.stocktwits_sentiment !== undefined && Math.abs(data.stocktwits_sentiment) > 0.01, data.errors?.stocktwits),
+      this.evaluateSource('sentiment_news', data.news_sentiment, 
+        data.news_sentiment !== undefined && Math.abs(data.news_sentiment) > 0.01, data.errors?.news),
       
-      // Technical indicators
-      this.evaluateSource('rsi_oversold', data.rsi, data.rsi !== undefined && data.rsi < 35, data.errors?.market_data),
-      this.evaluateSource('rsi_overbought', data.rsi, data.rsi !== undefined && data.rsi > 65, data.errors?.market_data),
-      this.evaluateSource('volume_spike', data.volume_ratio, data.volume_ratio !== undefined, data.errors?.market_data),
+      // Technical indicators - use extracted values
+      this.evaluateSource('rsi_oversold', actualRSI, actualRSI !== undefined && actualRSI < 35, data.errors?.market_data),
+      this.evaluateSource('rsi_overbought', actualRSI, actualRSI !== undefined && actualRSI > 65, data.errors?.market_data),
+      this.evaluateSource('volume_spike', actualVolumeRatio, actualVolumeRatio !== undefined, data.errors?.market_data),
       
       // Market data availability
       this.evaluateSource('market_data_polygon', data.polygon_available ? 1 : 0, true, data.errors?.polygon),
@@ -149,9 +160,9 @@ export class SentimentStackingEngine {
       
       // Future sources (only count as available if they have meaningful data)
       this.evaluateSource('google_trends', data.google_trends, 
-        data.google_trends !== undefined && data.google_trends > 0.1, data.errors?.google_trends),
+        data.google_trends !== undefined && data.google_trends > 0.15, data.errors?.google_trends),
       this.evaluateSource('youtube_sentiment', data.youtube_sentiment, 
-        data.youtube_sentiment !== undefined && data.youtube_sentiment > 0.1 && data.youtube_sentiment < 0.9, data.errors?.youtube)
+        data.youtube_sentiment !== undefined && Math.abs(data.youtube_sentiment) > 0.05 && Math.abs(data.youtube_sentiment) < 0.95, data.errors?.youtube)
     ];
 
     // Calculate weighted votes
@@ -159,29 +170,29 @@ export class SentimentStackingEngine {
       .filter(source => source.passed)
       .reduce((sum, source) => sum + source.weight, 0);
     
-    const maxPossibleVotes = sources
-      .filter(source => source.available)
-      .reduce((sum, source) => sum + source.weight, 0);
+    // For max possible votes, only count actually available sources to avoid unfair penalties
+    const availableSources = sources.filter(source => source.available);
+    const maxPossibleVotes = availableSources.reduce((sum, source) => sum + source.weight, 0);
 
-    // Calculate confidence score (0-1)
+    // Calculate confidence score (0-1) - don't penalize for unavailable sources
     const confidenceScore = maxPossibleVotes > 0 ? totalVotes / maxPossibleVotes : 0;
 
-    // DEGRADED MODE LOGIC - Check how many sources are available
-    const availableSources = sources.filter(s => s.available).length;
+    // ADAPTIVE SCORING LOGIC - Check how many sources are available
+    const availableSourcesCount = availableSources.length;
     const sentimentSources = sources.slice(0, 3).filter(s => s.available).length;
     const technicalSources = sources.slice(3, 6).filter(s => s.available).length;
     
-    // Determine signal strength with recalibrated thresholds for quality
+    // Determine signal strength with adaptive thresholds based on available sources
     let signalStrength: 'WEAK' | 'MODERATE' | 'STRONG';
-    if (availableSources <= 3) {
-      // Degraded mode: still maintain quality standards
-      if (confidenceScore >= 0.7) signalStrength = 'STRONG';      // 70%+ = STRONG
-      else if (confidenceScore >= 0.5) signalStrength = 'MODERATE'; // 50-70% = MODERATE
+    if (availableSourcesCount >= 3) {
+      // Strong data availability - use confidence + votes
+      if (confidenceScore >= 0.65 && totalVotes >= 2.0) signalStrength = 'STRONG';
+      else if (confidenceScore >= 0.5 && totalVotes >= 1.5) signalStrength = 'MODERATE';
       else signalStrength = 'WEAK';
     } else {
-      // Normal mode: high quality thresholds
-      if (confidenceScore >= 0.7) signalStrength = 'STRONG';      // 70%+ = STRONG
-      else if (confidenceScore >= 0.5) signalStrength = 'MODERATE'; // 50-70% = MODERATE
+      // Limited data - be more flexible but still quality-focused
+      if (confidenceScore >= 0.6 && totalVotes >= 1.2) signalStrength = 'STRONG';
+      else if (confidenceScore >= 0.4 && totalVotes >= 0.8) signalStrength = 'MODERATE';
       else signalStrength = 'WEAK';
     }
 
@@ -189,25 +200,26 @@ export class SentimentStackingEngine {
     let recommendAction = false;
     
     // Base requirements: minimum confidence and sources
-    const hasMultipleSources = availableSources >= 2;
-    const hasValidTechnicalData = data.rsi !== undefined && data.rsi > 0 && 
-                                  data.volume_ratio !== undefined && data.volume_ratio > 0;
-    const hasQualitySentiment = sentimentSources >= 1 && totalVotes >= 1.0;
+    const hasMultipleSources = availableSourcesCount >= 2;
+    const hasValidTechnicalData = actualRSI !== undefined && actualRSI > 0 && 
+                                  actualVolumeRatio !== undefined && actualVolumeRatio > 0;
+    const hasQualitySentiment = sentimentSources >= 1;
     
-    if (availableSources <= 3) {
-      // Degraded mode: require quality even with limited data
+    // Adaptive recommendation logic based on available data quality
+    if (availableSourcesCount >= 3) {
+      // Good data availability - standard requirements
       recommendAction = (
-        confidenceScore >= 0.5 && // Minimum 50% confidence
-        totalVotes >= 1.5 && // Require meaningful votes
-        (hasQualitySentiment || hasValidTechnicalData) // Must have either sentiment or technical
+        confidenceScore >= 0.45 && // Minimum confidence
+        totalVotes >= 1.5 && // Meaningful vote count
+        hasMultipleSources && // Multiple source requirement
+        (hasQualitySentiment || hasValidTechnicalData) // Quality data requirement
       );
     } else {
-      // Normal mode: stricter requirements for quality signals
+      // Limited data - more flexible but still quality-focused
       recommendAction = (
-        confidenceScore >= 0.5 && // Minimum 50% confidence
-        totalVotes >= 2.0 && // Strong vote requirement
-        hasMultipleSources && // Require multiple sources
-        (hasQualitySentiment || hasValidTechnicalData) // Quality data requirement
+        confidenceScore >= 0.4 && // Lower confidence threshold
+        totalVotes >= 1.0 && // Lower vote requirement
+        (hasQualitySentiment || hasValidTechnicalData) // Still need quality data
       );
     }
 
@@ -218,9 +230,17 @@ export class SentimentStackingEngine {
       data.news_sentiment || -1
     );
     
-    if (strongSentiment > 0.6 && (data.volume_ratio || 0) > 1.2) {
+    // Apply boosts for strong signals
+    if (strongSentiment > 0.5 && (actualVolumeRatio || 0) > 1.2) {
       recommendAction = true;
       signalStrength = signalStrength === 'WEAK' ? 'MODERATE' : signalStrength;
+    }
+    
+    // RSI extreme conditions with volume boost
+    if (actualRSI !== undefined && ((actualRSI < 25 && strongSentiment > 0.3) || 
+        (actualRSI > 75 && (actualVolumeRatio || 0) > 1.5))) {
+      recommendAction = true;
+      if (signalStrength === 'WEAK') signalStrength = 'MODERATE';
     }
 
     // Voting breakdown by category
@@ -233,19 +253,23 @@ export class SentimentStackingEngine {
 
     // Enhanced debugging info with quality metrics
     const debugInfo = {
-      availableSources,
+      availableSources: availableSourcesCount,
       sentimentSources,
       technicalSources,
-      degradedMode: availableSources <= 3,
+      degradedMode: availableSourcesCount <= 3,
       strongSentiment,
-      volumeBoost: (data.volume_ratio || 0) > 1.2,
-      rsiExtreme: data.rsi !== undefined && (data.rsi < 25 || data.rsi > 75),
+      volumeBoost: (actualVolumeRatio || 0) > 1.2,
+      rsiExtreme: actualRSI !== undefined && (actualRSI < 25 || actualRSI > 75),
       hasValidTechnicalData: hasValidTechnicalData,
       hasQualitySentiment: hasQualitySentiment,
+      actualRSI,
+      actualVolumeRatio,
       dataQuality: {
         priceAvailable: data.polygon_available || data.yahoo_available,
-        rsiValid: data.rsi !== undefined && data.rsi > 0,
-        volumeValid: data.volume_ratio !== undefined && data.volume_ratio > 0
+        rsiValid: actualRSI !== undefined && actualRSI > 0,
+        volumeValid: actualVolumeRatio !== undefined && actualVolumeRatio > 0,
+        sentimentCount: sentimentSources,
+        technicalCount: technicalSources
       }
     };
 
