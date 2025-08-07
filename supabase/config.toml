@@ -67,3 +67,9 @@ verify_jwt = false
 
 [functions.polygon-market-data]
 verify_jwt = false
+
+[functions.google-trends]
+verify_jwt = false
+
+[functions.youtube-sentiment]
+verify_jwt = false
