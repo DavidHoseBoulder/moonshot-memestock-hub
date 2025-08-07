@@ -87,7 +87,7 @@ const DataSourceStatus = () => {
     setIsRefreshing(true);
     const timestamp = new Date().toLocaleString();
 
-    // Test payloads for each source
+    // Test payloads for each source - using realistic pipeline parameters
     const tests = [
       {
         name: 'Reddit',
@@ -97,17 +97,17 @@ const DataSourceStatus = () => {
       {
         name: 'Financial News',
         function: 'financial-news', 
-        payload: { symbols: ['AAPL'], days: 1 }
+        payload: { symbols: ['GME', 'AMC', 'TSLA', 'AAPL', 'NVDA'], days: 2 }  // Multiple symbols like pipeline
       },
       {
         name: 'StockTwits',
         function: 'stocktwits-data',
-        payload: { symbols: ['AAPL'], limit: 5 }
+        payload: { symbols: ['AAPL', 'TSLA', 'NVDA'], limit: 15 }  // Multiple symbols like pipeline
       },
       {
         name: 'Market Data (Yahoo)',
         function: 'enhanced-market-data',
-        payload: { symbols: ['AAPL'], days: 1 }
+        payload: { symbols: ['AAPL', 'TSLA', 'NVDA'], days: 21 }  // Multiple symbols like pipeline
       }
     ];
 
