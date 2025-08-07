@@ -73,43 +73,18 @@ Deno.serve(async (req) => {
       }
     }
 
-    // If no data from API, return mock data
+    // If no data from API, return empty results
     if (allMessages.length === 0) {
-      const mockMessages = [
-        {
-          id: 1,
-          body: "TSLA looking strong after earnings beat! Bullish on EV sector",
-          created_at: new Date().toISOString(),
-          user: { username: "trader123", followers: 1500 },
-          symbols: [{ symbol: "TSLA" }],
-          sentiment: { basic: "Bullish" as const }
-        },
-        {
-          id: 2,
-          body: "NVDA AI growth story intact, though valuation seems stretched",
-          created_at: new Date().toISOString(),
-          user: { username: "techanalyst", followers: 2300 },
-          symbols: [{ symbol: "NVDA" }],
-          sentiment: { basic: "Bullish" as const }
-        },
-        {
-          id: 3,
-          body: "Market volatility increasing, consider taking profits on AMD",
-          created_at: new Date().toISOString(),
-          user: { username: "marketwatch", followers: 5000 },
-          symbols: [{ symbol: "AMD" }],
-          sentiment: { basic: "Bearish" as const }
-        }
-      ];
-
+      console.log('No StockTwits data available - API may be down or rate limited')
+      
       return new Response(
         JSON.stringify({ 
-          messages: mockMessages,
-          totalResults: mockMessages.length,
-          isMockData: true,
-          source: 'StockTwits Mock'
+          messages: [],
+          totalResults: 0,
+          error: 'StockTwits API unavailable',
+          source: 'StockTwits API'
         }),
-        { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        { status: 503, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       )
     }
 

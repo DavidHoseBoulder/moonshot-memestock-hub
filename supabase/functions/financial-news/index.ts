@@ -30,33 +30,13 @@ Deno.serve(async (req) => {
     
     if (!newsApiKey) {
       console.error('Missing NEWS_API_KEY')
-      // Return mock data for testing
-      const mockArticles = [
-        {
-          title: "Tesla Stock Surges on Strong Q4 Earnings",
-          description: "Tesla reports better than expected earnings with strong EV delivery numbers",
-          content: "Tesla Inc. reported strong Q4 earnings beating analyst expectations...",
-          url: "https://example.com/tesla-earnings",
-          publishedAt: new Date().toISOString(),
-          source: { name: "Mock Financial News" }
-        },
-        {
-          title: "NVIDIA AI Chip Demand Continues to Drive Growth",
-          description: "NVIDIA sees continued strong demand for AI processors",
-          content: "NVIDIA Corporation continues to benefit from AI boom...",
-          url: "https://example.com/nvidia-ai",
-          publishedAt: new Date().toISOString(),
-          source: { name: "Mock Financial News" }
-        }
-      ];
-      
       return new Response(
         JSON.stringify({ 
-          articles: mockArticles,
-          totalResults: mockArticles.length,
-          isMockData: true 
+          error: 'News API key not configured',
+          articles: [],
+          totalResults: 0
         }),
-        { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        { status: 503, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       )
     }
 
