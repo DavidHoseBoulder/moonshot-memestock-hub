@@ -308,15 +308,29 @@ const DailyTradingPipeline = () => {
       let marketDataErrors: { [key: string]: string } = {};
       
       try {
-        // Try both Polygon and Yahoo in parallel with error capture
+        // Try both Polygon and Yahoo in parallel with enhanced error capture
+        console.log('🚀 Starting parallel market data fetch...');
         const [polygonResponse, yahooResponse] = await Promise.allSettled([
           supabase.functions.invoke('polygon-market-data', {
-            body: { symbols: allTickers, days: 21 }
+            body: { symbols: allTickers.slice(0, 5), days: 21 } // Limit for testing
+          }).catch(error => {
+            console.error('❌ Polygon function invocation error:', error);
+            return { error: { message: `Polygon invocation failed: ${error.message}` }, data: null };
           }),
           supabase.functions.invoke('enhanced-market-data', {
             body: { symbols: allTickers, days: 21 }
+          }).catch(error => {
+            console.error('❌ Enhanced market data invocation error:', error);
+            return { error: { message: `Enhanced market data failed: ${error.message}` }, data: null };
           })
         ]);
+        
+        console.log('📊 Market data responses received:', {
+          polygonStatus: polygonResponse.status,
+          yahooStatus: yahooResponse.status,
+          polygonSuccess: polygonResponse.status === 'fulfilled' && !polygonResponse.value.error,
+          yahooSuccess: yahooResponse.status === 'fulfilled' && !yahooResponse.value.error
+        });
         
         let polygonData = [];
         let yahooData = [];

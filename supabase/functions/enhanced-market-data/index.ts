@@ -47,12 +47,16 @@ Deno.serve(async (req) => {
 
     console.log(`Fetching enhanced market data for ${symbols.length} symbols over ${days} days`)
 
-    // Check for cached data first
+    // Check for cached data first - Fix stale cache issue
+    const cutoffTime = new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(); // 2 hours ago instead of 24
+    console.log(`Checking for cached data newer than: ${cutoffTime}`);
+    
     const { data: cachedData, error: cacheError } = await supabase
       .from('enhanced_market_data')
       .select('*')
       .in('symbol', symbols)
-      .gte('created_at', new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()) // 24 hours ago
+      .gte('created_at', cutoffTime) // Use shorter cache window
+      .eq('data_date', new Date().toISOString().split('T')[0]) // Ensure today's date
 
     if (cacheError) {
       console.error('Cache check error:', cacheError)

@@ -39,14 +39,15 @@ Deno.serve(async (req) => {
     const polygonApiKey = Deno.env.get('POLYGON_API_KEY')
     
     if (!polygonApiKey) {
-      console.error('Missing Polygon API key')
+      console.error('❌ Missing Polygon API key - returning fallback response')
       return new Response(
         JSON.stringify({ 
           success: false,
           error: 'Missing Polygon API key - configure in Supabase secrets',
-          enhanced_data: []
+          enhanced_data: [],
+          fallback_available: true
         }),
-        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       )
     }
 
