@@ -147,9 +147,11 @@ export class SentimentStackingEngine {
       this.evaluateSource('market_data_polygon', data.polygon_available ? 1 : 0, true, data.errors?.polygon),
       this.evaluateSource('market_data_yahoo', data.yahoo_available ? 1 : 0, true, data.errors?.yahoo),
       
-      // Future sources (will be 0 until implemented)
-      this.evaluateSource('google_trends', data.google_trends, data.google_trends !== undefined, data.errors?.google_trends),
-      this.evaluateSource('youtube_sentiment', data.youtube_sentiment, data.youtube_sentiment !== undefined, data.errors?.youtube)
+      // Future sources (only count as available if they have meaningful data)
+      this.evaluateSource('google_trends', data.google_trends, 
+        data.google_trends !== undefined && data.google_trends > 0.1, data.errors?.google_trends),
+      this.evaluateSource('youtube_sentiment', data.youtube_sentiment, 
+        data.youtube_sentiment !== undefined && data.youtube_sentiment > 0.1 && data.youtube_sentiment < 0.9, data.errors?.youtube)
     ];
 
     // Calculate weighted votes

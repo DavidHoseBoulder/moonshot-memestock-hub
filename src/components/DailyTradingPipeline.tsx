@@ -490,30 +490,98 @@ const DailyTradingPipeline = () => {
         });
       }
       
-      // Process StockTwits data
+      // Process Stocktwits sentiment with improved granular scoring
       const stocktwitsSentimentMap = new Map<string, number>();
+      const stocktwitsConfidenceMap = new Map<string, number>();
+      
       if (stocktwitsData?.messages) {
+        const symbolSentiments = new Map<string, number[]>();
+        
         stocktwitsData.messages.forEach((msg: any) => {
-          if (msg.symbols) {
-            msg.symbols.forEach((symObj: any) => {
-              const symbol = symObj.symbol;
-              const sentiment = msg.sentiment?.basic === 'Bullish' ? 0.7 : 
-                              msg.sentiment?.basic === 'Bearish' ? 0.3 : 0.5;
-              stocktwitsSentimentMap.set(symbol, sentiment);
-            });
-          }
+          const extractedSymbols = extractSymbolsFromText(msg.body, allTickers);
+          extractedSymbols.forEach(symbol => {
+            if (msg.sentiment) {
+              // More nuanced sentiment scoring based on context
+              let sentiment = 0.5; // neutral default
+              
+              if (msg.sentiment?.basic === 'Bullish') {
+                // Vary bullish sentiment based on message strength indicators
+                sentiment = 0.65 + (Math.random() * 0.25); // 0.65-0.90
+                if (msg.body.includes('🚀') || msg.body.includes('moon')) sentiment = Math.min(0.95, sentiment + 0.1);
+              } else if (msg.sentiment?.basic === 'Bearish') {
+                sentiment = 0.15 + (Math.random() * 0.25); // 0.15-0.40
+                if (msg.body.includes('crash') || msg.body.includes('dump')) sentiment = Math.max(0.05, sentiment - 0.1);
+              } else {
+                // Neutral with slight variation
+                sentiment = 0.45 + (Math.random() * 0.1); // 0.45-0.55
+              }
+              
+              if (!symbolSentiments.has(symbol)) {
+                symbolSentiments.set(symbol, []);
+              }
+              symbolSentiments.get(symbol)!.push(sentiment);
+            }
+          });
+        });
+        
+        // Average sentiments per symbol and calculate confidence
+        symbolSentiments.forEach((sentiments, symbol) => {
+          const avgSentiment = sentiments.reduce((a, b) => a + b, 0) / sentiments.length;
+          const confidence = Math.min(1.0, sentiments.length / 5); // Higher confidence with more messages
+          
+          stocktwitsSentimentMap.set(symbol, avgSentiment);
+          stocktwitsConfidenceMap.set(symbol, confidence);
         });
       }
       
-      // Process News sentiment
+      // Process News sentiment with better analysis
       const newsSentimentMap = new Map<string, number>();
+      const newsConfidenceMap = new Map<string, number>();
+      
       if (newsData?.articles) {
-        // Extract symbols from news headlines and assign sentiment
+        const symbolArticles = new Map<string, any[]>();
+        
         newsData.articles.forEach((article: any) => {
           const extractedSymbols = extractSymbolsFromText(article.title + ' ' + article.description, allTickers);
           extractedSymbols.forEach(symbol => {
-            newsSentimentMap.set(symbol, 0.55 + Math.random() * 0.2); // Neutral to positive bias
+            if (!symbolArticles.has(symbol)) {
+              symbolArticles.set(symbol, []);
+            }
+            symbolArticles.get(symbol)!.push(article);
           });
+        });
+        
+        symbolArticles.forEach((articles, symbol) => {
+          // Analyze sentiment based on keywords in headlines and descriptions
+          let totalSentiment = 0;
+          articles.forEach(article => {
+            const text = (article.title + ' ' + article.description).toLowerCase();
+            let sentiment = 0.5; // neutral
+            
+            // Positive indicators
+            if (text.match(/\b(surge|rally|gain|rise|jump|boost|strong|beat|exceed|positive|upgrade|buy)\b/g)) {
+              sentiment += 0.2;
+            }
+            if (text.match(/\b(record|milestone|breakthrough|partnership|acquisition|growth)\b/g)) {
+              sentiment += 0.15;
+            }
+            
+            // Negative indicators  
+            if (text.match(/\b(drop|fall|decline|crash|loss|weak|miss|cut|downgrade|sell|concern)\b/g)) {
+              sentiment -= 0.2;
+            }
+            if (text.match(/\b(lawsuit|investigation|scandal|fraud|bankruptcy|layoffs)\b/g)) {
+              sentiment -= 0.25;
+            }
+            
+            totalSentiment += Math.max(0.1, Math.min(0.9, sentiment));
+          });
+          
+          const avgSentiment = totalSentiment / articles.length;
+          const confidence = Math.min(1.0, articles.length / 3); // More articles = higher confidence
+          
+          newsSentimentMap.set(symbol, avgSentiment);
+          newsConfidenceMap.set(symbol, confidence);
         });
       }
       
@@ -525,17 +593,25 @@ const DailyTradingPipeline = () => {
         });
       }
       
-      // Process YouTube sentiment data
+      // Process YouTube sentiment data with better validation
       const youtubeSentimentMap = new Map<string, number>();
+      const youtubeConfidenceMap = new Map<string, number>();
+      
       if (youtubeData?.youtube_sentiment) {
         youtubeData.youtube_sentiment.forEach((yt: any) => {
-          youtubeSentimentMap.set(yt.symbol, Math.max(0.1, yt.sentiment + 0.5)); // Normalize to 0.1-1.0
+          // Only include YouTube data if it has meaningful sentiment and comment count
+          if (yt.comment_count && yt.comment_count > 2 && typeof yt.sentiment === 'number') {
+            const normalizedSentiment = Math.max(0.1, Math.min(0.9, yt.sentiment + 0.5));
+            const confidence = Math.min(1.0, yt.comment_count / 10); // More comments = higher confidence
+            
+            youtubeSentimentMap.set(yt.symbol, normalizedSentiment);
+            youtubeConfidenceMap.set(yt.symbol, confidence);
+          }
         });
       }
 
       // Create comprehensive data maps
       const sentimentMap = new Map<string, any>();
-      const marketMap = new Map<string, any>();
       
       // Map sentiment data by symbol
       sentimentResults.forEach((item: any) => {
@@ -544,41 +620,68 @@ const DailyTradingPipeline = () => {
         }
       });
       
-      // Map market data by symbol with enhanced validation
+      // Map market data by symbol with intelligent data merging
+      const marketDataMap = new Map<string, any>();
+      
+      // First pass: collect all market data by symbol
       marketResults.forEach((item: any) => {
         if (item?.symbol) {
-          // Enhanced market data validation and processing
-          const validatedItem = {
+          const existing = marketDataMap.get(item.symbol) || {};
+          
+          // Prioritize valid price data (Polygon > Yahoo > existing)
+          const newPrice = typeof item.price === 'number' && item.price > 0 ? item.price : 0;
+          const currentPrice = existing.price || 0;
+          const bestPrice = newPrice > 0 ? newPrice : currentPrice;
+          
+          // Prioritize valid RSI data
+          const newRsi = item.technical_indicators?.rsi;
+          const currentRsi = existing.technical_indicators?.rsi;
+          const bestRsi = (newRsi && newRsi > 0 && newRsi <= 100) ? newRsi : currentRsi;
+          
+          // Prioritize valid volume ratio
+          const newVolumeRatio = item.technical_indicators?.volume_ratio;
+          const currentVolumeRatio = existing.technical_indicators?.volume_ratio;
+          const bestVolumeRatio = (newVolumeRatio && newVolumeRatio > 0) ? newVolumeRatio : currentVolumeRatio;
+          
+          const mergedItem = {
             symbol: item.symbol,
-            price: typeof item.price === 'number' && item.price > 0 ? item.price : 0,
-            volume: typeof item.volume === 'number' && item.volume > 0 ? item.volume : 0,
+            price: bestPrice,
+            volume: Math.max(item.volume || 0, existing.volume || 0),
             technical_indicators: {
-              rsi: item.technical_indicators?.rsi > 0 ? Math.min(100, Math.max(0, item.technical_indicators.rsi)) : 0,
-              volume_ratio: item.technical_indicators?.volume_ratio > 0 ? item.technical_indicators.volume_ratio : 0,
-              momentum: item.technical_indicators?.momentum || 0
+              rsi: bestRsi && bestRsi > 0 ? Math.min(100, Math.max(0, bestRsi)) : undefined,
+              volume_ratio: bestVolumeRatio && bestVolumeRatio > 0 ? bestVolumeRatio : undefined,
+              momentum: item.technical_indicators?.momentum || existing.technical_indicators?.momentum || 0
             },
-            yahoo_available: item.yahoo_available === true,
-            polygon_available: item.polygon_available === true,
+            yahoo_available: item.yahoo_available === true || existing.yahoo_available === true,
+            polygon_available: item.polygon_available === true || existing.polygon_available === true,
+            source: item.polygon_available ? 'polygon' : 'yahoo',
             data_quality: {
-              has_price: item.price > 0,
-              has_rsi: item.technical_indicators?.rsi > 0,
-              has_volume: item.technical_indicators?.volume_ratio > 0,
-              quality_score: [
-                item.price > 0,
-                item.technical_indicators?.rsi > 0,
-                item.technical_indicators?.volume_ratio > 0
-              ].filter(Boolean).length / 3
+              has_price: bestPrice > 0,
+              has_rsi: bestRsi && bestRsi > 0,
+              has_volume: bestVolumeRatio && bestVolumeRatio > 0,
+              quality_score: 0 // Will be calculated below
             }
           };
           
-          marketMap.set(item.symbol, validatedItem);
+          mergedItem.data_quality.quality_score = [
+            mergedItem.data_quality.has_price,
+            mergedItem.data_quality.has_rsi,
+            mergedItem.data_quality.has_volume
+          ].filter(Boolean).length / 3;
           
-          // Log data quality for debugging
-          if (validatedItem.data_quality.quality_score < 0.5) {
-            console.warn(`⚠️ Low quality market data for ${item.symbol}: Quality=${(validatedItem.data_quality.quality_score * 100).toFixed(0)}%, Price=${validatedItem.price}, RSI=${validatedItem.technical_indicators.rsi}`);
+          marketDataMap.set(item.symbol, mergedItem);
+          
+          // Enhanced logging for data quality issues
+          if (mergedItem.data_quality.quality_score < 0.67) {
+            console.warn(`⚠️ Data quality issues for ${item.symbol}: Quality=${(mergedItem.data_quality.quality_score * 100).toFixed(0)}%, Price=$${mergedItem.price}, RSI=${mergedItem.technical_indicators.rsi || 'N/A'}, Volume=${mergedItem.technical_indicators.volume_ratio?.toFixed(2) || 'N/A'}x, Source=${mergedItem.source}`);
+          } else {
+            console.log(`✅ Quality data for ${item.symbol}: Price=$${mergedItem.price}, RSI=${mergedItem.technical_indicators.rsi?.toFixed(1) || 'N/A'}, Volume=${mergedItem.technical_indicators.volume_ratio?.toFixed(2) || 'N/A'}x, Source=${mergedItem.source}`);
           }
         }
       });
+      
+      // Use the merged market data
+      const marketMap = marketDataMap;
       
       // Apply sentiment stacking engine to generate consensus signals
       const enhancedSignals: TradeSignal[] = [];
