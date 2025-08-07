@@ -37,6 +37,7 @@ interface SentimentData {
 interface MarketData {
   symbol: string;
   price: number;
+  volume: number;
   technical_indicators: {
     rsi: number;
     volume_ratio: number;
@@ -87,6 +88,7 @@ const DailyTradingPipeline = () => {
     const sampleMarket: MarketData[] = sampleTickers.map(ticker => ({
       symbol: ticker,
       price: 50 + Math.random() * 200,
+      volume: Math.floor(1000000 + Math.random() * 5000000), // Add volume
       technical_indicators: {
         rsi: 20 + Math.random() * 60,
         volume_ratio: 0.5 + Math.random() * 3,
@@ -290,9 +292,42 @@ const DailyTradingPipeline = () => {
         marketKeys: Array.from(marketMap.keys()).slice(0, 10)
       });
 
-      // Generate signals based on enhanced criteria
-      const processedTickers = Array.from(new Set([...sentimentMap.keys(), ...marketMap.keys()])).slice(0, 20);
+      // Generate signals only for symbols with valid market data
+      // Filter out symbols with default/insufficient market data
+      const validMarketSymbols = Array.from(marketMap.entries())
+        .filter(([symbol, data]) => {
+          // Only include symbols with non-default technical indicators
+          const rsi = data?.technical_indicators?.rsi;
+          const hasValidRSI = rsi && rsi !== 50; // Filter out default RSI=50
+          const hasValidPrice = data?.price && data.price > 0;
+          const hasValidVolume = data?.volume && data.volume > 0;
+          
+          if (!hasValidRSI || !hasValidPrice || !hasValidVolume) {
+            addDebugInfo(`FILTERED_OUT_${symbol}`, {
+              reason: "Insufficient market data",
+              rsi: rsi,
+              price: data?.price,
+              volume: data?.volume,
+              hasValidRSI,
+              hasValidPrice,
+              hasValidVolume
+            });
+            return false;
+          }
+          return true;
+        })
+        .map(([symbol, _]) => symbol);
+
+      // Only process symbols with valid market data or strong sentiment data
+      const processedTickers = validMarketSymbols.slice(0, 20); // Prioritize symbols with valid market data
       let signalsGenerated = 0;
+      
+      addDebugInfo("FILTERED_SYMBOLS", {
+        totalSymbols: Array.from(new Set([...sentimentMap.keys(), ...marketMap.keys()])).length,
+        validMarketSymbols: validMarketSymbols.length,
+        processedTickers: processedTickers.length,
+        filteredSymbols: processedTickers
+      });
       
       for (const ticker of processedTickers) {
         const sentimentData = sentimentMap.get(ticker);
@@ -306,7 +341,8 @@ const DailyTradingPipeline = () => {
           marketRSI: marketData?.technical_indicators?.rsi
         });
         
-        if (!sentimentData && !marketData) continue;
+        // Skip if no market data (should be filtered out above, but double-check)
+        if (!marketData) continue;
         
         // Enhanced signal generation logic with safe property access
         const sentiment_score = sentimentData?.current_sentiment || 0;
