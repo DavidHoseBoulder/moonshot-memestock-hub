@@ -588,7 +588,7 @@ const DailyTradingPipeline = () => {
         if (stackingResult.recommendAction) {
           const signal: TradeSignal = {
             ticker: ticker,
-            category: CATEGORIES.find(cat => getStocksByCategory(cat).map(stock => stock.symbol).includes(ticker)) || 'UNKNOWN',
+            category: CATEGORIES.find(cat => getStocksByCategory(cat).map(stock => stock.ticker).includes(ticker)) || 'UNKNOWN',
             signal_type: 'BUY',
             confidence: stackingResult.confidenceScore,
             price: marketData?.price || 0,
