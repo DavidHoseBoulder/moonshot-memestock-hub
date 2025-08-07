@@ -51,29 +51,37 @@ const DataSourceStatus = () => {
                         data?.mock || 
                         (data?.posts && data.posts.length === 1 && data.posts[0]?.title?.includes('Sample'));
 
+      // For non-success responses (like Reddit 503), mark as unavailable
+      if (data?.success === false) {
+        return {
+          status: 'unavailable' as const,
+          responseTime,
+          errorMessage: data?.error || 'Service unavailable',
+          mockData: false,
+          dataCount: 0
+        };
+      }
+
+      // Check if we got actual data
+      const dataCount = data?.posts?.length || 
+                       data?.articles?.length || 
+                       data?.messages?.length || 
+                       data?.enhanced_data?.length || 0;
+      
       // Determine status based on response
       let status: 'available' | 'partial' | 'unavailable' = 'available';
       if (isMockData) {
         status = 'partial'; // Partial means working but returning mock data
-      } else if (!data?.success) {
+      } else if (dataCount === 0) {
         status = 'unavailable';
-      } else {
-        // Check if we got actual data
-        const hasData = (data?.posts && data.posts.length > 0) ||
-                       (data?.articles && data.articles.length > 0) ||
-                       (data?.messages && data.messages.length > 0) ||
-                       (data?.enhanced_data && data.enhanced_data.length > 0);
-        if (!hasData) {
-          status = 'unavailable';
-        }
       }
 
       return {
         status,
         responseTime,
         mockData: isMockData,
-        dataCount: data?.posts?.length || data?.articles?.length || data?.messages?.length || data?.enhanced_data?.length || 0,
-        errorMessage: status === 'unavailable' ? (data?.error || 'No data returned') : undefined
+        dataCount,
+        errorMessage: status === 'unavailable' ? 'No data returned' : undefined
       };
 
     } catch (error) {
