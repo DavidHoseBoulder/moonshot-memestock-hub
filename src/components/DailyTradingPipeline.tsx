@@ -915,8 +915,8 @@ const DailyTradingPipeline = () => {
         stackingResults.push(stackingResult);
         addDebugInfo(`STACKING_${ticker}`, stackingResult);
         
-        // Generate signal only for quality recommendations
-        if (stackingResult.recommendAction && stackingResult.confidenceScore >= 0.5) {
+        // Generate signal only for quality recommendations that pass coverage gate
+        if (stackingResult.recommendAction && stackingResult.passedCoverageGate && stackingResult.confidenceScore >= 0.5) {
           // Enhanced category classification to fix "UNKNOWN" issues
           let category = 'UNKNOWN';
           const stockByCategory = CATEGORIES.find(cat => 
@@ -1152,16 +1152,96 @@ const DailyTradingPipeline = () => {
 
         <TabsContent value="stacking" className="space-y-4">
           {stackingResults.length > 0 ? (
-            <div className="grid gap-4">
-              {stackingResults
-                .sort((a, b) => b.confidenceScore - a.confidenceScore)
-                .map((result, index) => (
-                  <StackingVisualizer 
-                    key={index} 
-                    result={result} 
-                    showDetails={index < 5} // Show details for top 5
-                  />
-                ))}
+            <div className="space-y-6">
+              {/* Quality sentiment-backed recommendations */}
+              <div className="bg-white p-6 rounded-lg shadow-md">
+                <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
+                  <TrendingUp className="w-5 h-5 text-green-600" />
+                  Quality Sentiment-Backed Recommendations ({stackingResults.filter(result => result.recommendAction && result.passedCoverageGate).length})
+                </h3>
+                
+                {stackingResults.filter(result => result.recommendAction && !result.passedCoverageGate).length > 0 && (
+                  <div className="mb-4 p-3 bg-amber-50 border border-amber-200 rounded-md">
+                    <div className="flex items-center gap-2 text-amber-800 text-sm">
+                      <AlertTriangle className="w-4 h-4" />
+                      <span className="font-medium">Coverage Gate Active:</span>
+                      <span>{stackingResults.filter(result => result.recommendAction && !result.passedCoverageGate).length} technical-only signals filtered out (no sentiment data)</span>
+                    </div>
+                  </div>
+                )}
+
+                {stackingResults.filter(result => result.recommendAction && result.passedCoverageGate).length === 0 ? (
+                  <div className="text-center py-8 text-gray-500">
+                    <AlertTriangle className="w-12 h-12 mx-auto mb-4 text-gray-400" />
+                    <p>No sentiment-backed recommendations found.</p>
+                    <p className="text-sm">
+                      {stackingResults.filter(result => result.recommendAction && !result.passedCoverageGate).length > 0 
+                        ? `${stackingResults.filter(result => result.recommendAction && !result.passedCoverageGate).length} technical-only signals are available but lack sentiment confirmation`
+                        : 'Waiting for quality sentiment signals...'
+                      }
+                    </p>
+                  </div>
+                ) : (
+                  <div className="grid gap-4">
+                    {stackingResults
+                      .filter(result => result.recommendAction && result.passedCoverageGate)
+                      .sort((a, b) => b.confidenceScore - a.confidenceScore)
+                      .map((result, index) => (
+                        <StackingVisualizer 
+                          key={index} 
+                          result={result} 
+                          showDetails={true}
+                        />
+                      ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Technical-Only Signals (Coverage Gate Filtered) */}
+              {stackingResults.filter(result => result.recommendAction && !result.passedCoverageGate).length > 0 && (
+                <div className="bg-gray-50 p-6 rounded-lg border border-amber-200">
+                  <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
+                    <AlertTriangle className="w-5 h-5 text-amber-600" />
+                    Technical-Only Signals (Filtered by Coverage Gate)
+                  </h3>
+                  <p className="text-sm text-gray-600 mb-4">
+                    These signals have strong technical indicators but lack sentiment data confirmation.
+                    They're filtered out to ensure recommendation quality.
+                  </p>
+                  <div className="grid gap-4">
+                    {stackingResults
+                      .filter(result => result.recommendAction && !result.passedCoverageGate)
+                      .sort((a, b) => b.confidenceScore - a.confidenceScore)
+                      .slice(0, 4)
+                      .map((result, index) => (
+                        <StackingVisualizer 
+                          key={index} 
+                          result={result} 
+                          showDetails={true} 
+                        />
+                      ))}
+                  </div>
+                </div>
+              )}
+
+              {/* All Other Analysis */}
+              <div className="bg-gray-50 p-6 rounded-lg">
+                <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
+                  <Activity className="w-5 h-5 text-blue-600" />
+                  All Stacking Analysis
+                </h3>
+                <div className="grid gap-4">
+                  {stackingResults
+                    .sort((a, b) => b.confidenceScore - a.confidenceScore)
+                    .map((result, index) => (
+                      <StackingVisualizer 
+                        key={index} 
+                        result={result} 
+                        showDetails={index < 6} // Show details for top 6
+                      />
+                    ))}
+                </div>
+              </div>
             </div>
           ) : (
             <Card className="p-8 text-center">

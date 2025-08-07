@@ -37,11 +37,20 @@ export interface StackingResult {
   confidenceScore: number;
   signalStrength: 'WEAK' | 'MODERATE' | 'STRONG';
   recommendAction: boolean;
+  passedCoverageGate: boolean;
   votingBreakdown: {
     sentiment: number;
     technical: number;
     market_data: number;
     future_sources: number;
+  };
+  coverageGate: {
+    sentimentScore: number;
+    technicalScore: number;
+    minSentimentThreshold: number;
+    minTechnicalThreshold: number;
+    minConfidenceThreshold: number;
+    reason?: string;
   };
   debugInfo?: {
     availableSources: number;
@@ -78,8 +87,38 @@ export const DEFAULT_STACKING_CONFIG: StackingConfig = {
 export class SentimentStackingEngine {
   private config: StackingConfig;
   
+  // Coverage gate thresholds
+  private static readonly MIN_SENTIMENT_SCORE = 0.1;      // ensures sentiment data is present and positive
+  private static readonly MIN_TECHNICAL_SCORE = 0.5;      // ensures technical confirmation
+  private static readonly MIN_CONFIDENCE = 55.0;          // overall system confidence floor
+
   constructor(config: StackingConfig = DEFAULT_STACKING_CONFIG) {
     this.config = config;
+  }
+
+  /**
+   * Coverage gate to ensure quality recommendations with actual sentiment backing
+   */
+  private coverageGate(result: {
+    sentimentScore: number;
+    technicalScore: number;
+    confidence: number;
+  }): { passed: boolean; reason?: string } {
+    const hasSentiment = result.sentimentScore >= SentimentStackingEngine.MIN_SENTIMENT_SCORE;
+    const hasTechnical = result.technicalScore >= SentimentStackingEngine.MIN_TECHNICAL_SCORE;
+    const meetsConfidence = result.confidence >= SentimentStackingEngine.MIN_CONFIDENCE;
+
+    if (!hasSentiment) {
+      return { passed: false, reason: 'No meaningful sentiment data available' };
+    }
+    if (!hasTechnical) {
+      return { passed: false, reason: 'Insufficient technical confirmation' };
+    }
+    if (!meetsConfidence) {
+      return { passed: false, reason: 'Below minimum confidence threshold' };
+    }
+
+    return { passed: true };
   }
 
   // Evaluate a single data source against its threshold
@@ -251,6 +290,16 @@ export class SentimentStackingEngine {
       future_sources: sources.slice(8).filter(s => s.passed).reduce((sum, s) => sum + s.weight, 0)
     };
 
+    // Apply coverage gate to filter out low-quality recommendations
+    const gateCheck = this.coverageGate({
+      sentimentScore: votingBreakdown.sentiment,
+      technicalScore: votingBreakdown.technical + votingBreakdown.market_data,
+      confidence: confidenceScore * 100
+    });
+
+    // Override recommendation if it doesn't pass coverage gate
+    const finalRecommendAction = recommendAction && gateCheck.passed;
+
     // Enhanced debugging info with quality metrics
     const debugInfo = {
       availableSources: availableSourcesCount,
@@ -280,8 +329,17 @@ export class SentimentStackingEngine {
       maxPossibleVotes,
       confidenceScore,
       signalStrength,
-      recommendAction,
+      recommendAction: finalRecommendAction,
+      passedCoverageGate: gateCheck.passed,
       votingBreakdown,
+      coverageGate: {
+        sentimentScore: votingBreakdown.sentiment,
+        technicalScore: votingBreakdown.technical + votingBreakdown.market_data,
+        minSentimentThreshold: SentimentStackingEngine.MIN_SENTIMENT_SCORE,
+        minTechnicalThreshold: SentimentStackingEngine.MIN_TECHNICAL_SCORE,
+        minConfidenceThreshold: SentimentStackingEngine.MIN_CONFIDENCE,
+        reason: gateCheck.reason
+      },
       debugInfo // Add debug info to help understand decisions
     };
   }
@@ -336,6 +394,12 @@ export const StackingVisualizer: React.FC<StackingVisualizerProps> = ({
           <span>Votes: {result.totalVotes.toFixed(1)} / {result.maxPossibleVotes.toFixed(1)}</span>
           <span>{result.recommendAction ? '✅ Recommended' : '❌ Not Recommended'}</span>
         </div>
+        
+        {!result.passedCoverageGate && (
+          <div className="bg-amber-50 border border-amber-200 rounded-md p-2 text-xs text-amber-800">
+            <strong>Coverage Gate:</strong> {result.coverageGate.reason}
+          </div>
+        )}
       </div>
 
       {showDetails && (
@@ -358,6 +422,34 @@ export const StackingVisualizer: React.FC<StackingVisualizerProps> = ({
             <div className="flex justify-between">
               <span>Future Sources:</span>
               <span>{result.votingBreakdown.future_sources.toFixed(1)}</span>
+            </div>
+          </div>
+
+          <div className="bg-gray-50 rounded-md p-2 space-y-1 text-xs">
+            <h6 className="font-medium">Coverage Gate Status</h6>
+            <div className="flex justify-between">
+              <span>Sentiment Score:</span>
+              <span className={result.coverageGate.sentimentScore >= result.coverageGate.minSentimentThreshold ? 'text-green-600' : 'text-red-600'}>
+                {result.coverageGate.sentimentScore.toFixed(1)} (≥{result.coverageGate.minSentimentThreshold})
+              </span>
+            </div>
+            <div className="flex justify-between">
+              <span>Technical Score:</span>
+              <span className={result.coverageGate.technicalScore >= result.coverageGate.minTechnicalThreshold ? 'text-green-600' : 'text-red-600'}>
+                {result.coverageGate.technicalScore.toFixed(1)} (≥{result.coverageGate.minTechnicalThreshold})
+              </span>
+            </div>
+            <div className="flex justify-between">
+              <span>Confidence:</span>
+              <span className={(result.confidenceScore * 100) >= result.coverageGate.minConfidenceThreshold ? 'text-green-600' : 'text-red-600'}>
+                {(result.confidenceScore * 100).toFixed(1)}% (≥{result.coverageGate.minConfidenceThreshold}%)
+              </span>
+            </div>
+            <div className="flex justify-between font-medium">
+              <span>Passed Gate:</span>
+              <span className={result.passedCoverageGate ? 'text-green-600' : 'text-red-600'}>
+                {result.passedCoverageGate ? '✅ Yes' : '❌ No'}
+              </span>
             </div>
           </div>
 
