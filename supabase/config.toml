@@ -38,6 +38,9 @@ security_update_password_require_reauthentication = true
 [functions.reddit-auth]
 verify_jwt = false
 
+[functions.bulk-historical-import]
+verify_jwt = false
+
 [functions.ai-sentiment-analysis]
 verify_jwt = false
 

@@ -1,3 +1,4 @@
+import BulkHistoricalImport from "./BulkHistoricalImport";
 import { useState } from "react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -438,6 +439,9 @@ const DailyTradingPipeline = () => {
           </div>
         )}
       </div>
+
+      {/* Bulk Historical Import Component */}
+      <BulkHistoricalImport />
 
       {/* Enhanced Pipeline Control */}
       <Card className="p-6 bg-gradient-to-br from-blue-50 to-purple-50 border-blue-200">
