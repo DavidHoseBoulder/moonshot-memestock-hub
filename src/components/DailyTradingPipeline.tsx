@@ -412,19 +412,19 @@ const DailyTradingPipeline = () => {
       });
 
       // Generate signals only for symbols with valid market data
-      // More aggressive filtering to eliminate default/insufficient data
+      // Realistic validation for legitimate market data
       const validMarketSymbols = Array.from(marketMap.entries())
         .filter(([symbol, data]) => {
-          // Strict validation for real market data
+          // Basic validation for real market data
           const rsi = data?.technical_indicators?.rsi;
           const volume_ratio = data?.technical_indicators?.volume_ratio;
           const momentum = data?.technical_indicators?.momentum;
           
-          const hasValidRSI = rsi && rsi !== 50 && rsi > 0 && rsi < 100; // No default RSI=50
+          const hasValidRSI = rsi && rsi > 0 && rsi <= 100; // Valid RSI range
           const hasValidPrice = data?.price && data.price > 0;
           const hasValidVolume = data?.volume && data.volume > 0;
-          const hasValidVolumeRatio = volume_ratio && volume_ratio !== 1.0; // No default volume_ratio=1.0
-          const hasValidMomentum = momentum !== undefined && momentum !== 0; // No default momentum=0
+          const hasValidVolumeRatio = volume_ratio && volume_ratio > 0; // Positive volume ratio
+          const hasValidMomentum = momentum !== undefined; // Momentum can be 0, negative, or positive
           
           // All conditions must pass for valid data
           const isValid = hasValidRSI && hasValidPrice && hasValidVolume && 
