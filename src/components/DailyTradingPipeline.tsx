@@ -66,6 +66,8 @@ const DailyTradingPipeline = () => {
   const [stackingEngine] = useState(() => new SentimentStackingEngine(DEFAULT_STACKING_CONFIG));
   const { toast } = useToast();
 
+  // NOTE: When adding new data sources (Google Trends, YouTube, etc.), 
+  // ensure they are properly logged here with detailed debug info
   const addDebugInfo = (step: string, data: any) => {
     const debugEntry = {
       step,
@@ -279,14 +281,33 @@ const DailyTradingPipeline = () => {
           polygonAvailable = polygonData.length > 0;
           addDebugInfo("POLYGON_DATA_SUCCESS", { 
             dataCount: polygonData.length,
-            source: "polygon"
+            source: "polygon",
+            sampleData: polygonData.slice(0, 2),
+            totalSymbolsRequested: allTickers.length,
+            polygonDetails: {
+              success: polygonResponse.value.data?.success,
+              symbolsProcessed: polygonResponse.value.data?.total_processed,
+              symbolsRequested: polygonResponse.value.data?.symbols_requested,
+              sourcesUsed: polygonResponse.value.data?.sources_used,
+              errors: polygonResponse.value.data?.errors
+            }
           });
         } else {
           const errorMsg = polygonResponse.status === 'fulfilled' ? 
             polygonResponse.value.error?.message || 'Unknown error' : 
             'Promise rejected';
           marketDataErrors.polygon = errorMsg;
-          addDebugInfo("POLYGON_DATA_FAILED", { error: errorMsg });
+          addDebugInfo("POLYGON_DATA_FAILED", { 
+            error: errorMsg,
+            fullResponse: polygonResponse.status === 'fulfilled' ? polygonResponse.value : 'Promise rejected',
+            symbolsRequested: allTickers.length,
+            polygonDetails: polygonResponse.status === 'fulfilled' ? {
+              rawResponse: polygonResponse.value,
+              hasData: !!polygonResponse.value.data,
+              dataSuccess: polygonResponse.value.data?.success,
+              errorDetails: polygonResponse.value.error || polygonResponse.value.data?.error
+            } : null
+          });
         }
         
         // Process Yahoo results (reliable fallback)
@@ -666,8 +687,9 @@ const DailyTradingPipeline = () => {
       </div>
 
       <Tabs defaultValue="pipeline" className="w-full">
-        <TabsList className="grid w-full grid-cols-3">
+        <TabsList className="grid w-full grid-cols-4">
           <TabsTrigger value="pipeline">Signal Generation</TabsTrigger>
+          <TabsTrigger value="stacking">Stacking Results</TabsTrigger>
           <TabsTrigger value="performance">Performance Tracking</TabsTrigger>
           <TabsTrigger value="data-sources">Data Sources</TabsTrigger>
         </TabsList>
@@ -889,6 +911,33 @@ const DailyTradingPipeline = () => {
           <p className="text-sm mt-2">Expected: Higher signal quality with multiple data sources</p>
         </Card>
       )}
+        </TabsContent>
+        
+        <TabsContent value="stacking">
+          <div className="space-y-6">
+            <h3 className="font-bold text-xl flex items-center">
+              <Layers className="w-5 h-5 mr-2 text-blue-600" />
+              Sentiment Stacking Results ({stackingResults.length})
+            </h3>
+            
+            {stackingResults.length > 0 ? (
+              <div className="grid gap-4">
+                {stackingResults.map((result, index) => (
+                  <StackingVisualizer 
+                    key={index} 
+                    result={result} 
+                    showDetails={true} 
+                  />
+                ))}
+              </div>
+            ) : (
+              <Card className="p-8 text-center text-muted-foreground">
+                <Layers className="w-12 h-12 mx-auto mb-4 text-gray-400" />
+                <h3 className="font-semibold mb-2">No Stacking Results</h3>
+                <p>Run the pipeline to see detailed sentiment stacking analysis</p>
+              </Card>
+            )}
+          </div>
         </TabsContent>
         
         <TabsContent value="performance">
