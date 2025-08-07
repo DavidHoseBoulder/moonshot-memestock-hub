@@ -823,7 +823,7 @@ const DailyTradingPipeline = () => {
         </TabsContent>
 
         <TabsContent value="debug" className="space-y-4">
-          {showDebug && debugInfo.length > 0 ? (
+          {debugInfo.length > 0 ? (
             <div className="space-y-2">
               {debugInfo.map((info, index) => (
                 <Card key={index} className="p-3">
