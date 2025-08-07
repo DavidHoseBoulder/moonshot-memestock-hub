@@ -247,43 +247,22 @@ const DailyTradingPipeline = () => {
         sampleResults: enhancedSentimentData?.enhanced_sentiment?.slice(0, 3) || []
       });
 
-      // Step 3: Fetch from both market data sources in parallel for comprehensive coverage
-      setCurrentTask("Fetching market data from multiple sources (Polygon + Yahoo)...");
+      // Step 3: Fetch market data from Yahoo Finance (Polygon disabled due to rate limits)
+      setCurrentTask("Fetching market data from Yahoo Finance...");
       let enhancedMarketData;
       let marketError;
       
       try {
-        // Fetch from both sources simultaneously
-        const [polygonResponse, yahooResponse] = await Promise.allSettled([
-          supabase.functions.invoke('polygon-market-data', {
-            body: { symbols: allTickers, days: 21 }
-          }),
+        // Only use Yahoo Finance (reliable and fast)
+        const [yahooResponse] = await Promise.allSettled([
           supabase.functions.invoke('enhanced-market-data', {
             body: { symbols: allTickers, days: 21 }
           })
         ]);
         
-        let polygonData = [];
         let yahooData = [];
         
-        // Process Polygon results
-        if (polygonResponse.status === 'fulfilled' && 
-            !polygonResponse.value.error && 
-            polygonResponse.value.data?.success) {
-          polygonData = polygonResponse.value.data.enhanced_data || [];
-          addDebugInfo("POLYGON_DATA_SUCCESS", { 
-            dataCount: polygonData.length,
-            source: "polygon"
-          });
-        } else {
-          addDebugInfo("POLYGON_DATA_FAILED", { 
-            error: polygonResponse.status === 'fulfilled' ? 
-              polygonResponse.value.error?.message : 
-              'Promise rejected'
-          });
-        }
-        
-        // Process Yahoo results
+        // Process Yahoo results (only source now)
         if (yahooResponse.status === 'fulfilled' && 
             !yahooResponse.value.error && 
             yahooResponse.value.data?.success) {
@@ -300,49 +279,21 @@ const DailyTradingPipeline = () => {
           });
         }
         
-        // Merge data with Polygon taking priority for conflicts
-        const mergedData = new Map();
-        
-        // Add Yahoo data first (lower priority)
-        yahooData.forEach((item: any) => {
-          if (item?.symbol) {
-            mergedData.set(item.symbol, { ...item, source: 'yahoo' });
-          }
+        addDebugInfo("POLYGON_DISABLED", {
+          reason: "Rate limits on free tier - too many 429 errors",
+          note: "Using only Yahoo Finance for reliable data"
         });
         
-        // Add Polygon data (higher priority - will overwrite Yahoo)
-        polygonData.forEach((item: any) => {
-          if (item?.symbol) {
-            mergedData.set(item.symbol, { ...item, source: 'polygon' });
-          }
-        });
-        
-        const combinedData = Array.from(mergedData.values());
-        
-        addDebugInfo("MERGED_MARKET_DATA", {
-          polygonCount: polygonData.length,
-          yahooCount: yahooData.length,
-          mergedCount: combinedData.length,
-          polygonSymbols: polygonData.map((d: any) => d.symbol).slice(0, 5),
-          yahooSymbols: yahooData.map((d: any) => d.symbol).slice(0, 5),
-          mergedSymbols: combinedData.map(d => d.symbol).slice(0, 5),
-          sourceCoverage: {
-            polygonOnly: polygonData.filter((p: any) => !yahooData.find((y: any) => y.symbol === p.symbol)).length,
-            yahooOnly: yahooData.filter((y: any) => !polygonData.find((p: any) => p.symbol === y.symbol)).length,
-            both: polygonData.filter((p: any) => yahooData.find((y: any) => y.symbol === p.symbol)).length
-          }
-        });
-        
-        if (combinedData.length === 0) {
-          throw new Error('No market data available from any source');
+        if (yahooData.length === 0) {
+          throw new Error('No market data available from Yahoo Finance');
         }
         
         enhancedMarketData = {
           success: true,
-          enhanced_data: combinedData,
-          total_processed: combinedData.length,
+          enhanced_data: yahooData,
+          total_processed: yahooData.length,
           symbols_requested: allTickers.length,
-          sources_used: ['polygon', 'yahoo']
+          sources_used: ['yahoo']
         };
         
       } catch (error) {
