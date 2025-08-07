@@ -138,67 +138,87 @@ Deno.serve(async (req) => {
 
           const result = data.chart.result[0]
           const timestamps = result.timestamp
-          const prices = result.indicators.quote[0].close
-          const volumes = result.indicators.quote[0].volume
+          const quotes = result.indicators.quote[0]
+          const prices = quotes?.close || []
+          const volumes = quotes?.volume || []
 
-          // Calculate technical indicators
-          const validPrices = prices.filter(p => p !== null)
-          const validVolumes = volumes.filter(v => v !== null && v > 0)
-
-          if (validPrices.length < 20) {
-            console.log(`Insufficient data for ${symbol}, skipping`)
+          // Better validation for data availability
+          if (!timestamps || !Array.isArray(timestamps) || timestamps.length === 0) {
+            console.log(`No timestamp data for ${symbol}, skipping`)
             return null
           }
 
-          // Calculate RSI (simplified 14-period)
-          const rsi = calculateRSI(validPrices.slice(-14))
+          if (!Array.isArray(prices) || !Array.isArray(volumes)) {
+            console.log(`Invalid price/volume data structure for ${symbol}, skipping`)
+            return null
+          }
+
+          // Calculate technical indicators with better error handling
+          const validPrices = prices.filter(p => p !== null && p !== undefined && !isNaN(p))
+          const validVolumes = volumes.filter(v => v !== null && v !== undefined && !isNaN(v) && v > 0)
+
+          if (validPrices.length < 10) {
+            console.log(`Insufficient data for ${symbol}: only ${validPrices.length} valid prices, need at least 10`)
+            return null
+          }
+
+          // Calculate RSI with minimum data validation
+          const rsi = validPrices.length >= 14 ? calculateRSI(validPrices.slice(-14)) : 50
         
-          // Calculate moving averages
-          const sma_20 = validPrices.slice(-20).reduce((sum, p) => sum + p, 0) / 20
+          // Calculate moving averages with fallbacks
+          const sma_20 = validPrices.length >= 20 ? 
+            validPrices.slice(-20).reduce((sum, p) => sum + p, 0) / 20 : 
+            validPrices.reduce((sum, p) => sum + p, 0) / validPrices.length
+            
           const sma_50 = validPrices.length >= 50 ? 
             validPrices.slice(-50).reduce((sum, p) => sum + p, 0) / 50 : sma_20
 
-          // Volume analysis
+          // Volume analysis with better error handling
           const avgVolume = validVolumes.length > 0 ? 
-            validVolumes.reduce((sum, v) => sum + v, 0) / validVolumes.length : 0
-          const currentVolume = validVolumes[validVolumes.length - 1] || 0
-          const volume_ratio = avgVolume > 0 ? currentVolume / avgVolume : 1
+            validVolumes.reduce((sum, v) => sum + v, 0) / validVolumes.length : 1
+          const currentVolume = validVolumes.length > 0 ? validVolumes[validVolumes.length - 1] : 1
+          const volume_ratio = avgVolume > 0 ? Math.max(currentVolume / avgVolume, 0.1) : 1
 
-          // Price momentum and volatility
+          // Price momentum and volatility with validation
           const currentPrice = validPrices[validPrices.length - 1]
-          const price_1d_ago = validPrices[validPrices.length - 2] || currentPrice
-          const price_5d_ago = validPrices[validPrices.length - 6] || currentPrice
+          if (!currentPrice || currentPrice <= 0) {
+            console.log(`Invalid current price for ${symbol}: ${currentPrice}`)
+            return null
+          }
+          
+          const price_1d_ago = validPrices.length >= 2 ? validPrices[validPrices.length - 2] : currentPrice
+          const price_5d_ago = validPrices.length >= 6 ? validPrices[validPrices.length - 6] : currentPrice
         
-          const price_change_1d = ((currentPrice - price_1d_ago) / price_1d_ago) * 100
-          const price_change_5d = ((currentPrice - price_5d_ago) / price_5d_ago) * 100
+          const price_change_1d = price_1d_ago > 0 ? ((currentPrice - price_1d_ago) / price_1d_ago) * 100 : 0
+          const price_change_5d = price_5d_ago > 0 ? ((currentPrice - price_5d_ago) / price_5d_ago) * 100 : 0
         
           const momentum = price_change_5d
-          const volatility = calculateVolatility(validPrices.slice(-20))
+          const volatility = validPrices.length >= 10 ? calculateVolatility(validPrices.slice(-Math.min(20, validPrices.length))) : 0
 
           const technicalIndicators: TechnicalIndicators = {
-            rsi,
+            rsi: Math.max(0, Math.min(100, rsi)), // Ensure RSI is between 0-100
             sma_20,
             sma_50,
-            volume_ratio,
+            volume_ratio: Math.max(0.1, volume_ratio), // Ensure positive volume ratio
             momentum,
             volatility
           }
 
-
-          console.log(`Enhanced data calculated for ${symbol}: RSI=${rsi.toFixed(2)}, Volume Ratio=${volume_ratio.toFixed(2)}`)
+          console.log(`✅ Enhanced data calculated for ${symbol}: Price=$${currentPrice.toFixed(2)}, RSI=${rsi.toFixed(1)}, Volume Ratio=${volume_ratio.toFixed(2)}x`)
 
           return {
             symbol: symbol.toUpperCase(),
-            price: currentPrice,
-            volume: currentVolume,
+            price: Math.round(currentPrice * 100) / 100, // Round to 2 decimal places
+            volume: Math.round(currentVolume),
             timestamp: new Date(timestamps[timestamps.length - 1] * 1000).toISOString(),
             technical_indicators: technicalIndicators,
-            price_change_1d,
-            price_change_5d
+            price_change_1d: Math.round(price_change_1d * 100) / 100,
+            price_change_5d: Math.round(price_change_5d * 100) / 100,
+            yahoo_available: true
           }
 
         } catch (error) {
-          console.error(`Error processing ${symbol}:`, error)
+          console.error(`❌ Error processing ${symbol}:`, error.message || error)
           return null
         }
       })
@@ -210,12 +230,16 @@ Deno.serve(async (req) => {
       batchResults.forEach((result, index) => {
         if (result.status === 'fulfilled' && result.value) {
           enhancedData.push(result.value)
+        } else if (result.status === 'rejected') {
+          console.error(`❌ Batch processing failed for symbol:`, result.reason)
         }
       })
       
-      // Small delay between batches to avoid rate limiting
+      console.log(`Completed batch processing. Symbols found so far: ${enhancedData.length}`)
+      
+      // Delay between batches to avoid rate limiting
       if (i + BATCH_SIZE < symbolsToFetch.length) {
-        await new Promise(resolve => setTimeout(resolve, 2000))
+        await new Promise(resolve => setTimeout(resolve, 1500))
       }
     }
 

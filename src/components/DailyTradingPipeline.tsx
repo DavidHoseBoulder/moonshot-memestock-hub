@@ -530,10 +530,39 @@ const DailyTradingPipeline = () => {
         }
       });
       
-      // Map market data by symbol
+      // Map market data by symbol with enhanced validation
       marketResults.forEach((item: any) => {
         if (item?.symbol) {
-          marketMap.set(item.symbol, item);
+          // Enhanced market data validation and processing
+          const validatedItem = {
+            symbol: item.symbol,
+            price: typeof item.price === 'number' && item.price > 0 ? item.price : 0,
+            volume: typeof item.volume === 'number' && item.volume > 0 ? item.volume : 0,
+            technical_indicators: {
+              rsi: item.technical_indicators?.rsi > 0 ? Math.min(100, Math.max(0, item.technical_indicators.rsi)) : 0,
+              volume_ratio: item.technical_indicators?.volume_ratio > 0 ? item.technical_indicators.volume_ratio : 0,
+              momentum: item.technical_indicators?.momentum || 0
+            },
+            yahoo_available: item.yahoo_available === true,
+            polygon_available: item.polygon_available === true,
+            data_quality: {
+              has_price: item.price > 0,
+              has_rsi: item.technical_indicators?.rsi > 0,
+              has_volume: item.technical_indicators?.volume_ratio > 0,
+              quality_score: [
+                item.price > 0,
+                item.technical_indicators?.rsi > 0,
+                item.technical_indicators?.volume_ratio > 0
+              ].filter(Boolean).length / 3
+            }
+          };
+          
+          marketMap.set(item.symbol, validatedItem);
+          
+          // Log data quality for debugging
+          if (validatedItem.data_quality.quality_score < 0.5) {
+            console.warn(`⚠️ Low quality market data for ${item.symbol}: Quality=${(validatedItem.data_quality.quality_score * 100).toFixed(0)}%, Price=${validatedItem.price}, RSI=${validatedItem.technical_indicators.rsi}`);
+          }
         }
       });
       
@@ -548,7 +577,14 @@ const DailyTradingPipeline = () => {
         stocktwitsSentimentCount: stocktwitsSentimentMap.size,
         newsSentimentCount: newsSentimentMap.size,
         googleTrendsCount: googleTrendsMap.size,
-        youtubeSentimentCount: youtubeSentimentMap.size
+        youtubeSentimentCount: youtubeSentimentMap.size,
+        marketDataQuality: {
+          validPrices: Array.from(marketMap.values()).filter((item: any) => item.price > 0).length,
+          validRSI: Array.from(marketMap.values()).filter((item: any) => item.technical_indicators?.rsi > 0).length,
+          validVolume: Array.from(marketMap.values()).filter((item: any) => item.technical_indicators?.volume_ratio > 0).length,
+          yahooAvailable: Array.from(marketMap.values()).filter((item: any) => item.yahoo_available).length,
+          polygonAvailable: Array.from(marketMap.values()).filter((item: any) => item.polygon_available).length
+        }
       });
       
       // Get all unique symbols from both data sources
@@ -566,7 +602,19 @@ const DailyTradingPipeline = () => {
         const sentimentData = sentimentMap.get(ticker);
         const marketData = marketMap.get(ticker);
         
-        // Apply sentiment stacking engine with all data sources
+        // Create comprehensive error tracking for debugging
+        const marketDataErrors: { [key: string]: string } = {};
+        if (!marketData?.yahoo_available && !marketData?.polygon_available) {
+          marketDataErrors.market_data = 'No market data sources available';
+        }
+        if (!marketData?.technical_indicators?.rsi || marketData.technical_indicators.rsi <= 0) {
+          marketDataErrors.rsi = 'Invalid or missing RSI data';
+        }
+        if (!marketData?.technical_indicators?.volume_ratio || marketData.technical_indicators.volume_ratio <= 0) {
+          marketDataErrors.volume = 'Invalid or missing volume data';
+        }
+        
+        // Apply sentiment stacking engine with enhanced data sources and error tracking
         const stackingResult = stackingEngine.stackSentiment({
           symbol: ticker,
           reddit_sentiment: redditSentimentMap.get(ticker),
@@ -574,8 +622,8 @@ const DailyTradingPipeline = () => {
           news_sentiment: newsSentimentMap.get(ticker),
           google_trends: googleTrendsMap.get(ticker),
           youtube_sentiment: youtubeSentimentMap.get(ticker),
-          rsi: marketData?.technical_indicators?.rsi,
-          volume_ratio: marketData?.technical_indicators?.volume_ratio,
+          rsi: marketData?.technical_indicators?.rsi > 0 ? marketData.technical_indicators.rsi : undefined,
+          volume_ratio: marketData?.technical_indicators?.volume_ratio > 0 ? marketData.technical_indicators.volume_ratio : undefined,
           polygon_available: marketData?.polygon_available || false,
           yahoo_available: marketData?.yahoo_available || false,
           errors: marketDataErrors
