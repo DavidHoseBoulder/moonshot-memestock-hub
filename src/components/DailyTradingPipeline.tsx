@@ -584,11 +584,36 @@ const DailyTradingPipeline = () => {
         stackingResults.push(stackingResult);
         addDebugInfo(`STACKING_${ticker}`, stackingResult);
         
-        // Generate signal if recommended by stacking engine
-        if (stackingResult.recommendAction) {
+        // Generate signal only for quality recommendations
+        if (stackingResult.recommendAction && stackingResult.confidenceScore >= 0.5) {
+          // Enhanced category classification to fix "UNKNOWN" issues
+          let category = 'UNKNOWN';
+          const stockByCategory = CATEGORIES.find(cat => 
+            getStocksByCategory(cat).map(stock => stock.ticker).includes(ticker)
+          );
+          
+          if (stockByCategory) {
+            category = stockByCategory;
+          } else {
+            // Enhanced category mapping for major tickers
+            if (['AAPL', 'MSFT', 'GOOGL', 'AMZN', 'META'].includes(ticker)) {
+              category = 'MEGA_CAP_TECH';
+            } else if (['NVDA', 'AMD', 'INTC', 'QCOM'].includes(ticker)) {
+              category = 'SEMICONDUCTORS';  
+            } else if (['SPY', 'QQQ', 'IWM', 'DIA', 'TQQQ', 'SQQQ'].includes(ticker)) {
+              category = 'ETF_INDEX';
+            } else if (['SHOP', 'SNAP', 'SPOT', 'UBER', 'LYFT', 'RBLX'].includes(ticker)) {
+              category = 'TECH_GROWTH';
+            } else if (['TLRY', 'MSOS', 'SNDL', 'CGC', 'ACB'].includes(ticker)) {
+              category = 'CANNABIS';
+            } else if (['DJT', 'DWAC'].includes(ticker)) {
+              category = 'SPAC_POLITICAL';
+            }
+          }
+
           const signal: TradeSignal = {
             ticker: ticker,
-            category: CATEGORIES.find(cat => getStocksByCategory(cat).map(stock => stock.ticker).includes(ticker)) || 'UNKNOWN',
+            category: category,
             signal_type: 'BUY',
             confidence: stackingResult.confidenceScore,
             price: marketData?.price || 0,

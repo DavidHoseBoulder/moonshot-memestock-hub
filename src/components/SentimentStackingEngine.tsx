@@ -169,33 +169,44 @@ export class SentimentStackingEngine {
     const sentimentSources = sources.slice(0, 3).filter(s => s.available).length;
     const technicalSources = sources.slice(3, 6).filter(s => s.available).length;
     
-    // Determine signal strength with degraded mode adjustments
+    // Determine signal strength with recalibrated thresholds for quality
     let signalStrength: 'WEAK' | 'MODERATE' | 'STRONG';
     if (availableSources <= 3) {
-      // Degraded mode: lower thresholds when limited data
-      if (confidenceScore >= 0.5) signalStrength = 'STRONG';
-      else if (confidenceScore >= 0.25) signalStrength = 'MODERATE';
+      // Degraded mode: still maintain quality standards
+      if (confidenceScore >= 0.7) signalStrength = 'STRONG';      // 70%+ = STRONG
+      else if (confidenceScore >= 0.5) signalStrength = 'MODERATE'; // 50-70% = MODERATE
       else signalStrength = 'WEAK';
     } else {
-      // Normal mode: standard thresholds
-      if (confidenceScore >= 0.7) signalStrength = 'STRONG';
-      else if (confidenceScore >= 0.4) signalStrength = 'MODERATE';
+      // Normal mode: high quality thresholds
+      if (confidenceScore >= 0.7) signalStrength = 'STRONG';      // 70%+ = STRONG
+      else if (confidenceScore >= 0.5) signalStrength = 'MODERATE'; // 50-70% = MODERATE
       else signalStrength = 'WEAK';
     }
 
-    // ADAPTIVE RECOMMENDATION LOGIC
+    // ENHANCED RECOMMENDATION LOGIC - Quality over quantity
     let recommendAction = false;
     
+    // Base requirements: minimum confidence and sources
+    const hasMultipleSources = availableSources >= 2;
+    const hasValidTechnicalData = data.rsi !== undefined && data.rsi > 0 && 
+                                  data.volume_ratio !== undefined && data.volume_ratio > 0;
+    const hasQualitySentiment = sentimentSources >= 1 && totalVotes >= 1.0;
+    
     if (availableSources <= 3) {
-      // Degraded mode: more lenient requirements
+      // Degraded mode: require quality even with limited data
       recommendAction = (
-        (confidenceScore >= 0.3 && totalVotes >= 1.0) || // Lower threshold
-        (sentimentSources >= 1 && totalVotes >= 0.8) || // Strong sentiment with some support
-        (data.rsi !== undefined && (data.rsi < 25 || data.rsi > 75) && totalVotes >= 0.5) // Extreme RSI signals
+        confidenceScore >= 0.5 && // Minimum 50% confidence
+        totalVotes >= 1.5 && // Require meaningful votes
+        (hasQualitySentiment || hasValidTechnicalData) // Must have either sentiment or technical
       );
     } else {
-      // Normal mode: standard requirements
-      recommendAction = confidenceScore >= 0.4 && totalVotes >= 2.0;
+      // Normal mode: stricter requirements for quality signals
+      recommendAction = (
+        confidenceScore >= 0.5 && // Minimum 50% confidence
+        totalVotes >= 2.0 && // Strong vote requirement
+        hasMultipleSources && // Require multiple sources
+        (hasQualitySentiment || hasValidTechnicalData) // Quality data requirement
+      );
     }
 
     // Boost signals for strong sentiment with technical confirmation
@@ -218,7 +229,7 @@ export class SentimentStackingEngine {
       future_sources: sources.slice(8).filter(s => s.passed).reduce((sum, s) => sum + s.weight, 0)
     };
 
-    // Enhanced debugging info
+    // Enhanced debugging info with quality metrics
     const debugInfo = {
       availableSources,
       sentimentSources,
@@ -226,7 +237,14 @@ export class SentimentStackingEngine {
       degradedMode: availableSources <= 3,
       strongSentiment,
       volumeBoost: (data.volume_ratio || 0) > 1.2,
-      rsiExtreme: data.rsi !== undefined && (data.rsi < 25 || data.rsi > 75)
+      rsiExtreme: data.rsi !== undefined && (data.rsi < 25 || data.rsi > 75),
+      hasValidTechnicalData: hasValidTechnicalData,
+      hasQualitySentiment: hasQualitySentiment,
+      dataQuality: {
+        priceAvailable: data.polygon_available || data.yahoo_available,
+        rsiValid: data.rsi !== undefined && data.rsi > 0,
+        volumeValid: data.volume_ratio !== undefined && data.volume_ratio > 0
+      }
     };
 
     return {
