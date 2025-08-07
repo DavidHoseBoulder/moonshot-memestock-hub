@@ -1,3 +1,4 @@
+import ImportProgressMonitor from "./ImportProgressMonitor";
 import BulkHistoricalImport from "./BulkHistoricalImport";
 import { useState } from "react";
 import { Card } from "@/components/ui/card";
@@ -441,7 +442,10 @@ const DailyTradingPipeline = () => {
       </div>
 
       {/* Bulk Historical Import Component */}
-      <BulkHistoricalImport />
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <BulkHistoricalImport />
+        <ImportProgressMonitor />
+      </div>
 
       {/* Enhanced Pipeline Control */}
       <Card className="p-6 bg-gradient-to-br from-blue-50 to-purple-50 border-blue-200">
