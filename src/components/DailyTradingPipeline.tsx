@@ -11,6 +11,8 @@ import { AlertTriangle, TrendingUp, Activity, Volume2, Target, Scan, Play, Refre
 import { useToast } from "@/hooks/use-toast";
 import { STOCK_UNIVERSE, CATEGORIES, getStocksByCategory, getAllTickers } from "@/data/stockUniverse";
 import { supabase } from "@/integrations/supabase/client";
+import { calculateRSI, estimateRSIFromMomentum } from "@/utils/technicalIndicators";
+import { aggregateSentiment, getSentimentLabel } from "@/utils/sentimentAggregator";
 
 interface TradeSignal {
   ticker: string;
