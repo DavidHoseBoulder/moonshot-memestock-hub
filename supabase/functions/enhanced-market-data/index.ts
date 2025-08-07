@@ -47,14 +47,64 @@ Deno.serve(async (req) => {
 
     console.log(`Fetching enhanced market data for ${symbols.length} symbols over ${days} days`)
 
+    // Check for cached data first
+    const { data: cachedData, error: cacheError } = await supabase
+      .from('enhanced_market_data')
+      .select('*')
+      .in('symbol', symbols)
+      .gte('created_at', new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()) // 24 hours ago
+
+    if (cacheError) {
+      console.error('Cache check error:', cacheError)
+    }
+
+    const cachedSymbols = new Set(cachedData?.map(d => d.symbol) || [])
+    const symbolsToFetch = symbols.filter(symbol => !cachedSymbols.has(symbol.toUpperCase()))
+    
+    console.log(`Found ${cachedData?.length || 0} cached symbols, fetching ${symbolsToFetch.length} new symbols`)
+
     const enhancedData: EnhancedMarketData[] = []
-    const BATCH_SIZE = 10
-    const REQUEST_TIMEOUT = 5000 // 5 seconds per request
+    
+    // Add cached data to results
+    if (cachedData) {
+      cachedData.forEach(cached => {
+        enhancedData.push({
+          symbol: cached.symbol,
+          price: cached.price,
+          volume: cached.volume,
+          timestamp: cached.timestamp,
+          technical_indicators: cached.technical_indicators,
+          price_change_1d: cached.price_change_1d,
+          price_change_5d: cached.price_change_5d
+        })
+      })
+    }
+
+    // Only fetch data for symbols not in cache
+    if (symbolsToFetch.length === 0) {
+      console.log('All data found in cache, returning cached results')
+      return new Response(
+        JSON.stringify({ 
+          success: true, 
+          enhanced_data: enhancedData,
+          total_processed: enhancedData.length,
+          symbols_requested: symbols.length,
+          from_cache: true
+        }),
+        { 
+          status: 200, 
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+        }
+      )
+    }
+
+    const BATCH_SIZE = 5 // Reduced batch size for reliability
+    const REQUEST_TIMEOUT = 8000 // Increased timeout
     
     // Process symbols in batches to avoid timeouts
-    for (let i = 0; i < symbols.length; i += BATCH_SIZE) {
-      const batch = symbols.slice(i, i + BATCH_SIZE)
-      console.log(`Processing batch ${Math.floor(i/BATCH_SIZE) + 1}/${Math.ceil(symbols.length/BATCH_SIZE)}`)
+    for (let i = 0; i < symbolsToFetch.length; i += BATCH_SIZE) {
+      const batch = symbolsToFetch.slice(i, i + BATCH_SIZE)
+      console.log(`Processing batch ${Math.floor(i/BATCH_SIZE) + 1}/${Math.ceil(symbolsToFetch.length/BATCH_SIZE)}`)
       
       const batchPromises = batch.map(async (symbol) => {
         try {
@@ -164,32 +214,34 @@ Deno.serve(async (req) => {
       })
       
       // Small delay between batches to avoid rate limiting
-      if (i + BATCH_SIZE < symbols.length) {
-        await new Promise(resolve => setTimeout(resolve, 1000))
+      if (i + BATCH_SIZE < symbolsToFetch.length) {
+        await new Promise(resolve => setTimeout(resolve, 2000))
       }
     }
 
-    // Store enhanced market data
-    if (enhancedData.length > 0) {
+    // Store new enhanced market data in cache
+    if (enhancedData.length > cachedData?.length || 0) {
+      const newData = enhancedData.slice(cachedData?.length || 0)
       const { error: dbError } = await supabase
         .from('enhanced_market_data')
-        .upsert(enhancedData.map(item => ({
+        .upsert(newData.map(item => ({
           symbol: item.symbol,
           price: item.price,
           volume: item.volume,
           timestamp: item.timestamp,
           technical_indicators: item.technical_indicators,
           price_change_1d: item.price_change_1d,
-          price_change_5d: item.price_change_5d
+          price_change_5d: item.price_change_5d,
+          data_date: new Date().toISOString().split('T')[0]
         })), { 
-          onConflict: 'symbol,timestamp',
-          ignoreDuplicates: true 
+          onConflict: 'symbol,data_date',
+          ignoreDuplicates: false 
         })
 
       if (dbError) {
         console.error('Database error storing enhanced market data:', dbError)
       } else {
-        console.log(`Successfully stored ${enhancedData.length} enhanced market data points`)
+        console.log(`Successfully cached ${newData.length} new enhanced market data points`)
       }
     }
 
@@ -198,7 +250,10 @@ Deno.serve(async (req) => {
         success: true, 
         enhanced_data: enhancedData,
         total_processed: enhancedData.length,
-        symbols_requested: symbols.length
+        symbols_requested: symbols.length,
+        cached_count: cachedData?.length || 0,
+        new_fetched: symbolsToFetch.length,
+        from_cache: symbolsToFetch.length === 0
       }),
       { 
         status: 200, 
