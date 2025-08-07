@@ -70,9 +70,9 @@ export const DEFAULT_STACKING_CONFIG: StackingConfig = {
   market_data_polygon: { threshold: 1, weight: 0.5 }, // Available = 1
   market_data_yahoo: { threshold: 1, weight: 0.5 }, // Available = 1
   
-  // Future sources (prepared but not active)
-  google_trends: { threshold: 50, weight: 1.0 }, // Trends score > 50
-  youtube_sentiment: { threshold: 0.3, weight: 0.9 } // YouTube sentiment > 0.3
+  // Additional sources (now active)
+  google_trends: { threshold: 0.2, weight: 0.8 }, // Trends interest > 0.2
+  youtube_sentiment: { threshold: 0.1, weight: 0.9 } // YouTube sentiment > 0.1
 };
 
 export class SentimentStackingEngine {

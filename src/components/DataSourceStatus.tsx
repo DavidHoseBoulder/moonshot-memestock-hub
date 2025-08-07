@@ -21,6 +21,8 @@ const DataSourceStatus = () => {
     { name: 'Reddit', status: 'checking', lastCheck: '', mockData: false },
     { name: 'Financial News', status: 'checking', lastCheck: '', mockData: false },
     { name: 'StockTwits', status: 'checking', lastCheck: '', mockData: false },
+    { name: 'Google Trends', status: 'checking', lastCheck: '', mockData: false },
+    { name: 'YouTube Sentiment', status: 'checking', lastCheck: '', mockData: false },
     { name: 'Market Data (Yahoo)', status: 'checking', lastCheck: '', mockData: false },
     { name: 'Market Data (Polygon)', status: 'checking', lastCheck: '', mockData: false },
   ]);
@@ -66,6 +68,8 @@ const DataSourceStatus = () => {
       const dataCount = data?.posts?.length || 
                        data?.articles?.length || 
                        data?.messages?.length || 
+                       data?.trends?.length ||
+                       data?.youtube_sentiment?.length ||
                        data?.enhanced_data?.length || 0;
       
       // Determine status based on response
@@ -116,6 +120,16 @@ const DataSourceStatus = () => {
         payload: { symbols: ['AAPL', 'TSLA', 'NVDA'], limit: 15 }  // Multiple symbols like pipeline
       },
       {
+        name: 'Google Trends',
+        function: 'google-trends',
+        payload: { symbols: ['AAPL', 'TSLA', 'NVDA'], days: 7 }
+      },
+      {
+        name: 'YouTube Sentiment',
+        function: 'youtube-sentiment',
+        payload: { symbols: ['AAPL', 'TSLA'], limit: 50 }
+      },
+      {
         name: 'Market Data (Yahoo)',
         function: 'enhanced-market-data',
         payload: { symbols: ['AAPL', 'TSLA', 'NVDA'], days: 21 }  // Multiple symbols like pipeline
@@ -164,7 +178,7 @@ const DataSourceStatus = () => {
     if (mockCount > 0) {
       toast({
         title: "Data Source Status",
-        description: `${availableCount}/4 sources available, ${mockCount} using mock data`,
+        description: `${availableCount}/${updatedSources.length} sources available, ${mockCount} using mock data`,
         variant: "default",
       });
     }

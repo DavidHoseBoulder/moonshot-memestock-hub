@@ -191,10 +191,46 @@ const DailyTradingPipeline = () => {
 
       setProgress(30);
       
-      // Step 2: Enhanced sentiment analysis with multi-source data
+      // Step 2: Google Trends data
+      setCurrentTask("Fetching Google Trends data...");
+      const { data: trendsData, error: trendsError } = await supabase.functions.invoke('google-trends', {
+        body: { symbols: allTickers.slice(0, 20), days: 7 }
+      });
+
+      if (trendsError) {
+        console.warn('Google Trends fetch failed:', trendsError);
+      }
+      
+      addDebugInfo("GOOGLE_TRENDS_DATA", { 
+        trendsCount: trendsData?.trends?.length || 0,
+        source: trendsData?.source || 'unknown',
+        sampleTrend: trendsData?.trends?.[0] || null
+      });
+
+      setProgress(35);
+
+      // Step 3: YouTube sentiment data
+      setCurrentTask("Fetching YouTube sentiment data...");
+      const { data: youtubeData, error: youtubeError } = await supabase.functions.invoke('youtube-sentiment', {
+        body: { symbols: allTickers.slice(0, 10), limit: 50 }
+      });
+
+      if (youtubeError) {
+        console.warn('YouTube sentiment fetch failed:', youtubeError);
+      }
+      
+      addDebugInfo("YOUTUBE_SENTIMENT_DATA", { 
+        sentimentCount: youtubeData?.youtube_sentiment?.length || 0,
+        source: youtubeData?.source || 'unknown',
+        sampleSentiment: youtubeData?.youtube_sentiment?.[0] || null
+      });
+
+      setProgress(40);
+
+      // Step 4: Enhanced sentiment analysis with multi-source data
       setCurrentTask("Running enhanced AI sentiment analysis with multi-source data...");
       
-      // 4. Combine all content for sentiment analysis
+      // Combine all content for sentiment analysis
       setCurrentTask("Combining multi-source content...");
       const allContent = [
         ...(redditData?.posts || []).map((post: any) => ({
@@ -465,6 +501,10 @@ const DailyTradingPipeline = () => {
       for (const ticker of processedTickers) {
         const sentimentData = sentimentMap.get(ticker);
         const marketData = marketMap.get(ticker);
+        
+        // Get additional data sources
+        const trendsItem = trendsData?.trends?.find((t: any) => t.symbol === ticker);
+        const youtubeItem = youtubeData?.youtube_sentiment?.find((y: any) => y.symbol === ticker);
         
         // Prepare stacking data - extract sentiment from multiple sources
         const redditSentiment = sentimentData?.sources?.reddit?.sentiment;
