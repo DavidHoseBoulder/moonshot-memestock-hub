@@ -1,9 +1,11 @@
 import DataSourceStatus from "./DataSourceStatus";
+import PerformanceTracker from "./PerformanceTracker";
 import { useState } from "react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { AlertTriangle, TrendingUp, Activity, Volume2, Target, Scan, Play, RefreshCw, Zap } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { STOCK_UNIVERSE, CATEGORIES, getStocksByCategory, getAllTickers } from "@/data/stockUniverse";
@@ -661,8 +663,16 @@ const DailyTradingPipeline = () => {
         )}
       </div>
 
-      {/* Data Source Status */}
-      <DataSourceStatus />
+      <Tabs defaultValue="pipeline" className="w-full">
+        <TabsList className="grid w-full grid-cols-3">
+          <TabsTrigger value="pipeline">Signal Generation</TabsTrigger>
+          <TabsTrigger value="performance">Performance Tracking</TabsTrigger>
+          <TabsTrigger value="data-sources">Data Sources</TabsTrigger>
+        </TabsList>
+        
+        <TabsContent value="pipeline" className="space-y-6">
+          {/* Data Source Status */}
+          <DataSourceStatus />
 
 
       {/* Enhanced Pipeline Control */}
@@ -765,54 +775,105 @@ const DailyTradingPipeline = () => {
           </h3>
           
           <div className="space-y-4">
-            {signals.map((signal, index) => (
-              <div key={index} className={`p-4 rounded-lg border ${getSignalColor(signal)}`}>
-                <div className="flex items-center justify-between mb-3">
-                  <div className="flex items-center space-x-3">
-                    <Badge className="font-bold text-lg">{signal.ticker}</Badge>
-                    <Badge variant="outline" className={getCategoryColor(signal.category)}>
-                      {signal.category}
-                    </Badge>
-                    <Badge variant={signal.signal_type === 'BUY' ? 'default' : 'destructive'}>
-                      {signal.signal_type}
-                    </Badge>
-                    {signal.technical_signals.map((techSignal, i) => (
-                      <Badge key={i} variant="outline" className="text-xs bg-blue-50 text-blue-700">
-                        {techSignal}
+            {signals.map((signal, index) => {
+              const isWeakSignal = signal.confidence < 70;
+              const warning = isWeakSignal ? 
+                (signal.confidence < 60 ? "⚠️ WEAK SIGNAL - Not recommended for trading" :
+                 "⚠️ MODERATE SIGNAL - Consider additional analysis") : null;
+              
+              return (
+                <div key={index} className={`p-4 rounded-lg border ${getSignalColor(signal)} ${isWeakSignal ? 'opacity-75' : ''}`}>
+                  {warning && (
+                    <div className="mb-3 p-2 bg-yellow-50 border border-yellow-200 rounded text-yellow-800 text-xs font-medium flex items-center gap-2">
+                      <AlertTriangle className="w-4 h-4" />
+                      {warning}
+                    </div>
+                  )}
+                  
+                  <div className="flex items-center justify-between mb-3">
+                    <div className="flex items-center space-x-3">
+                      <Badge className="font-bold text-lg">{signal.ticker}</Badge>
+                      <Badge variant="outline" className={getCategoryColor(signal.category)}>
+                        {signal.category}
                       </Badge>
-                    ))}
-                  </div>
-                  <div className="flex items-center space-x-4 text-sm">
-                    <div className="flex items-center">
-                      <TrendingUp className="w-4 h-4 mr-1" />
-                      ${signal.price.toFixed(2)}
+                      <Badge variant={signal.signal_type === 'BUY' ? 'default' : 'destructive'}>
+                        {signal.signal_type}
+                      </Badge>
+                      {signal.technical_signals.map((techSignal, i) => (
+                        <Badge key={i} variant="outline" className="text-xs bg-blue-50 text-blue-700">
+                          {techSignal}
+                        </Badge>
+                      ))}
                     </div>
-                    <div className="flex items-center">
-                      <Activity className="w-4 h-4 mr-1" />
-                      {(signal.confidence * 100).toFixed(0)}%
+                    <div className="flex items-center space-x-4 text-sm">
+                      <div className="flex items-center">
+                        <TrendingUp className="w-4 h-4 mr-1" />
+                        ${signal.price.toFixed(2)}
+                      </div>
+                      <div className="flex items-center">
+                        <Activity className="w-4 h-4 mr-1" />
+                        <span className={signal.confidence >= 70 ? 'text-green-600 font-medium' : 
+                                       signal.confidence >= 60 ? 'text-yellow-600' : 'text-red-600'}>
+                          {(signal.confidence * 100).toFixed(0)}%
+                        </span>
+                      </div>
                     </div>
                   </div>
+                  
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-3 text-sm">
+                    <div>
+                      <span className="text-muted-foreground">Sentiment:</span> {signal.sentiment_score.toFixed(2)}
+                    </div>
+                    <div>
+                      <span className="text-muted-foreground">Velocity:</span> {signal.sentiment_velocity.toFixed(2)}
+                    </div>
+                    <div>
+                      <span className="text-muted-foreground">Volume:</span> {signal.volume_ratio.toFixed(1)}x
+                    </div>
+                    <div>
+                      <span className="text-muted-foreground">RSI:</span> {signal.rsi.toFixed(0)}
+                    </div>
+                  </div>
+                  
+                  <div className="text-sm text-muted-foreground mb-3">
+                    <strong>Analysis:</strong> {signal.reasoning}
+                  </div>
+                  
+                  {/* Only show trade button for high-confidence signals */}
+                  {signal.confidence >= 70 && (
+                    <div className="flex justify-between items-center">
+                      <div className="flex space-x-2">
+                        <Button
+                          variant={signal.signal_type === 'BUY' ? 'default' : 'destructive'}
+                          size="sm"
+                          className="text-xs px-3 py-1"
+                        >
+                          {signal.signal_type === 'BUY' ? '📈 Execute Buy' : '📉 Execute Sell'}
+                        </Button>
+                        <Button variant="outline" size="sm" className="text-xs px-3 py-1">
+                          📊 View Chart
+                        </Button>
+                      </div>
+                      <Badge variant="secondary" className="text-xs">
+                        Entry: ${signal.price.toFixed(2)}
+                      </Badge>
+                    </div>
+                  )}
+                  
+                  {/* Show reason why no trade button for weak signals */}
+                  {signal.confidence < 70 && (
+                    <div className="flex justify-between items-center">
+                      <div className="text-xs text-gray-500 italic">
+                        Trading disabled - confidence below 70% threshold
+                      </div>
+                      <Badge variant="outline" className="text-xs text-red-600">
+                        Not Tradeable
+                      </Badge>
+                    </div>
+                  )}
                 </div>
-                
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-3 text-sm">
-                  <div>
-                    <span className="text-muted-foreground">Sentiment:</span> {signal.sentiment_score.toFixed(2)}
-                  </div>
-                  <div>
-                    <span className="text-muted-foreground">Velocity:</span> {signal.sentiment_velocity.toFixed(2)}
-                  </div>
-                  <div className="flex items-center">
-                    <Volume2 className="w-3 h-3 mr-1" />
-                    <span className="text-muted-foreground">Volume:</span> {signal.volume_ratio.toFixed(1)}x
-                  </div>
-                  <div>
-                    <span className="text-muted-foreground">RSI:</span> {signal.rsi.toFixed(0)}
-                  </div>
-                </div>
-                
-                <p className="text-sm text-muted-foreground">{signal.reasoning}</p>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </Card>
       )}
@@ -826,6 +887,16 @@ const DailyTradingPipeline = () => {
           <p className="text-sm mt-2">Expected: Higher signal quality with multiple data sources</p>
         </Card>
       )}
+        </TabsContent>
+        
+        <TabsContent value="performance">
+          <PerformanceTracker />
+        </TabsContent>
+        
+        <TabsContent value="data-sources">
+          <DataSourceStatus />
+        </TabsContent>
+      </Tabs>
     </div>
   );
 };
