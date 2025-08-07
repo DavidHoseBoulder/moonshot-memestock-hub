@@ -245,46 +245,104 @@ const DailyTradingPipeline = () => {
         sampleResults: enhancedSentimentData?.enhanced_sentiment?.slice(0, 3) || []
       });
 
-      // Step 3: Enhanced market data with fallback to alternative sources
-      setCurrentTask("Fetching enhanced market data with technical indicators...");
+      // Step 3: Fetch from both market data sources in parallel for comprehensive coverage
+      setCurrentTask("Fetching market data from multiple sources (Polygon + Yahoo)...");
       let enhancedMarketData;
       let marketError;
       
       try {
-        // Try Polygon API first (more reliable)
-        const polygonResponse = await supabase.functions.invoke('polygon-market-data', {
-          body: { symbols: allTickers, days: 21 }
-        });
-        
-        if (polygonResponse.error || !polygonResponse.data?.success || polygonResponse.data.enhanced_data?.length < 5) {
-          console.warn('Polygon API insufficient, trying Yahoo Finance fallback...');
-          addDebugInfo("POLYGON_INSUFFICIENT", { 
-            error: polygonResponse.error?.message,
-            dataCount: polygonResponse.data?.enhanced_data?.length || 0,
-            note: "Falling back to Yahoo Finance"
-          });
-          
-          // Fallback to Yahoo Finance
-          const yahooResponse = await supabase.functions.invoke('enhanced-market-data', {
+        // Fetch from both sources simultaneously
+        const [polygonResponse, yahooResponse] = await Promise.allSettled([
+          supabase.functions.invoke('polygon-market-data', {
             body: { symbols: allTickers, days: 21 }
+          }),
+          supabase.functions.invoke('enhanced-market-data', {
+            body: { symbols: allTickers, days: 21 }
+          })
+        ]);
+        
+        let polygonData = [];
+        let yahooData = [];
+        
+        // Process Polygon results
+        if (polygonResponse.status === 'fulfilled' && 
+            !polygonResponse.value.error && 
+            polygonResponse.value.data?.success) {
+          polygonData = polygonResponse.value.data.enhanced_data || [];
+          addDebugInfo("POLYGON_DATA_SUCCESS", { 
+            dataCount: polygonData.length,
+            source: "polygon"
           });
-          
-          if (yahooResponse.error || !yahooResponse.data?.success) {
-            marketError = yahooResponse.error;
-          } else {
-            enhancedMarketData = yahooResponse.data;
-            addDebugInfo("YAHOO_FALLBACK_SUCCESS", { 
-              dataCount: enhancedMarketData.enhanced_data?.length || 0,
-              source: "yahoo_fallback"
-            });
-          }
         } else {
-          enhancedMarketData = polygonResponse.data;
-          addDebugInfo("POLYGON_PRIMARY_SUCCESS", { 
-            dataCount: enhancedMarketData.enhanced_data?.length || 0,
-            source: "polygon_primary"
+          addDebugInfo("POLYGON_DATA_FAILED", { 
+            error: polygonResponse.status === 'fulfilled' ? 
+              polygonResponse.value.error?.message : 
+              'Promise rejected'
           });
         }
+        
+        // Process Yahoo results
+        if (yahooResponse.status === 'fulfilled' && 
+            !yahooResponse.value.error && 
+            yahooResponse.value.data?.success) {
+          yahooData = yahooResponse.value.data.enhanced_data || [];
+          addDebugInfo("YAHOO_DATA_SUCCESS", { 
+            dataCount: yahooData.length,
+            source: "yahoo"
+          });
+        } else {
+          addDebugInfo("YAHOO_DATA_FAILED", { 
+            error: yahooResponse.status === 'fulfilled' ? 
+              yahooResponse.value.error?.message : 
+              'Promise rejected'
+          });
+        }
+        
+        // Merge data with Polygon taking priority for conflicts
+        const mergedData = new Map();
+        
+        // Add Yahoo data first (lower priority)
+        yahooData.forEach((item: any) => {
+          if (item?.symbol) {
+            mergedData.set(item.symbol, { ...item, source: 'yahoo' });
+          }
+        });
+        
+        // Add Polygon data (higher priority - will overwrite Yahoo)
+        polygonData.forEach((item: any) => {
+          if (item?.symbol) {
+            mergedData.set(item.symbol, { ...item, source: 'polygon' });
+          }
+        });
+        
+        const combinedData = Array.from(mergedData.values());
+        
+        addDebugInfo("MERGED_MARKET_DATA", {
+          polygonCount: polygonData.length,
+          yahooCount: yahooData.length,
+          mergedCount: combinedData.length,
+          polygonSymbols: polygonData.map((d: any) => d.symbol).slice(0, 5),
+          yahooSymbols: yahooData.map((d: any) => d.symbol).slice(0, 5),
+          mergedSymbols: combinedData.map(d => d.symbol).slice(0, 5),
+          sourceCoverage: {
+            polygonOnly: polygonData.filter((p: any) => !yahooData.find((y: any) => y.symbol === p.symbol)).length,
+            yahooOnly: yahooData.filter((y: any) => !polygonData.find((p: any) => p.symbol === y.symbol)).length,
+            both: polygonData.filter((p: any) => yahooData.find((y: any) => y.symbol === p.symbol)).length
+          }
+        });
+        
+        if (combinedData.length === 0) {
+          throw new Error('No market data available from any source');
+        }
+        
+        enhancedMarketData = {
+          success: true,
+          enhanced_data: combinedData,
+          total_processed: combinedData.length,
+          symbols_requested: allTickers.length,
+          sources_used: ['polygon', 'yahoo']
+        };
+        
       } catch (error) {
         marketError = error;
       }
