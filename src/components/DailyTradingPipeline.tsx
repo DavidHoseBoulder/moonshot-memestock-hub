@@ -517,23 +517,25 @@ const DailyTradingPipeline = () => {
           technical_signals.push('BEARISH_SENTIMENT', 'OVERBOUGHT');
           reasoning = `Bearish sentiment turning (${sentiment_score.toFixed(2)}) with overbought RSI ${rsi.toFixed(0)}. Momentum weakening.`;
         }
-        // Moderate signals - lower confidence threshold for testing
-        else if (Math.abs(sentiment_score) > 0.3 || Math.abs(sentiment_velocity) > 0.1) {
-          if (sentiment_score > 0.3) {
+        // Moderate signals - lowered thresholds for better signal generation
+        else if (Math.abs(sentiment_score) > 0.15 || Math.abs(sentiment_velocity) > 0.05 || rsi < 35 || rsi > 65) {
+          if (sentiment_score > 0.15 || (rsi < 35 && sentiment_score > 0)) {
             signal_type = 'BUY';
-            confidence = 0.5 + sentiment_score * 0.3;
+            confidence = 0.4 + sentiment_score * 0.4 + (rsi < 35 ? 0.1 : 0);
             technical_signals.push('MODERATE_BULLISH');
+            if (rsi < 35) technical_signals.push('OVERSOLD');
             reasoning = `Moderate bullish sentiment (${sentiment_score.toFixed(2)}) with RSI ${rsi.toFixed(0)}. Volume: ${volume_ratio.toFixed(1)}x`;
-          } else if (sentiment_score < -0.3) {
+          } else if (sentiment_score < -0.15 || (rsi > 65 && sentiment_score < 0)) {
             signal_type = 'SELL';
-            confidence = 0.5 + Math.abs(sentiment_score) * 0.3;
+            confidence = 0.4 + Math.abs(sentiment_score) * 0.4 + (rsi > 65 ? 0.1 : 0);
             technical_signals.push('MODERATE_BEARISH');
+            if (rsi > 65) technical_signals.push('OVERBOUGHT');
             reasoning = `Moderate bearish sentiment (${sentiment_score.toFixed(2)}) with RSI ${rsi.toFixed(0)}. Momentum: ${momentum.toFixed(1)}`;
           }
         }
 
-        // Include signals with confidence >= 0.5 (lowered for testing)
-        if (confidence >= 0.5) {
+        // Include signals with confidence >= 0.4 (lowered for better signal generation)
+        if (confidence >= 0.4) {
           const stock = STOCK_UNIVERSE.find(s => s.ticker === ticker);
           enhancedSignals.push({
             ticker,
