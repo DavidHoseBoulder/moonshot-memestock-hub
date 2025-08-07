@@ -1,3 +1,4 @@
+
 project_id = "pdgjafywsxesgwukotxh"
 
 [api]
@@ -34,11 +35,6 @@ jwt_expiry = 3600
 refresh_token_rotation_enabled = true
 security_update_password_require_reauthentication = true
 
-[auth.email]
-enable_signup = true
-double_confirm_changes = true
-enable_confirmations = false
-
 [functions.reddit-auth]
 verify_jwt = false
 
@@ -52,4 +48,16 @@ verify_jwt = false
 verify_jwt = false
 
 [functions.sentiment-backtesting]
+verify_jwt = false
+
+[functions.enhanced-sentiment-analysis]
+verify_jwt = false
+
+[functions.enhanced-market-data]
+verify_jwt = false
+
+[functions.financial-news]
+verify_jwt = false
+
+[functions.stocktwits-data]
 verify_jwt = false

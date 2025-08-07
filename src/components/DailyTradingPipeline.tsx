@@ -107,10 +107,11 @@ const DailyTradingPipeline = () => {
       console.log('Running ENHANCED pipeline for tickers:', allTickers.slice(0, 5), '... and', allTickers.length - 5, 'more');
       addDebugInfo("PIPELINE_START", { totalTickers: allTickers.length, sampleTickers: allTickers.slice(0, 10) });
       
-      // Step 1: Enhanced Reddit sentiment data
-      setCurrentTask("Fetching multi-subreddit sentiment data...");
-      setProgress(15);
+      // Step 1: Multi-source data collection
+      setCurrentTask("Fetching multi-source sentiment data (Reddit + News + StockTwits)...");
+      setProgress(10);
       
+      // Fetch Reddit data
       const { data: redditData, error: redditError } = await supabase.functions.invoke('reddit-auth', {
         body: { 
           subreddit: 'stocks,investing,SecurityAnalysis,ValueInvesting,StockMarket,wallstreetbets,pennystocks', 
@@ -126,14 +127,72 @@ const DailyTradingPipeline = () => {
         isMockData: redditData?.isMockData || false,
         samplePost: redditData?.posts?.[0] || null
       });
+
+      setProgress(15);
+
+      // Fetch Financial News
+      const { data: newsData, error: newsError } = await supabase.functions.invoke('financial-news', {
+        body: { symbols: allTickers.slice(0, 20), days: 2 }
+      });
+
+      if (newsError) {
+        console.warn('Financial news fetch failed:', newsError);
+      }
       
-      // Step 2: Enhanced sentiment analysis with velocity tracking
-      setCurrentTask("Running enhanced AI sentiment analysis with velocity tracking...");
+      addDebugInfo("NEWS_DATA", { 
+        articleCount: newsData?.articles?.length || 0,
+        isMockData: newsData?.isMockData || false,
+        sampleArticle: newsData?.articles?.[0]?.title || null
+      });
+
+      setProgress(20);
+
+      // Fetch StockTwits data
+      const { data: stocktwitsData, error: stocktwitsError } = await supabase.functions.invoke('stocktwits-data', {
+        body: { symbols: allTickers.slice(0, 15), limit: 20 }
+      });
+
+      if (stocktwitsError) {
+        console.warn('StockTwits fetch failed:', stocktwitsError);
+      }
+      
+      addDebugInfo("STOCKTWITS_DATA", { 
+        messageCount: stocktwitsData?.messages?.length || 0,
+        isMockData: stocktwitsData?.isMockData || false,
+        sampleMessage: stocktwitsData?.messages?.[0]?.body || null
+      });
+
       setProgress(30);
       
+      // Step 2: Enhanced sentiment analysis with multi-source data
+      setCurrentTask("Running enhanced AI sentiment analysis with multi-source data...");
+      
+      // Combine all content for sentiment analysis
+      const allContent = [
+        ...(redditData?.posts || []),
+        ...(newsData?.articles || []).map((article: any) => ({
+          title: article.title,
+          selftext: article.description,
+          score: 50, // Default score for news
+          num_comments: 10,
+          created_utc: new Date(article.publishedAt).getTime() / 1000,
+          subreddit: 'financial_news',
+          author: article.source.name
+        })),
+        ...(stocktwitsData?.messages || []).map((message: any) => ({
+          title: message.body.substring(0, 50) + '...',
+          selftext: message.body,
+          score: message.user.followers / 100, // Normalize follower count to score
+          num_comments: 5,
+          created_utc: new Date(message.created_at).getTime() / 1000,
+          subreddit: 'stocktwits',
+          author: message.user.username
+        }))
+      ];
+
       const { data: enhancedSentimentData, error: sentimentError } = await supabase.functions.invoke('enhanced-sentiment-analysis', {
         body: { 
-          posts: redditData.posts,
+          posts: allContent,
           symbols: allTickers 
         }
       });
@@ -141,9 +200,12 @@ const DailyTradingPipeline = () => {
       if (sentimentError) throw sentimentError;
       setProgress(50);
 
-      addDebugInfo("SENTIMENT_ANALYSIS", {
+      addDebugInfo("MULTI_SOURCE_SENTIMENT", {
+        totalContentPieces: allContent.length,
+        redditPosts: redditData?.posts?.length || 0,
+        newsArticles: newsData?.articles?.length || 0,
+        stocktwitsMessages: stocktwitsData?.messages?.length || 0,
         symbolsAnalyzed: enhancedSentimentData?.total_symbols_analyzed || 0,
-        postsProcessed: enhancedSentimentData?.total_posts_processed || 0,
         sampleResults: enhancedSentimentData?.enhanced_sentiment?.slice(0, 3) || []
       });
 
@@ -163,7 +225,7 @@ const DailyTradingPipeline = () => {
       });
 
       // Step 4: Generate enhanced trade signals with fallback data
-      setCurrentTask("Generating high-conviction signals with enhanced data...");
+      setCurrentTask("Generating high-conviction signals with enhanced multi-source data...");
       
       let sentimentResults = enhancedSentimentData?.enhanced_sentiment || [];
       let marketResults = enhancedMarketData?.enhanced_data || [];
@@ -312,17 +374,17 @@ const DailyTradingPipeline = () => {
         tickersProcessed: processedTickers.length,
         signalsGenerated,
         finalSignalsCount: enhancedSignals.length,
-        usedFallbackData: sentimentResults.length > 0 || marketResults.length > 0
+        usedMultiSourceData: allContent.length > 1
       });
 
       setSignals(enhancedSignals);
       setProgress(100);
-      setCurrentTask("Enhanced pipeline complete!");
+      setCurrentTask("Enhanced multi-source pipeline complete!");
       setLastRun(new Date());
 
       toast({
-        title: enhancedSignals.length > 0 ? "Enhanced Daily Pipeline Complete! 🚀" : "Pipeline Complete - No Signals Found",
-        description: `Found ${enhancedSignals.length} signals using ${sentimentResults.length === 5 ? 'sample' : 'enhanced'} data sources`,
+        title: enhancedSignals.length > 0 ? "Enhanced Multi-Source Pipeline Complete! 🚀" : "Pipeline Complete - No Signals Found",
+        description: `Found ${enhancedSignals.length} signals using ${allContent.length} data sources (Reddit: ${redditData?.posts?.length || 0}, News: ${newsData?.articles?.length || 0}, StockTwits: ${stocktwitsData?.messages?.length || 0})`,
       });
 
     } catch (error) {
@@ -368,7 +430,7 @@ const DailyTradingPipeline = () => {
             🚀 Enhanced Trading Pipeline
             <Zap className="w-8 h-8 ml-3 text-primary" />
           </h2>
-          <p className="text-muted-foreground">AI-powered high-conviction signals with enhanced data sources</p>
+          <p className="text-muted-foreground">Multi-source AI-powered signals: Reddit + Financial News + StockTwits</p>
         </div>
         {lastRun && (
           <div className="text-sm text-muted-foreground">
@@ -382,10 +444,10 @@ const DailyTradingPipeline = () => {
         <div className="flex items-center justify-between mb-4">
           <div>
             <h3 className="font-bold text-xl flex items-center">
-              Enhanced Signal Generation
+              Multi-Source Signal Generation
               <Target className="w-5 h-5 ml-2 text-blue-600" />
             </h3>
-            <p className="text-muted-foreground">Multi-source analysis: Technical indicators + Sentiment velocity + Volume spikes</p>
+            <p className="text-muted-foreground">Enhanced analysis: Reddit + Financial News + StockTwits + Technical Indicators</p>
           </div>
           <div className="flex gap-2">
             <Button 
@@ -409,7 +471,7 @@ const DailyTradingPipeline = () => {
               ) : (
                 <>
                   <Zap className="w-4 h-4 mr-2" />
-                  Run Enhanced Scan
+                  Run Multi-Source Scan
                 </>
               )}
             </Button>
@@ -428,19 +490,23 @@ const DailyTradingPipeline = () => {
 
         {/* Enhanced Data Sources Overview */}
         <div className="mt-4 p-4 bg-white/50 rounded-lg">
-          <h4 className="font-semibold mb-3">Enhanced Data Sources:</h4>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
+          <h4 className="font-semibold mb-3">Multi-Source Data Pipeline:</h4>
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4 text-sm">
             <div className="flex items-center space-x-2">
               <Activity className="w-4 h-4 text-blue-500" />
-              <span>Technical Indicators (RSI, SMA, Volume)</span>
+              <span>Reddit Communities</span>
             </div>
             <div className="flex items-center space-x-2">
               <TrendingUp className="w-4 h-4 text-green-500" />
-              <span>Sentiment Velocity Tracking</span>
+              <span>Financial News APIs</span>
             </div>
             <div className="flex items-center space-x-2">
               <Volume2 className="w-4 h-4 text-purple-500" />
-              <span>Social Volume Spike Detection</span>
+              <span>StockTwits Social</span>
+            </div>
+            <div className="flex items-center space-x-2">
+              <Scan className="w-4 h-4 text-orange-500" />
+              <span>Technical Indicators</span>
             </div>
           </div>
         </div>
@@ -469,7 +535,7 @@ const DailyTradingPipeline = () => {
         <Card className="p-6">
           <h3 className="font-bold text-xl mb-4 flex items-center">
             <AlertTriangle className="w-5 h-5 mr-2 text-orange-500" />
-            Enhanced High-Conviction Signals ({signals.length})
+            Enhanced Multi-Source Signals ({signals.length})
           </h3>
           
           <div className="space-y-4">
@@ -529,9 +595,9 @@ const DailyTradingPipeline = () => {
       {!isRunning && signals.length === 0 && (
         <Card className="p-8 text-center text-muted-foreground">
           <Zap className="w-12 h-12 mx-auto mb-4 text-gray-400" />
-          <h3 className="font-semibold mb-2">Enhanced Pipeline Ready</h3>
-          <p>Click "Run Enhanced Scan" to analyze with technical indicators and sentiment velocity</p>
-          <p className="text-sm mt-2">Expected: 3-8 daily signals meeting enhanced criteria</p>
+          <h3 className="font-semibold mb-2">Multi-Source Pipeline Ready</h3>
+          <p>Click "Run Multi-Source Scan" to analyze with Reddit + News + StockTwits data</p>
+          <p className="text-sm mt-2">Expected: Higher signal quality with multiple data sources</p>
         </Card>
       )}
     </div>
