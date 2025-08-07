@@ -559,6 +559,47 @@ const DailyTradingPipeline = () => {
       });
 
       setSignals(enhancedSignals);
+
+      // Store signals in database for performance tracking
+      if (enhancedSignals.length > 0) {
+        try {
+          const pipelineRunId = crypto.randomUUID();
+          const signalsToStore = enhancedSignals.map(signal => ({
+            ticker: signal.ticker,
+            category: signal.category,
+            signal_type: signal.signal_type,
+            confidence: signal.confidence,
+            price: signal.price,
+            sentiment_score: signal.sentiment_score,
+            sentiment_velocity: signal.sentiment_velocity,
+            volume_ratio: signal.volume_ratio,
+            rsi: signal.rsi,
+            technical_signals: signal.technical_signals,
+            reasoning: signal.reasoning,
+            entry_price: signal.price, // Use current price as entry price
+            outcome: 'PENDING', // New signals start as pending
+            pipeline_run_id: pipelineRunId,
+            data_sources_used: ['financial_news', 'stocktwits', 'polygon', 'yahoo'] // Based on what we're using
+          }));
+
+          const { error: insertError } = await supabase
+            .from('trading_signals')
+            .insert(signalsToStore);
+
+          if (insertError) {
+            console.error('Error storing signals in database:', insertError);
+          } else {
+            console.log(`Stored ${signalsToStore.length} signals in database with pipeline run ID: ${pipelineRunId}`);
+            addDebugInfo("SIGNALS_STORED", {
+              count: signalsToStore.length,
+              pipelineRunId: pipelineRunId
+            });
+          }
+        } catch (error) {
+          console.error('Failed to store signals:', error);
+        }
+      }
+
       setProgress(100);
       setCurrentTask("Enhanced multi-source pipeline complete!");
       setLastRun(new Date());

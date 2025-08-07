@@ -212,6 +212,78 @@ export type Database = {
         }
         Relationships: []
       }
+      trading_signals: {
+        Row: {
+          actual_return: number | null
+          category: string
+          confidence: number
+          created_at: string | null
+          data_sources_used: string[] | null
+          days_held: number | null
+          entry_price: number | null
+          exit_price: number | null
+          id: string
+          outcome: string | null
+          pipeline_run_id: string | null
+          price: number
+          reasoning: string | null
+          rsi: number | null
+          sentiment_score: number | null
+          sentiment_velocity: number | null
+          signal_type: string
+          technical_signals: string[] | null
+          ticker: string
+          updated_at: string | null
+          volume_ratio: number | null
+        }
+        Insert: {
+          actual_return?: number | null
+          category: string
+          confidence: number
+          created_at?: string | null
+          data_sources_used?: string[] | null
+          days_held?: number | null
+          entry_price?: number | null
+          exit_price?: number | null
+          id?: string
+          outcome?: string | null
+          pipeline_run_id?: string | null
+          price: number
+          reasoning?: string | null
+          rsi?: number | null
+          sentiment_score?: number | null
+          sentiment_velocity?: number | null
+          signal_type: string
+          technical_signals?: string[] | null
+          ticker: string
+          updated_at?: string | null
+          volume_ratio?: number | null
+        }
+        Update: {
+          actual_return?: number | null
+          category?: string
+          confidence?: number
+          created_at?: string | null
+          data_sources_used?: string[] | null
+          days_held?: number | null
+          entry_price?: number | null
+          exit_price?: number | null
+          id?: string
+          outcome?: string | null
+          pipeline_run_id?: string | null
+          price?: number
+          reasoning?: string | null
+          rsi?: number | null
+          sentiment_score?: number | null
+          sentiment_velocity?: number | null
+          signal_type?: string
+          technical_signals?: string[] | null
+          ticker?: string
+          updated_at?: string | null
+          volume_ratio?: number | null
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
