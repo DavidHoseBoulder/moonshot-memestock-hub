@@ -519,16 +519,16 @@ const DailyTradingPipeline = () => {
 
       {/* Debug Information Panel */}
       {showDebug && debugInfo.length > 0 && (
-        <Card className="p-6 bg-gray-50 border-gray-200">
-          <h3 className="font-bold text-lg mb-4 text-gray-800">🔍 Debug Information</h3>
+        <Card className="p-6 bg-muted/50 border-border">
+          <h3 className="font-bold text-lg mb-4 text-foreground">🔍 Debug Information</h3>
           <div className="space-y-3 max-h-96 overflow-y-auto">
             {debugInfo.map((debug, index) => (
-              <div key={index} className="bg-white p-3 rounded border text-xs">
+              <div key={index} className="bg-card p-3 rounded border border-border text-xs">
                 <div className="flex justify-between items-start mb-2">
                   <Badge variant="outline" className="text-xs">{debug.step}</Badge>
-                  <span className="text-gray-500 text-xs">{new Date(debug.timestamp).toLocaleTimeString()}</span>
+                  <span className="text-muted-foreground text-xs">{new Date(debug.timestamp).toLocaleTimeString()}</span>
                 </div>
-                <pre className="text-gray-700 whitespace-pre-wrap">{JSON.stringify(debug.data, null, 2)}</pre>
+                <pre className="text-foreground whitespace-pre-wrap font-mono">{JSON.stringify(debug.data, null, 2)}</pre>
               </div>
             ))}
           </div>
