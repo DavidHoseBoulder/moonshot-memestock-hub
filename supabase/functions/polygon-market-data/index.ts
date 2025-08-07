@@ -74,24 +74,30 @@ Deno.serve(async (req) => {
           const toDate = new Date().toISOString().split('T')[0]
           const fromDate = new Date(Date.now() - (days * 24 * 60 * 60 * 1000)).toISOString().split('T')[0]
           
-          // Get aggregated bars (daily data)
+          // Get aggregated bars (daily data) - Using query parameter for API key, not Authorization header
           const barsUrl = `https://api.polygon.io/v2/aggs/ticker/${symbol}/range/1/day/${fromDate}/${toDate}?adjusted=true&sort=asc&limit=5000&apikey=${polygonApiKey}`
           
-          const response = await fetch(barsUrl, {
-            headers: {
-              'Authorization': `Bearer ${polygonApiKey}`
-            }
-          })
+          console.log(`Fetching Polygon data for ${symbol} from ${fromDate} to ${toDate}`)
+          
+          const response = await fetch(barsUrl)
         
           if (!response.ok) {
-            console.error(`Failed to fetch Polygon data for ${symbol}:`, response.status)
+            console.error(`Failed to fetch Polygon data for ${symbol}:`, response.status, response.statusText)
+            const errorText = await response.text()
+            console.error(`Polygon API error response:`, errorText)
             return null
           }
 
           const data = await response.json()
+          console.log(`Polygon response for ${symbol}:`, JSON.stringify(data).substring(0, 200))
         
-          if (!data.results || data.results.length < 20) {
-            console.log(`Insufficient Polygon data for ${symbol}, skipping`)
+          if (!data.results || data.results.length === 0) {
+            console.log(`No Polygon data results for ${symbol}:`, data)
+            return null
+          }
+          
+          if (data.results.length < 20) {
+            console.log(`Insufficient Polygon data for ${symbol}: only ${data.results.length} bars, need at least 20`)
             return null
           }
 
