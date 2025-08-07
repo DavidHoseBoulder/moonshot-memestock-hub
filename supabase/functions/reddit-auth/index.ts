@@ -92,14 +92,37 @@ Deno.serve(async (req) => {
     // If OAuth fails, try public JSON endpoint as fallback
     if (!postsResponse.ok) {
       console.log('OAuth request failed, trying public JSON endpoint...')
-      redditApiUrl = `https://www.reddit.com/r/${subreddit}/${action}.json?limit=${limit}`
       
-      postsResponse = await fetch(redditApiUrl, {
-        headers: {
-          'User-Agent': 'web:moonshot-financial-app:v1.0.0 (by /u/Either-Ad-7141)',
-          'Accept': 'application/json'
+      // Try different public endpoints with better error handling
+      const publicEndpoints = [
+        `https://www.reddit.com/r/${subreddit}/${action}.json?limit=${limit}`,
+        `https://old.reddit.com/r/${subreddit}/${action}.json?limit=${limit}`,
+        `https://api.reddit.com/r/${subreddit}/${action}?limit=${limit}`
+      ]
+      
+      for (const endpoint of publicEndpoints) {
+        try {
+          postsResponse = await fetch(endpoint, {
+            headers: {
+              'User-Agent': 'Mozilla/5.0 (compatible; FinancialAnalysisBot/1.0)',
+              'Accept': 'application/json',
+              'Accept-Encoding': 'gzip, deflate',
+              'Cache-Control': 'no-cache'
+            }
+          })
+          
+          if (postsResponse.ok) {
+            const contentType = postsResponse.headers.get('content-type')
+            if (contentType && contentType.includes('application/json')) {
+              console.log(`Successfully connected to: ${endpoint}`)
+              break
+            }
+          }
+        } catch (e) {
+          console.log(`Failed endpoint ${endpoint}:`, e.message)
+          continue
         }
-      })
+      }
     }
 
     if (!postsResponse.ok) {

@@ -503,7 +503,28 @@ const DailyTradingPipeline = () => {
           confidence: stackingResult.confidenceScore,
           strength: stackingResult.signalStrength,
           recommend: stackingResult.recommendAction,
-          breakdown: stackingResult.votingBreakdown
+          breakdown: stackingResult.votingBreakdown,
+          debugInfo: stackingResult.debugInfo,
+          inputData: {
+            redditSentiment,
+            stocktwitsSentiment, 
+            newsSentiment,
+            rsi,
+            volumeRatio,
+            polygonAvailable,
+            yahooAvailable
+          },
+          sourcesPassed: stackingResult.sources.filter(s => s.passed).map(s => s.name),
+          sourcesFailed: stackingResult.sources.filter(s => s.available && !s.passed).map(s => ({
+            name: s.name,
+            score: s.score,
+            threshold: s.threshold,
+            reason: `Score ${s.score?.toFixed(2)} below threshold ${s.threshold}`
+          })),
+          sourcesUnavailable: stackingResult.sources.filter(s => !s.available).map(s => ({
+            name: s.name,
+            error: s.errorMessage || 'No data'
+          }))
         });
         
         // Only generate signals for recommended actions

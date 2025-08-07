@@ -43,6 +43,15 @@ export interface StackingResult {
     market_data: number;
     future_sources: number;
   };
+  debugInfo?: {
+    availableSources: number;
+    sentimentSources: number;
+    technicalSources: number;
+    degradedMode: boolean;
+    strongSentiment: number;
+    volumeBoost: boolean;
+    rsiExtreme: boolean;
+  };
 }
 
 // Default configuration with conservative thresholds
@@ -155,14 +164,51 @@ export class SentimentStackingEngine {
     // Calculate confidence score (0-1)
     const confidenceScore = maxPossibleVotes > 0 ? totalVotes / maxPossibleVotes : 0;
 
-    // Determine signal strength
+    // DEGRADED MODE LOGIC - Check how many sources are available
+    const availableSources = sources.filter(s => s.available).length;
+    const sentimentSources = sources.slice(0, 3).filter(s => s.available).length;
+    const technicalSources = sources.slice(3, 6).filter(s => s.available).length;
+    
+    // Determine signal strength with degraded mode adjustments
     let signalStrength: 'WEAK' | 'MODERATE' | 'STRONG';
-    if (confidenceScore >= 0.7) signalStrength = 'STRONG';
-    else if (confidenceScore >= 0.4) signalStrength = 'MODERATE';
-    else signalStrength = 'WEAK';
+    if (availableSources <= 3) {
+      // Degraded mode: lower thresholds when limited data
+      if (confidenceScore >= 0.5) signalStrength = 'STRONG';
+      else if (confidenceScore >= 0.25) signalStrength = 'MODERATE';
+      else signalStrength = 'WEAK';
+    } else {
+      // Normal mode: standard thresholds
+      if (confidenceScore >= 0.7) signalStrength = 'STRONG';
+      else if (confidenceScore >= 0.4) signalStrength = 'MODERATE';
+      else signalStrength = 'WEAK';
+    }
 
-    // Recommend action based on minimum threshold
-    const recommendAction = confidenceScore >= 0.4 && totalVotes >= 2.0;
+    // ADAPTIVE RECOMMENDATION LOGIC
+    let recommendAction = false;
+    
+    if (availableSources <= 3) {
+      // Degraded mode: more lenient requirements
+      recommendAction = (
+        (confidenceScore >= 0.3 && totalVotes >= 1.0) || // Lower threshold
+        (sentimentSources >= 1 && totalVotes >= 0.8) || // Strong sentiment with some support
+        (data.rsi !== undefined && (data.rsi < 25 || data.rsi > 75) && totalVotes >= 0.5) // Extreme RSI signals
+      );
+    } else {
+      // Normal mode: standard requirements
+      recommendAction = confidenceScore >= 0.4 && totalVotes >= 2.0;
+    }
+
+    // Boost signals for strong sentiment with technical confirmation
+    const strongSentiment = Math.max(
+      data.reddit_sentiment || -1,
+      data.stocktwits_sentiment || -1,
+      data.news_sentiment || -1
+    );
+    
+    if (strongSentiment > 0.6 && (data.volume_ratio || 0) > 1.2) {
+      recommendAction = true;
+      signalStrength = signalStrength === 'WEAK' ? 'MODERATE' : signalStrength;
+    }
 
     // Voting breakdown by category
     const votingBreakdown = {
@@ -170,6 +216,17 @@ export class SentimentStackingEngine {
       technical: sources.slice(3, 6).filter(s => s.passed).reduce((sum, s) => sum + s.weight, 0),
       market_data: sources.slice(6, 8).filter(s => s.passed).reduce((sum, s) => sum + s.weight, 0),
       future_sources: sources.slice(8).filter(s => s.passed).reduce((sum, s) => sum + s.weight, 0)
+    };
+
+    // Enhanced debugging info
+    const debugInfo = {
+      availableSources,
+      sentimentSources,
+      technicalSources,
+      degradedMode: availableSources <= 3,
+      strongSentiment,
+      volumeBoost: (data.volume_ratio || 0) > 1.2,
+      rsiExtreme: data.rsi !== undefined && (data.rsi < 25 || data.rsi > 75)
     };
 
     return {
@@ -180,7 +237,8 @@ export class SentimentStackingEngine {
       confidenceScore,
       signalStrength,
       recommendAction,
-      votingBreakdown
+      votingBreakdown,
+      debugInfo // Add debug info to help understand decisions
     };
   }
 
