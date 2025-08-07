@@ -23,6 +23,26 @@ interface TradeSignal {
   timestamp: string;
 }
 
+interface SentimentData {
+  symbol: string;
+  current_sentiment: number;
+  sentiment_velocity: {
+    velocity_1h: number;
+    mention_frequency: number;
+    social_volume_spike: boolean;
+  };
+}
+
+interface MarketData {
+  symbol: string;
+  price: number;
+  technical_indicators: {
+    rsi: number;
+    volume_ratio: number;
+    momentum: number;
+  };
+}
+
 const DailyTradingPipeline = () => {
   const [isRunning, setIsRunning] = useState(false);
   const [progress, setProgress] = useState(0);
@@ -83,13 +103,25 @@ const DailyTradingPipeline = () => {
       // Process the enhanced data to generate signals
       const enhancedSignals: TradeSignal[] = [];
       
-      // Combine enhanced sentiment and market data
-      const sentimentMap = new Map(
-        enhancedSentimentData.enhanced_sentiment?.map((item: any) => [item.symbol, item]) || []
-      );
-      const marketMap = new Map(
-        enhancedMarketData.enhanced_data?.map((item: any) => [item.symbol, item]) || []
-      );
+      // Safely access and type the response data
+      const sentimentResults = enhancedSentimentData?.enhanced_sentiment || [];
+      const marketResults = enhancedMarketData?.enhanced_data || [];
+      
+      // Create maps for efficient lookup with proper typing
+      const sentimentMap = new Map<string, SentimentData>();
+      const marketMap = new Map<string, MarketData>();
+      
+      sentimentResults.forEach((item: any) => {
+        if (item && item.symbol) {
+          sentimentMap.set(item.symbol, item as SentimentData);
+        }
+      });
+      
+      marketResults.forEach((item: any) => {
+        if (item && item.symbol) {
+          marketMap.set(item.symbol, item as MarketData);
+        }
+      });
 
       // Generate signals based on enhanced criteria
       for (const ticker of allTickers.slice(0, 20)) { // Process top 20 for demo
@@ -98,7 +130,7 @@ const DailyTradingPipeline = () => {
         
         if (!sentimentData && !marketData) continue;
         
-        // Enhanced signal generation logic
+        // Enhanced signal generation logic with safe property access
         const sentiment_score = sentimentData?.current_sentiment || 0;
         const sentiment_velocity = sentimentData?.sentiment_velocity?.velocity_1h || 0;
         const volume_spike = sentimentData?.sentiment_velocity?.social_volume_spike || false;
