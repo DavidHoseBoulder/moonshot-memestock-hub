@@ -43,22 +43,42 @@ interface MarketData {
   };
 }
 
+interface DebugInfo {
+  step: string;
+  data: any;
+  timestamp: string;
+}
+
 const DailyTradingPipeline = () => {
   const [isRunning, setIsRunning] = useState(false);
   const [progress, setProgress] = useState(0);
   const [currentTask, setCurrentTask] = useState("");
   const [signals, setSignals] = useState<TradeSignal[]>([]);
   const [lastRun, setLastRun] = useState<Date | null>(null);
+  const [debugInfo, setDebugInfo] = useState<DebugInfo[]>([]);
+  const [showDebug, setShowDebug] = useState(false);
   const { toast } = useToast();
+
+  const addDebugInfo = (step: string, data: any) => {
+    const debugEntry = {
+      step,
+      data,
+      timestamp: new Date().toISOString()
+    };
+    console.log(`🔍 DEBUG [${step}]:`, data);
+    setDebugInfo(prev => [...prev, debugEntry]);
+  };
 
   const runEnhancedDailyPipeline = async () => {
     setIsRunning(true);
     setProgress(0);
     setSignals([]);
+    setDebugInfo([]);
     
     try {
       const allTickers = getAllTickers();
       console.log('Running ENHANCED pipeline for tickers:', allTickers.slice(0, 5), '... and', allTickers.length - 5, 'more');
+      addDebugInfo("PIPELINE_START", { totalTickers: allTickers.length, sampleTickers: allTickers.slice(0, 10) });
       
       // Step 1: Enhanced Reddit sentiment data
       setCurrentTask("Fetching multi-subreddit sentiment data...");
@@ -74,6 +94,12 @@ const DailyTradingPipeline = () => {
 
       if (redditError) throw redditError;
       
+      addDebugInfo("REDDIT_DATA", { 
+        postCount: redditData?.posts?.length || 0,
+        isMockData: redditData?.isMockData || false,
+        samplePost: redditData?.posts?.[0] || null
+      });
+      
       // Step 2: Enhanced sentiment analysis with velocity tracking
       setCurrentTask("Running enhanced AI sentiment analysis with velocity tracking...");
       setProgress(30);
@@ -88,6 +114,12 @@ const DailyTradingPipeline = () => {
       if (sentimentError) throw sentimentError;
       setProgress(50);
 
+      addDebugInfo("SENTIMENT_ANALYSIS", {
+        symbolsAnalyzed: enhancedSentimentData?.total_symbols_analyzed || 0,
+        postsProcessed: enhancedSentimentData?.total_posts_processed || 0,
+        sampleResults: enhancedSentimentData?.enhanced_sentiment?.slice(0, 3) || []
+      });
+
       // Step 3: Enhanced market data with technical indicators
       setCurrentTask("Fetching enhanced market data with technical indicators...");
       const { data: enhancedMarketData, error: marketError } = await supabase.functions.invoke('enhanced-market-data', {
@@ -96,6 +128,12 @@ const DailyTradingPipeline = () => {
 
       if (marketError) throw marketError;
       setProgress(70);
+
+      addDebugInfo("MARKET_DATA", {
+        symbolsProcessed: enhancedMarketData?.total_processed || 0,
+        symbolsRequested: enhancedMarketData?.symbols_requested || 0,
+        sampleData: enhancedMarketData?.enhanced_data?.slice(0, 3) || []
+      });
 
       // Step 4: Generate enhanced trade signals
       setCurrentTask("Generating high-conviction signals with enhanced data...");
@@ -106,6 +144,13 @@ const DailyTradingPipeline = () => {
       // Safely access and type the response data
       const sentimentResults = enhancedSentimentData?.enhanced_sentiment || [];
       const marketResults = enhancedMarketData?.enhanced_data || [];
+      
+      addDebugInfo("SIGNAL_GENERATION_INPUT", {
+        sentimentResultsCount: sentimentResults.length,
+        marketResultsCount: marketResults.length,
+        sentimentSample: sentimentResults.slice(0, 2),
+        marketSample: marketResults.slice(0, 2)
+      });
       
       // Create maps for efficient lookup with proper typing
       const sentimentMap = new Map<string, SentimentData>();
@@ -123,10 +168,28 @@ const DailyTradingPipeline = () => {
         }
       });
 
+      addDebugInfo("DATA_MAPS", {
+        sentimentMapSize: sentimentMap.size,
+        marketMapSize: marketMap.size,
+        sentimentKeys: Array.from(sentimentMap.keys()).slice(0, 10),
+        marketKeys: Array.from(marketMap.keys()).slice(0, 10)
+      });
+
       // Generate signals based on enhanced criteria
-      for (const ticker of allTickers.slice(0, 20)) { // Process top 20 for demo
+      const processedTickers = allTickers.slice(0, 20); // Process top 20 for demo
+      let signalsGenerated = 0;
+      
+      for (const ticker of processedTickers) {
         const sentimentData = sentimentMap.get(ticker);
         const marketData = marketMap.get(ticker);
+        
+        addDebugInfo(`TICKER_${ticker}`, {
+          hasSentiment: !!sentimentData,
+          hasMarket: !!marketData,
+          sentimentScore: sentimentData?.current_sentiment,
+          marketPrice: marketData?.price,
+          marketRSI: marketData?.technical_indicators?.rsi
+        });
         
         if (!sentimentData && !marketData) continue;
         
@@ -188,8 +251,15 @@ const DailyTradingPipeline = () => {
             reasoning,
             timestamp: new Date().toISOString()
           });
+          signalsGenerated++;
         }
       }
+
+      addDebugInfo("SIGNAL_GENERATION_COMPLETE", {
+        tickersProcessed: processedTickers.length,
+        signalsGenerated,
+        finalSignalsCount: enhancedSignals.length
+      });
 
       setSignals(enhancedSignals);
       setProgress(100);
@@ -203,6 +273,7 @@ const DailyTradingPipeline = () => {
 
     } catch (error) {
       console.error('Enhanced pipeline error:', error);
+      addDebugInfo("ERROR", { error: error.message, stack: error.stack });
       toast({
         title: "Enhanced Pipeline Error",
         description: "There was an issue running the enhanced analysis. Check the logs.",
@@ -262,24 +333,33 @@ const DailyTradingPipeline = () => {
             </h3>
             <p className="text-muted-foreground">Multi-source analysis: Technical indicators + Sentiment velocity + Volume spikes</p>
           </div>
-          <Button 
-            onClick={runEnhancedDailyPipeline}
-            disabled={isRunning}
-            size="lg"
-            className="bg-gradient-to-r from-green-500 to-blue-500 hover:from-green-600 hover:to-blue-600"
-          >
-            {isRunning ? (
-              <>
-                <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
-                Analyzing...
-              </>
-            ) : (
-              <>
-                <Zap className="w-4 h-4 mr-2" />
-                Run Enhanced Scan
-              </>
-            )}
-          </Button>
+          <div className="flex gap-2">
+            <Button 
+              variant="outline"
+              onClick={() => setShowDebug(!showDebug)}
+              size="sm"
+            >
+              {showDebug ? "Hide Debug" : "Show Debug"}
+            </Button>
+            <Button 
+              onClick={runEnhancedDailyPipeline}
+              disabled={isRunning}
+              size="lg"
+              className="bg-gradient-to-r from-green-500 to-blue-500 hover:from-green-600 hover:to-blue-600"
+            >
+              {isRunning ? (
+                <>
+                  <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
+                  Analyzing...
+                </>
+              ) : (
+                <>
+                  <Zap className="w-4 h-4 mr-2" />
+                  Run Enhanced Scan
+                </>
+              )}
+            </Button>
+          </div>
         </div>
 
         {isRunning && (
@@ -311,6 +391,24 @@ const DailyTradingPipeline = () => {
           </div>
         </div>
       </Card>
+
+      {/* Debug Information Panel */}
+      {showDebug && debugInfo.length > 0 && (
+        <Card className="p-6 bg-gray-50 border-gray-200">
+          <h3 className="font-bold text-lg mb-4 text-gray-800">🔍 Debug Information</h3>
+          <div className="space-y-3 max-h-96 overflow-y-auto">
+            {debugInfo.map((debug, index) => (
+              <div key={index} className="bg-white p-3 rounded border text-xs">
+                <div className="flex justify-between items-start mb-2">
+                  <Badge variant="outline" className="text-xs">{debug.step}</Badge>
+                  <span className="text-gray-500 text-xs">{new Date(debug.timestamp).toLocaleTimeString()}</span>
+                </div>
+                <pre className="text-gray-700 whitespace-pre-wrap">{JSON.stringify(debug.data, null, 2)}</pre>
+              </div>
+            ))}
+          </div>
+        </Card>
+      )}
 
       {/* Enhanced Trade Signals Display */}
       {signals.length > 0 && (
