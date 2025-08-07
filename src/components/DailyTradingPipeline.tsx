@@ -687,6 +687,41 @@ const DailyTradingPipeline = () => {
       const enhancedSignals: TradeSignal[] = [];
       const stackingResults: StackingResult[] = [];
       
+      // Enhanced logging for data quality with sentiment coverage monitoring
+      const logDataQuality = (data: any[], step: string) => {
+        const priceIssues = data.filter(d => !d.price || d.price === 0).length;
+        const sentimentIssues = data.filter(d => 
+          (!d.reddit_sentiment || d.reddit_sentiment === 0) &&
+          (!d.stocktwits_sentiment || d.stocktwits_sentiment === 0) &&
+          (!d.news_sentiment || d.news_sentiment === 0)
+        ).length;
+        
+        // Track data source availability
+        const dataSourceStatus = {
+          reddit: data.filter(d => d.reddit_sentiment && d.reddit_sentiment > 0).length,
+          stocktwits: data.filter(d => d.stocktwits_sentiment && d.stocktwits_sentiment > 0).length,
+          news: data.filter(d => d.news_sentiment && d.news_sentiment > 0).length,
+          youtube: data.filter(d => d.youtube_sentiment && d.youtube_sentiment > 0).length,
+          technical: data.filter(d => d.rsi && d.rsi > 0 && d.volume_ratio && d.volume_ratio > 0).length
+        };
+        
+        console.log(`📊 ${step} Data Quality:`, {
+          total: data.length,
+          priceIssues,
+          sentimentIssues,
+          dataSourceCoverage: dataSourceStatus,
+          qualityScore: ((data.length - priceIssues - sentimentIssues) / data.length * 100).toFixed(1) + '%'
+        });
+        
+        // Alert on critical data gaps
+        if (priceIssues > data.length * 0.3) {
+          console.warn(`⚠️ Critical: ${priceIssues}/${data.length} tickers missing price data`);
+        }
+        if (sentimentIssues > data.length * 0.7) {
+          console.warn(`⚠️ Critical: ${sentimentIssues}/${data.length} tickers missing sentiment data`);
+        }
+      };
+
       addDebugInfo("STACKING_ENGINE_INPUT", {
         sentimentResultsCount: sentimentResults.length,
         marketResultsCount: marketResults.length,
@@ -706,7 +741,32 @@ const DailyTradingPipeline = () => {
       
       // Get all unique symbols from both data sources
       const allSymbols = new Set([...sentimentMap.keys(), ...marketMap.keys(), ...allTickers]);
-      const processedTickers = Array.from(allSymbols).slice(0, 20); // Process more symbols with stacking
+      
+      // Apply early filtering to reduce processing load and focus on quality data
+      const earlyFilteredData = Array.from(allSymbols).filter(symbol => {
+        const marketData = marketMap.get(symbol);
+        const hasReddit = redditSentimentMap.has(symbol);
+        const hasStocktwits = stocktwitsSentimentMap.has(symbol);
+        const hasNews = newsSentimentMap.has(symbol);
+        const hasYoutube = youtubeSentimentMap.has(symbol);
+        const hasGoogleTrends = googleTrendsMap.has(symbol);
+        
+        // Basic data quality requirements
+        const hasPrice = marketData?.price && marketData.price > 0;
+        const hasVolume = marketData?.technical_indicators?.volume_ratio && marketData.technical_indicators.volume_ratio > 0.5;
+        const hasRSI = marketData?.technical_indicators?.rsi && marketData.technical_indicators.rsi > 0;
+        
+        // Sentiment quality check - require at least one meaningful sentiment source
+        const hasMeaningfulSentiment = hasReddit || hasStocktwits || hasNews || hasYoutube;
+        
+        // Technical quality check
+        const hasValidTechnical = hasRSI || (hasVolume && marketData.technical_indicators.volume_ratio > 1.2);
+        
+        // At minimum: price + (sentiment OR strong technical signal OR Google trends activity)
+        return hasPrice && (hasMeaningfulSentiment || hasValidTechnical || hasGoogleTrends);
+      });
+
+      const processedTickers = earlyFilteredData.slice(0, 20); // Process quality-filtered symbols
       let signalsGenerated = 0;
       
       addDebugInfo("STACKING_SYMBOLS", {
