@@ -22,6 +22,7 @@ const DataSourceStatus = () => {
     { name: 'Financial News', status: 'checking', lastCheck: '', mockData: false },
     { name: 'StockTwits', status: 'checking', lastCheck: '', mockData: false },
     { name: 'Market Data (Yahoo)', status: 'checking', lastCheck: '', mockData: false },
+    { name: 'Market Data (Polygon)', status: 'checking', lastCheck: '', mockData: false },
   ]);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const { toast } = useToast();
@@ -40,7 +41,7 @@ const DataSourceStatus = () => {
         return {
           status: 'unavailable' as const,
           responseTime,
-          errorMessage: error.message,
+          errorMessage: `Error: ${error.message || 'Unknown error'}`,
           mockData: false
         };
       }
@@ -54,13 +55,14 @@ const DataSourceStatus = () => {
       let status: 'available' | 'partial' | 'unavailable' = 'available';
       if (isMockData) {
         status = 'partial'; // Partial means working but returning mock data
-      } else if (!data) {
+      } else if (!data?.success) {
         status = 'unavailable';
       } else {
         // Check if we got actual data
         const hasData = (data?.posts && data.posts.length > 0) ||
                        (data?.articles && data.articles.length > 0) ||
-                       (data?.messages && data.messages.length > 0);
+                       (data?.messages && data.messages.length > 0) ||
+                       (data?.enhanced_data && data.enhanced_data.length > 0);
         if (!hasData) {
           status = 'unavailable';
         }
@@ -70,7 +72,8 @@ const DataSourceStatus = () => {
         status,
         responseTime,
         mockData: isMockData,
-        dataCount: data?.posts?.length || data?.articles?.length || data?.messages?.length || 0
+        dataCount: data?.posts?.length || data?.articles?.length || data?.messages?.length || data?.enhanced_data?.length || 0,
+        errorMessage: status === 'unavailable' ? (data?.error || 'No data returned') : undefined
       };
 
     } catch (error) {
@@ -108,6 +111,11 @@ const DataSourceStatus = () => {
         name: 'Market Data (Yahoo)',
         function: 'enhanced-market-data',
         payload: { symbols: ['AAPL', 'TSLA', 'NVDA'], days: 21 }  // Multiple symbols like pipeline
+      },
+      {
+        name: 'Market Data (Polygon)',
+        function: 'polygon-market-data',
+        payload: { symbols: ['AAPL', 'TSLA', 'NVDA'], days: 21 }  // Alternative market data source
       }
     ];
 

@@ -64,3 +64,6 @@ verify_jwt = false
 
 [functions.stocktwits-data]
 verify_jwt = false
+
+[functions.polygon-market-data]
+verify_jwt = false

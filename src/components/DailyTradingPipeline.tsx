@@ -245,11 +245,49 @@ const DailyTradingPipeline = () => {
         sampleResults: enhancedSentimentData?.enhanced_sentiment?.slice(0, 3) || []
       });
 
-      // Step 3: Enhanced market data with technical indicators
+      // Step 3: Enhanced market data with fallback to alternative sources
       setCurrentTask("Fetching enhanced market data with technical indicators...");
-      const { data: enhancedMarketData, error: marketError } = await supabase.functions.invoke('enhanced-market-data', {
-        body: { symbols: allTickers, days: 21 }
-      });
+      let enhancedMarketData;
+      let marketError;
+      
+      try {
+        // Try Yahoo Finance first
+        const yahooResponse = await supabase.functions.invoke('enhanced-market-data', {
+          body: { symbols: allTickers, days: 21 }
+        });
+        
+        if (yahooResponse.error || !yahooResponse.data?.success || yahooResponse.data.enhanced_data?.length < 5) {
+          console.warn('Yahoo Finance insufficient, trying Polygon...');
+          addDebugInfo("YAHOO_INSUFFICIENT", { 
+            error: yahooResponse.error?.message,
+            dataCount: yahooResponse.data?.enhanced_data?.length || 0,
+            note: "Falling back to Polygon API"
+          });
+          
+          // Fallback to Polygon.io
+          const polygonResponse = await supabase.functions.invoke('polygon-market-data', {
+            body: { symbols: allTickers, days: 21 }
+          });
+          
+          if (polygonResponse.error || !polygonResponse.data?.success) {
+            marketError = polygonResponse.error;
+          } else {
+            enhancedMarketData = polygonResponse.data;
+            addDebugInfo("POLYGON_SUCCESS", { 
+              dataCount: enhancedMarketData.enhanced_data?.length || 0,
+              source: "polygon"
+            });
+          }
+        } else {
+          enhancedMarketData = yahooResponse.data;
+          addDebugInfo("YAHOO_SUCCESS", { 
+            dataCount: enhancedMarketData.enhanced_data?.length || 0,
+            source: "yahoo"
+          });
+        }
+      } catch (error) {
+        marketError = error;
+      }
 
       if (marketError) throw marketError;
       setProgress(70);
@@ -314,24 +352,39 @@ const DailyTradingPipeline = () => {
       });
 
       // Generate signals only for symbols with valid market data
-      // Filter out symbols with default/insufficient market data
+      // More aggressive filtering to eliminate default/insufficient data
       const validMarketSymbols = Array.from(marketMap.entries())
         .filter(([symbol, data]) => {
-          // Only include symbols with non-default technical indicators
+          // Strict validation for real market data
           const rsi = data?.technical_indicators?.rsi;
-          const hasValidRSI = rsi && rsi !== 50; // Filter out default RSI=50
+          const volume_ratio = data?.technical_indicators?.volume_ratio;
+          const momentum = data?.technical_indicators?.momentum;
+          
+          const hasValidRSI = rsi && rsi !== 50 && rsi > 0 && rsi < 100; // No default RSI=50
           const hasValidPrice = data?.price && data.price > 0;
           const hasValidVolume = data?.volume && data.volume > 0;
+          const hasValidVolumeRatio = volume_ratio && volume_ratio !== 1.0; // No default volume_ratio=1.0
+          const hasValidMomentum = momentum !== undefined && momentum !== 0; // No default momentum=0
           
-          if (!hasValidRSI || !hasValidPrice || !hasValidVolume) {
+          // All conditions must pass for valid data
+          const isValid = hasValidRSI && hasValidPrice && hasValidVolume && 
+                          hasValidVolumeRatio && hasValidMomentum;
+          
+          if (!isValid) {
             addDebugInfo(`FILTERED_OUT_${symbol}`, {
-              reason: "Insufficient market data",
+              reason: "Insufficient/default market data",
               rsi: rsi,
               price: data?.price,
               volume: data?.volume,
-              hasValidRSI,
-              hasValidPrice,
-              hasValidVolume
+              volume_ratio: volume_ratio,
+              momentum: momentum,
+              checks: {
+                hasValidRSI,
+                hasValidPrice, 
+                hasValidVolume,
+                hasValidVolumeRatio,
+                hasValidMomentum
+              }
             });
             return false;
           }
@@ -339,8 +392,8 @@ const DailyTradingPipeline = () => {
         })
         .map(([symbol, _]) => symbol);
 
-      // Only process symbols with valid market data or strong sentiment data
-      const processedTickers = validMarketSymbols.slice(0, 20); // Prioritize symbols with valid market data
+      // Only process symbols with valid market data
+      const processedTickers = validMarketSymbols.slice(0, 15); // Reduced to focus on quality
       let signalsGenerated = 0;
       
       addDebugInfo("FILTERED_SYMBOLS", {

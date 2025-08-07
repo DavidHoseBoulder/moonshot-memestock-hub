@@ -1,0 +1,242 @@
+import "https://deno.land/x/xhr@0.1.0/mod.ts";
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+
+const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+}
+
+interface TechnicalIndicators {
+  rsi: number
+  sma_20: number
+  sma_50: number
+  volume_ratio: number
+  momentum: number
+  volatility: number
+}
+
+interface PolygonMarketData {
+  symbol: string
+  price: number
+  volume: number
+  timestamp: string
+  technical_indicators: TechnicalIndicators
+  price_change_1d: number
+  price_change_5d: number
+}
+
+Deno.serve(async (req) => {
+  if (req.method === 'OPTIONS') {
+    return new Response(null, { headers: corsHeaders })
+  }
+
+  try {
+    const supabase = createClient(
+      Deno.env.get('SUPABASE_URL') ?? '',
+      Deno.env.get('SUPABASE_ANON_KEY') ?? ''
+    )
+
+    const polygonApiKey = Deno.env.get('POLYGON_API_KEY')
+    
+    if (!polygonApiKey) {
+      console.error('Missing Polygon API key')
+      return new Response(
+        JSON.stringify({ 
+          success: false,
+          error: 'Missing Polygon API key - configure in Supabase secrets',
+          enhanced_data: []
+        }),
+        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
+    }
+
+    const { symbols, days = 30 } = await req.json()
+    
+    if (!symbols || !Array.isArray(symbols)) {
+      return new Response(
+        JSON.stringify({ error: 'Missing or invalid symbols array' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
+    }
+
+    console.log(`Fetching Polygon market data for ${symbols.length} symbols over ${days} days`)
+
+    const enhancedData: PolygonMarketData[] = []
+    const BATCH_SIZE = 3 // Reduced for API rate limits
+    
+    // Process symbols in batches
+    for (let i = 0; i < symbols.length; i += BATCH_SIZE) {
+      const batch = symbols.slice(i, i + BATCH_SIZE)
+      console.log(`Processing Polygon batch ${Math.floor(i/BATCH_SIZE) + 1}/${Math.ceil(symbols.length/BATCH_SIZE)}`)
+      
+      const batchPromises = batch.map(async (symbol) => {
+        try {
+          const toDate = new Date().toISOString().split('T')[0]
+          const fromDate = new Date(Date.now() - (days * 24 * 60 * 60 * 1000)).toISOString().split('T')[0]
+          
+          // Get aggregated bars (daily data)
+          const barsUrl = `https://api.polygon.io/v2/aggs/ticker/${symbol}/range/1/day/${fromDate}/${toDate}?adjusted=true&sort=asc&limit=5000&apikey=${polygonApiKey}`
+          
+          const response = await fetch(barsUrl, {
+            headers: {
+              'Authorization': `Bearer ${polygonApiKey}`
+            }
+          })
+        
+          if (!response.ok) {
+            console.error(`Failed to fetch Polygon data for ${symbol}:`, response.status)
+            return null
+          }
+
+          const data = await response.json()
+        
+          if (!data.results || data.results.length < 20) {
+            console.log(`Insufficient Polygon data for ${symbol}, skipping`)
+            return null
+          }
+
+          const results = data.results
+          const prices = results.map((bar: any) => bar.c) // closing prices
+          const volumes = results.map((bar: any) => bar.v) // volumes
+          const timestamps = results.map((bar: any) => bar.t) // timestamps
+
+          // Calculate technical indicators
+          const validPrices = prices.filter((p: number) => p > 0)
+          const validVolumes = volumes.filter((v: number) => v > 0)
+
+          if (validPrices.length < 20) {
+            console.log(`Insufficient valid data for ${symbol}, skipping`)
+            return null
+          }
+
+          // Calculate RSI (simplified 14-period)
+          const rsi = calculateRSI(validPrices.slice(-14))
+        
+          // Calculate moving averages
+          const sma_20 = validPrices.slice(-20).reduce((sum: number, p: number) => sum + p, 0) / 20
+          const sma_50 = validPrices.length >= 50 ? 
+            validPrices.slice(-50).reduce((sum: number, p: number) => sum + p, 0) / 50 : sma_20
+
+          // Volume analysis
+          const avgVolume = validVolumes.length > 0 ? 
+            validVolumes.reduce((sum: number, v: number) => sum + v, 0) / validVolumes.length : 0
+          const currentVolume = validVolumes[validVolumes.length - 1] || 0
+          const volume_ratio = avgVolume > 0 ? currentVolume / avgVolume : 1
+
+          // Price momentum and volatility
+          const currentPrice = validPrices[validPrices.length - 1]
+          const price_1d_ago = validPrices[validPrices.length - 2] || currentPrice
+          const price_5d_ago = validPrices[validPrices.length - 6] || currentPrice
+        
+          const price_change_1d = ((currentPrice - price_1d_ago) / price_1d_ago) * 100
+          const price_change_5d = ((currentPrice - price_5d_ago) / price_5d_ago) * 100
+        
+          const momentum = price_change_5d
+          const volatility = calculateVolatility(validPrices.slice(-20))
+
+          const technicalIndicators: TechnicalIndicators = {
+            rsi,
+            sma_20,
+            sma_50,
+            volume_ratio,
+            momentum,
+            volatility
+          }
+
+          console.log(`Polygon data calculated for ${symbol}: RSI=${rsi.toFixed(2)}, Volume Ratio=${volume_ratio.toFixed(2)}`)
+
+          return {
+            symbol: symbol.toUpperCase(),
+            price: currentPrice,
+            volume: currentVolume,
+            timestamp: new Date(timestamps[timestamps.length - 1]).toISOString(),
+            technical_indicators: technicalIndicators,
+            price_change_1d,
+            price_change_5d
+          }
+
+        } catch (error) {
+          console.error(`Error processing Polygon data for ${symbol}:`, error)
+          return null
+        }
+      })
+
+      // Wait for batch to complete
+      const batchResults = await Promise.allSettled(batchPromises)
+      
+      // Add successful results
+      batchResults.forEach((result) => {
+        if (result.status === 'fulfilled' && result.value) {
+          enhancedData.push(result.value)
+        }
+      })
+      
+      // Rate limit delay between batches
+      if (i + BATCH_SIZE < symbols.length) {
+        await new Promise(resolve => setTimeout(resolve, 2000))
+      }
+    }
+
+    return new Response(
+      JSON.stringify({ 
+        success: true, 
+        enhanced_data: enhancedData,
+        total_processed: enhancedData.length,
+        symbols_requested: symbols.length,
+        source: 'polygon'
+      }),
+      { 
+        status: 200, 
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+      }
+    )
+
+  } catch (error) {
+    console.error('Error in Polygon market data function:', error)
+    return new Response(
+      JSON.stringify({ 
+        success: false,
+        error: 'Internal server error', 
+        details: error.message,
+        enhanced_data: []
+      }),
+      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    )
+  }
+})
+
+// Technical indicator calculation functions
+function calculateRSI(prices: number[]): number {
+  if (prices.length < 2) return 50
+
+  let gains = 0
+  let losses = 0
+  
+  for (let i = 1; i < prices.length; i++) {
+    const change = prices[i] - prices[i - 1]
+    if (change > 0) gains += change
+    else losses -= change
+  }
+  
+  const avgGain = gains / (prices.length - 1)
+  const avgLoss = losses / (prices.length - 1)
+  
+  if (avgLoss === 0) return 100
+  
+  const rs = avgGain / avgLoss
+  return 100 - (100 / (1 + rs))
+}
+
+function calculateVolatility(prices: number[]): number {
+  if (prices.length < 2) return 0
+  
+  const returns = []
+  for (let i = 1; i < prices.length; i++) {
+    returns.push((prices[i] - prices[i - 1]) / prices[i - 1])
+  }
+  
+  const mean = returns.reduce((sum, r) => sum + r, 0) / returns.length
+  const variance = returns.reduce((sum, r) => sum + Math.pow(r - mean, 2), 0) / returns.length
+  
+  return Math.sqrt(variance) * 100 // Convert to percentage
+}
