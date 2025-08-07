@@ -114,22 +114,39 @@ const DailyTradingPipeline = () => {
       setCurrentTask("Fetching multi-source sentiment data (Reddit + News + StockTwits)...");
       setProgress(10);
       
-      // Fetch Reddit data
-      const { data: redditData, error: redditError } = await supabase.functions.invoke('reddit-auth', {
-        body: { 
-          subreddit: 'stocks,investing,SecurityAnalysis,ValueInvesting,StockMarket,wallstreetbets,pennystocks', 
-          action: 'hot',
-          limit: 150 
-        }
-      });
-
-      if (redditError) throw redditError;
+      // 1. Fetch Reddit sentiment data (handle failures gracefully)
+      setCurrentTask("Fetching Reddit sentiment data...");
+      let redditData = null;
       
-      addDebugInfo("REDDIT_DATA", { 
-        postCount: redditData?.posts?.length || 0,
-        isMockData: redditData?.isMockData || false,
-        samplePost: redditData?.posts?.[0] || null
-      });
+      try {
+        const redditResponse = await supabase.functions.invoke('reddit-auth', {
+          body: { 
+            subreddit: 'stocks,investing,SecurityAnalysis,ValueInvesting,StockMarket,wallstreetbets,pennystocks',
+            action: 'hot',
+            limit: 150
+          }
+        });
+        
+        if (redditResponse.error || !redditResponse.data?.success) {
+          console.warn('Reddit API unavailable:', redditResponse.error);
+          addDebugInfo("REDDIT_UNAVAILABLE", { 
+            error: redditResponse.error?.message || 'Service unavailable',
+            note: "Continuing without Reddit data"
+          });
+        } else {
+          redditData = redditResponse.data;
+          addDebugInfo("REDDIT_FETCHED", { 
+            totalPosts: redditData.posts?.length || 0,
+            subreddit: redditData.subreddit
+          });
+        }
+      } catch (error) {
+        console.warn('Reddit fetch failed:', error);
+        addDebugInfo("REDDIT_ERROR", { 
+          error: error.message,
+          note: "Continuing without Reddit data" 
+        });
+      }
 
       setProgress(15);
 
@@ -170,9 +187,13 @@ const DailyTradingPipeline = () => {
       // Step 2: Enhanced sentiment analysis with multi-source data
       setCurrentTask("Running enhanced AI sentiment analysis with multi-source data...");
       
-      // Combine all content for sentiment analysis
+      // 4. Combine all content for sentiment analysis
+      setCurrentTask("Combining multi-source content...");
       const allContent = [
-        ...(redditData?.posts || []),
+        ...(redditData?.posts || []).map((post: any) => ({
+          ...post,
+          subreddit: post.subreddit || 'reddit'
+        })),
         ...(newsData?.articles || []).map((article: any) => ({
           title: article.title,
           selftext: article.description,
@@ -433,7 +454,7 @@ const DailyTradingPipeline = () => {
 
       toast({
         title: enhancedSignals.length > 0 ? "Enhanced Multi-Source Pipeline Complete! 🚀" : "Pipeline Complete - No Signals Found",
-        description: `Found ${enhancedSignals.length} signals using ${allContent.length} data sources (Reddit: ${redditData?.posts?.length || 0}, News: ${newsData?.articles?.length || 0}, StockTwits: ${stocktwitsData?.messages?.length || 0})`,
+        description: `Found ${enhancedSignals.length} signals using ${allContent.length} data sources (Reddit: ${redditData?.posts?.length || 'unavailable'}, News: ${newsData?.articles?.length || 0}, StockTwits: ${stocktwitsData?.messages?.length || 0})`,
       });
 
     } catch (error) {

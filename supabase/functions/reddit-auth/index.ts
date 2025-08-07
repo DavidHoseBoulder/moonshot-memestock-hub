@@ -105,31 +105,18 @@ Deno.serve(async (req) => {
     if (!postsResponse.ok) {
       console.error('Failed to fetch Reddit posts:', await postsResponse.text())
       
-      // Return mock data instead of failing completely
-      const mockPosts = [
-        {
-          title: `Sample financial discussion from r/${subreddit}`,
-          selftext: 'Mock data due to Reddit API limitations',
-          score: 100,
-          num_comments: 25,
-          created_utc: Date.now() / 1000,
-          permalink: `/r/${subreddit}/comments/sample/`,
-          subreddit: subreddit,
-          author: 'mock_user'
-        }
-      ]
-      
+      // Return error instead of mock data
       return new Response(
         JSON.stringify({ 
-          success: true, 
-          posts: mockPosts,
+          success: false, 
+          error: 'Reddit API unavailable',
+          posts: [],
           subreddit,
           action,
-          total: mockPosts.length,
-          isMockData: true
+          total: 0
         }),
         { 
-          status: 200, 
+          status: 503, // Service Unavailable
           headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
         }
       )
