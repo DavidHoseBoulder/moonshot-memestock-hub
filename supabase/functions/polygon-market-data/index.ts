@@ -62,12 +62,17 @@ Deno.serve(async (req) => {
     console.log(`Fetching Polygon market data for ${symbols.length} symbols over ${days} days`)
 
     const enhancedData: PolygonMarketData[] = []
-    const BATCH_SIZE = 3 // Reduced for API rate limits
+    const BATCH_SIZE = 2 // Further reduced for free tier rate limits
+    const MAX_SYMBOLS = 10 // Limit to 10 symbols max for free tier (2 minutes max)
+    
+    // Limit symbols for free tier rate limits
+    const limitedSymbols = symbols.slice(0, MAX_SYMBOLS)
+    console.log(`Limited symbols from ${symbols.length} to ${limitedSymbols.length} for Polygon free tier`)
     
     // Process symbols in batches
-    for (let i = 0; i < symbols.length; i += BATCH_SIZE) {
-      const batch = symbols.slice(i, i + BATCH_SIZE)
-      console.log(`Processing Polygon batch ${Math.floor(i/BATCH_SIZE) + 1}/${Math.ceil(symbols.length/BATCH_SIZE)}`)
+    for (let i = 0; i < limitedSymbols.length; i += BATCH_SIZE) {
+      const batch = limitedSymbols.slice(i, i + BATCH_SIZE)
+      console.log(`Processing Polygon batch ${Math.floor(i/BATCH_SIZE) + 1}/${Math.ceil(limitedSymbols.length/BATCH_SIZE)}`)
       
       const batchPromises = batch.map(async (symbol) => {
         try {
@@ -177,9 +182,9 @@ Deno.serve(async (req) => {
         }
       })
       
-      // Rate limit delay between batches
-      if (i + BATCH_SIZE < symbols.length) {
-        await new Promise(resolve => setTimeout(resolve, 2000))
+      // Rate limit delay between batches (15 seconds for free tier)
+      if (i + BATCH_SIZE < limitedSymbols.length) {
+        await new Promise(resolve => setTimeout(resolve, 15000))
       }
     }
 
