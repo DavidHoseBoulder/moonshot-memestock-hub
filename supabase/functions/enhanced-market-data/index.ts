@@ -48,91 +48,124 @@ Deno.serve(async (req) => {
     console.log(`Fetching enhanced market data for ${symbols.length} symbols over ${days} days`)
 
     const enhancedData: EnhancedMarketData[] = []
+    const BATCH_SIZE = 10
+    const REQUEST_TIMEOUT = 5000 // 5 seconds per request
     
-    for (const symbol of symbols) {
-      try {
-        const period1 = Math.floor((Date.now() - (days * 24 * 60 * 60 * 1000)) / 1000)
-        const period2 = Math.floor(Date.now() / 1000)
+    // Process symbols in batches to avoid timeouts
+    for (let i = 0; i < symbols.length; i += BATCH_SIZE) {
+      const batch = symbols.slice(i, i + BATCH_SIZE)
+      console.log(`Processing batch ${Math.floor(i/BATCH_SIZE) + 1}/${Math.ceil(symbols.length/BATCH_SIZE)}`)
+      
+      const batchPromises = batch.map(async (symbol) => {
+        try {
+          const period1 = Math.floor((Date.now() - (days * 24 * 60 * 60 * 1000)) / 1000)
+          const period2 = Math.floor(Date.now() / 1000)
+          
+          const yahooUrl = `https://query1.finance.yahoo.com/v8/finance/chart/${symbol}?period1=${period1}&period2=${period2}&interval=1d`
+          
+          const controller = new AbortController()
+          const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT)
+          
+          const response = await fetch(yahooUrl, { 
+            signal: controller.signal,
+            headers: {
+              'User-Agent': 'Mozilla/5.0 (compatible; FinanceBot/1.0)'
+            }
+          })
+          clearTimeout(timeoutId)
         
-        const yahooUrl = `https://query1.finance.yahoo.com/v8/finance/chart/${symbol}?period1=${period1}&period2=${period2}&interval=1d`
+          if (!response.ok) {
+            console.error(`Failed to fetch data for ${symbol}:`, response.status)
+            return null
+          }
+
+          const data = await response.json()
         
-        const response = await fetch(yahooUrl)
+          if (!data.chart?.result?.[0]) {
+            console.error(`No data found for symbol: ${symbol}`)
+            return null
+          }
+
+          const result = data.chart.result[0]
+          const timestamps = result.timestamp
+          const prices = result.indicators.quote[0].close
+          const volumes = result.indicators.quote[0].volume
+
+          // Calculate technical indicators
+          const validPrices = prices.filter(p => p !== null)
+          const validVolumes = volumes.filter(v => v !== null && v > 0)
+
+          if (validPrices.length < 20) {
+            console.log(`Insufficient data for ${symbol}, skipping`)
+            return null
+          }
+
+          // Calculate RSI (simplified 14-period)
+          const rsi = calculateRSI(validPrices.slice(-14))
         
-        if (!response.ok) {
-          console.error(`Failed to fetch data for ${symbol}:`, response.status)
-          continue
+          // Calculate moving averages
+          const sma_20 = validPrices.slice(-20).reduce((sum, p) => sum + p, 0) / 20
+          const sma_50 = validPrices.length >= 50 ? 
+            validPrices.slice(-50).reduce((sum, p) => sum + p, 0) / 50 : sma_20
+
+          // Volume analysis
+          const avgVolume = validVolumes.length > 0 ? 
+            validVolumes.reduce((sum, v) => sum + v, 0) / validVolumes.length : 0
+          const currentVolume = validVolumes[validVolumes.length - 1] || 0
+          const volume_ratio = avgVolume > 0 ? currentVolume / avgVolume : 1
+
+          // Price momentum and volatility
+          const currentPrice = validPrices[validPrices.length - 1]
+          const price_1d_ago = validPrices[validPrices.length - 2] || currentPrice
+          const price_5d_ago = validPrices[validPrices.length - 6] || currentPrice
+        
+          const price_change_1d = ((currentPrice - price_1d_ago) / price_1d_ago) * 100
+          const price_change_5d = ((currentPrice - price_5d_ago) / price_5d_ago) * 100
+        
+          const momentum = price_change_5d
+          const volatility = calculateVolatility(validPrices.slice(-20))
+
+          const technicalIndicators: TechnicalIndicators = {
+            rsi,
+            sma_20,
+            sma_50,
+            volume_ratio,
+            momentum,
+            volatility
+          }
+
+
+          console.log(`Enhanced data calculated for ${symbol}: RSI=${rsi.toFixed(2)}, Volume Ratio=${volume_ratio.toFixed(2)}`)
+
+          return {
+            symbol: symbol.toUpperCase(),
+            price: currentPrice,
+            volume: currentVolume,
+            timestamp: new Date(timestamps[timestamps.length - 1] * 1000).toISOString(),
+            technical_indicators: technicalIndicators,
+            price_change_1d,
+            price_change_5d
+          }
+
+        } catch (error) {
+          console.error(`Error processing ${symbol}:`, error)
+          return null
         }
+      })
 
-        const data = await response.json()
-        
-        if (!data.chart?.result?.[0]) {
-          console.error(`No data found for symbol: ${symbol}`)
-          continue
+      // Wait for batch to complete
+      const batchResults = await Promise.allSettled(batchPromises)
+      
+      // Add successful results to enhancedData
+      batchResults.forEach((result, index) => {
+        if (result.status === 'fulfilled' && result.value) {
+          enhancedData.push(result.value)
         }
-
-        const result = data.chart.result[0]
-        const timestamps = result.timestamp
-        const prices = result.indicators.quote[0].close
-        const volumes = result.indicators.quote[0].volume
-
-        // Calculate technical indicators
-        const validPrices = prices.filter(p => p !== null)
-        const validVolumes = volumes.filter(v => v !== null && v > 0)
-
-        if (validPrices.length < 20) {
-          console.log(`Insufficient data for ${symbol}, skipping`)
-          continue
-        }
-
-        // Calculate RSI (simplified 14-period)
-        const rsi = calculateRSI(validPrices.slice(-14))
-        
-        // Calculate moving averages
-        const sma_20 = validPrices.slice(-20).reduce((sum, p) => sum + p, 0) / 20
-        const sma_50 = validPrices.length >= 50 ? 
-          validPrices.slice(-50).reduce((sum, p) => sum + p, 0) / 50 : sma_20
-
-        // Volume analysis
-        const avgVolume = validVolumes.length > 0 ? 
-          validVolumes.reduce((sum, v) => sum + v, 0) / validVolumes.length : 0
-        const currentVolume = validVolumes[validVolumes.length - 1] || 0
-        const volume_ratio = avgVolume > 0 ? currentVolume / avgVolume : 1
-
-        // Price momentum and volatility
-        const currentPrice = validPrices[validPrices.length - 1]
-        const price_1d_ago = validPrices[validPrices.length - 2] || currentPrice
-        const price_5d_ago = validPrices[validPrices.length - 6] || currentPrice
-        
-        const price_change_1d = ((currentPrice - price_1d_ago) / price_1d_ago) * 100
-        const price_change_5d = ((currentPrice - price_5d_ago) / price_5d_ago) * 100
-        
-        const momentum = price_change_5d
-        const volatility = calculateVolatility(validPrices.slice(-20))
-
-        const technicalIndicators: TechnicalIndicators = {
-          rsi,
-          sma_20,
-          sma_50,
-          volume_ratio,
-          momentum,
-          volatility
-        }
-
-        enhancedData.push({
-          symbol: symbol.toUpperCase(),
-          price: currentPrice,
-          volume: currentVolume,
-          timestamp: new Date(timestamps[timestamps.length - 1] * 1000).toISOString(),
-          technical_indicators: technicalIndicators,
-          price_change_1d,
-          price_change_5d
-        })
-
-        console.log(`Enhanced data calculated for ${symbol}: RSI=${rsi.toFixed(2)}, Volume Ratio=${volume_ratio.toFixed(2)}`)
-
-      } catch (error) {
-        console.error(`Error processing ${symbol}:`, error)
-        continue
+      })
+      
+      // Small delay between batches to avoid rate limiting
+      if (i + BATCH_SIZE < symbols.length) {
+        await new Promise(resolve => setTimeout(resolve, 1000))
       }
     }
 
