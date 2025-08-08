@@ -22,6 +22,7 @@ export interface OrchestrationConfig {
   enableBatchProcessing: boolean;
   enableRedundancy: boolean;
   enableMultiTimescale: boolean;
+  analysisLookbackHours: number; // Used when Stage 1 is skipped
   qualityGate: {
     minSources: number;
     minConfidence: number;
@@ -151,12 +152,13 @@ export class SentimentOrchestratorV2 {
    */
   private async getEnhancedSentiment(symbol: string): Promise<AggregatedSentiment | null> {
     try {
-      // Get recent sentiment data from all sources
+      // Get sentiment data using adaptive lookback (wider when Stage 1 is off)
+      const lookbackHours = this.config.enableBatchProcessing ? 2 : (this.config.analysisLookbackHours ?? 24);
       const { data } = await this.supabaseClient
         .from('sentiment_history')
         .select('*')
         .eq('symbol', symbol)
-        .gte('created_at', new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString()) // Last 2 hours
+        .gte('created_at', new Date(Date.now() - lookbackHours * 60 * 60 * 1000).toISOString())
         .order('created_at', { ascending: false });
 
       if (!data || data.length === 0) {
@@ -368,6 +370,7 @@ export const DEFAULT_ORCHESTRATION_CONFIG: OrchestrationConfig = {
   enableBatchProcessing: true,
   enableRedundancy: true,
   enableMultiTimescale: true,
+  analysisLookbackHours: 24,
   qualityGate: {
     minSources: 2,
     minConfidence: 0.3,
