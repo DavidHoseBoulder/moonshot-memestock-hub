@@ -154,40 +154,17 @@ Deno.serve(async (req) => {
     const bearerToken = Deno.env.get('TWITTER_BEARER_TOKEN');
     
     if (!bearerToken && symbolsToFetch.length > 0) {
-    
-      console.log('Twitter Bearer Token not available, using cached data and simulated data for missing symbols');
+      console.log('Twitter Bearer Token not available, returning cached data only');
       
-      // Generate simulated data for missing symbols
-      symbolsToFetch.slice(0, 10).forEach(symbol => {
-        const baseVolatility = Math.random() * 0.4 - 0.2; // -0.2 to 0.2
-        const marketBoost = new Date().getHours() >= 9 && new Date().getHours() <= 16 ? 0.1 : 0;
-        
-        results.push({
-          symbol,
-          sentiment: Math.max(-1, Math.min(1, baseVolatility + marketBoost)),
-          confidence: 0.3 + Math.random() * 0.4, // 0.3 to 0.7
-          tweetCount: Math.floor(Math.random() * 50) + 10,
-          totalEngagement: Math.floor(Math.random() * 1000) + 100,
-          topTweets: [
-            {
-              text: `$${symbol} showing strong momentum in today's session`,
-              engagement: Math.floor(Math.random() * 100) + 20,
-              created_at: new Date().toISOString()
-            }
-          ],
-          timestamp: new Date().toISOString()
-        });
-      });
-
       return new Response(
         JSON.stringify({
           success: true,
-          sentiment_data: results,
+          sentiment_data: results, // Only cached data, no simulation
           total_processed: results.length,
-          source: 'twitter_cached_and_simulated',
+          source: 'twitter_cached_only',
           fromDatabase: recentData.length,
-          simulated: symbolsToFetch.length,
-          note: 'Twitter API key not configured'
+          fromAPI: 0,
+          note: 'Twitter API key not configured - cached data only'
         }),
         { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
