@@ -371,6 +371,6 @@ export const DEFAULT_ORCHESTRATION_CONFIG: OrchestrationConfig = {
   qualityGate: {
     minSources: 2,
     minConfidence: 0.3,
-    allowSynthetic: true
+    allowSynthetic: false
   }
 };

@@ -10,7 +10,7 @@ import { Input } from '@/components/ui/input';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { AlertCircle, CheckCircle, Clock, Zap, TrendingUp, Database } from 'lucide-react';
 import { SentimentOrchestratorV2, DEFAULT_ORCHESTRATION_CONFIG, OrchestrationResult } from '@/utils/sentimentOrchestratorV2';
-import { STOCK_UNIVERSE } from '@/data/stockUniverse';
+import { STOCK_UNIVERSE, getAllTickers } from '@/data/stockUniverse';
 
 export const SentimentOrchestrationDashboard: React.FC = () => {
   const [orchestrator] = useState(() => new SentimentOrchestratorV2(DEFAULT_ORCHESTRATION_CONFIG));
@@ -21,7 +21,7 @@ export const SentimentOrchestrationDashboard: React.FC = () => {
 
   // Initialize with a subset of stock universe
   useEffect(() => {
-    const initialSymbols = Object.keys(STOCK_UNIVERSE).slice(0, 20);
+    const initialSymbols = getAllTickers().slice(0, 20);
     setSelectedSymbols(initialSymbols);
   }, []);
 
@@ -164,14 +164,6 @@ export const SentimentOrchestrationDashboard: React.FC = () => {
                     step="0.1"
                     value={config.qualityGate.minConfidence}
                     onChange={(e) => updateQualityGate('minConfidence', parseFloat(e.target.value))}
-                  />
-                </div>
-                <div className="flex items-center justify-between">
-                  <Label htmlFor="allow-synthetic">Allow Synthetic Data</Label>
-                  <Switch
-                    id="allow-synthetic"
-                    checked={config.qualityGate.allowSynthetic}
-                    onCheckedChange={(checked) => updateQualityGate('allowSynthetic', checked)}
                   />
                 </div>
               </CardContent>
@@ -403,7 +395,10 @@ export const SentimentOrchestrationDashboard: React.FC = () => {
                     </Badge>
                   </div>
                   <p className="text-sm text-muted-foreground mb-3">
-                    Reduces API bottlenecks through intelligent batching and staggered requests
+                    {config.enableBatchProcessing 
+                      ? "Fetches fresh sentiment data with intelligent rate limiting" 
+                      : "Skipped - uses existing stored data for faster analysis"
+                    }
                   </p>
                   <div className="grid grid-cols-3 gap-4 text-sm">
                     <div>
