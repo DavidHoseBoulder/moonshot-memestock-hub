@@ -119,6 +119,45 @@ export type Database = {
         }
         Relationships: []
       }
+      enhanced_sentiment_data: {
+        Row: {
+          confidence: number
+          created_at: string | null
+          current_sentiment: number
+          id: string
+          key_themes: string[] | null
+          sentiment_velocity: Json | null
+          social_signals: string[] | null
+          symbol: string
+          timestamp: string
+          updated_at: string | null
+        }
+        Insert: {
+          confidence: number
+          created_at?: string | null
+          current_sentiment: number
+          id?: string
+          key_themes?: string[] | null
+          sentiment_velocity?: Json | null
+          social_signals?: string[] | null
+          symbol: string
+          timestamp: string
+          updated_at?: string | null
+        }
+        Update: {
+          confidence?: number
+          created_at?: string | null
+          current_sentiment?: number
+          id?: string
+          key_themes?: string[] | null
+          sentiment_velocity?: Json | null
+          social_signals?: string[] | null
+          symbol?: string
+          timestamp?: string
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
       market_data: {
         Row: {
           asset_type: string
