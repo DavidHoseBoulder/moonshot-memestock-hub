@@ -425,22 +425,22 @@ export const StackingVisualizer: React.FC<StackingVisualizerProps> = ({
             </div>
           </div>
 
-          <div className="bg-gray-50 rounded-md p-2 space-y-1 text-xs">
-            <h6 className="font-medium">Coverage Gate Status</h6>
+          <div className="bg-muted rounded-md p-2 space-y-1 text-xs">
+            <h6 className="font-medium text-foreground">Coverage Gate Status</h6>
             <div className="flex justify-between">
-              <span>Sentiment Score:</span>
+              <span className="text-foreground">Sentiment Score:</span>
               <span className={result.coverageGate.sentimentScore >= result.coverageGate.minSentimentThreshold ? 'text-green-600' : 'text-red-600'}>
                 {result.coverageGate.sentimentScore.toFixed(1)} (≥{result.coverageGate.minSentimentThreshold})
               </span>
             </div>
             <div className="flex justify-between">
-              <span>Technical Score:</span>
+              <span className="text-foreground">Technical Score:</span>
               <span className={result.coverageGate.technicalScore >= result.coverageGate.minTechnicalThreshold ? 'text-green-600' : 'text-red-600'}>
                 {result.coverageGate.technicalScore.toFixed(1)} (≥{result.coverageGate.minTechnicalThreshold})
               </span>
             </div>
             <div className="flex justify-between">
-              <span>Confidence:</span>
+              <span className="text-foreground">Confidence:</span>
               <span className={(result.confidenceScore * 100) >= result.coverageGate.minConfidenceThreshold ? 'text-green-600' : 'text-red-600'}>
                 {(result.confidenceScore * 100).toFixed(1)}% (≥{result.coverageGate.minConfidenceThreshold}%)
               </span>

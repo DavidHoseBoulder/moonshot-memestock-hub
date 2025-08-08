@@ -21,6 +21,7 @@ const DataSourceStatus = () => {
     { name: 'Reddit', status: 'checking', lastCheck: '', mockData: false },
     { name: 'Financial News', status: 'checking', lastCheck: '', mockData: false },
     { name: 'StockTwits', status: 'checking', lastCheck: '', mockData: false },
+    { name: 'Twitter Sentiment', status: 'checking', lastCheck: '', mockData: false },
     { name: 'Google Trends', status: 'checking', lastCheck: '', mockData: false },
     { name: 'YouTube Sentiment', status: 'checking', lastCheck: '', mockData: false },
     { name: 'Market Data (Yahoo)', status: 'checking', lastCheck: '', mockData: false },
@@ -68,6 +69,7 @@ const DataSourceStatus = () => {
       const dataCount = data?.posts?.length || 
                        data?.articles?.length || 
                        data?.messages?.length || 
+                       data?.sentiment_data?.length ||
                        data?.trends?.length ||
                        data?.youtube_sentiment?.length ||
                        data?.enhanced_data?.length || 0;
@@ -118,6 +120,11 @@ const DataSourceStatus = () => {
         name: 'StockTwits',
         function: 'stocktwits-data',
         payload: { symbols: ['AAPL', 'TSLA', 'NVDA'], limit: 15 }  // Multiple symbols like pipeline
+      },
+      {
+        name: 'Twitter Sentiment',
+        function: 'twitter-sentiment',
+        payload: { symbols: ['AAPL', 'TSLA', 'NVDA'], days: 7 }
       },
       {
         name: 'Google Trends',

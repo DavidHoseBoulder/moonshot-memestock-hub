@@ -228,6 +228,7 @@ Deno.serve(async (req) => {
               let totalSentiment = 0;
               let totalConfidence = 0;
               let totalEngagement = 0;
+              let validSentimentCount = 0;
               const topTweets: Array<{ text: string; engagement: number; created_at: string }> = [];
 
               data.data.forEach(tweet => {
@@ -236,8 +237,14 @@ Deno.serve(async (req) => {
                                  tweet.public_metrics.retweet_count + 
                                  tweet.public_metrics.reply_count;
                 
-                totalSentiment += analysis.sentiment * analysis.confidence;
-                totalConfidence += analysis.confidence;
+                console.log(`Tweet: "${tweet.text.substring(0, 50)}..." - Sentiment: ${analysis.sentiment}, Confidence: ${analysis.confidence}`);
+                
+                // Only include tweets with meaningful sentiment
+                if (analysis.confidence > 0) {
+                  totalSentiment += analysis.sentiment * analysis.confidence;
+                  totalConfidence += analysis.confidence;
+                  validSentimentCount++;
+                }
                 totalEngagement += engagement;
 
                 if (topTweets.length < 3 && tweet.text.length > 20) {
@@ -249,10 +256,15 @@ Deno.serve(async (req) => {
                 }
               });
 
+              const finalSentiment = validSentimentCount > 0 ? totalSentiment / totalConfidence : 0;
+              const finalConfidence = validSentimentCount > 0 ? Math.min(totalConfidence / validSentimentCount, 1.0) : 0;
+              
+              console.log(`Symbol ${symbol}: ${validSentimentCount}/${data.data.length} tweets had sentiment, final sentiment: ${finalSentiment}, confidence: ${finalConfidence}`);
+
               const sentimentResult = {
                 symbol,
-                sentiment: totalConfidence > 0 ? totalSentiment / totalConfidence : 0,
-                confidence: Math.min(totalConfidence / data.data.length, 1.0),
+                sentiment: finalSentiment,
+                confidence: finalConfidence,
                 tweetCount: data.data.length,
                 totalEngagement,
                 topTweets: topTweets.sort((a, b) => b.engagement - a.engagement),
@@ -311,13 +323,15 @@ Deno.serve(async (req) => {
       }
     }
 
-    console.log(`Returning ${results.length} Twitter sentiment results (${recentData.length} from cache, ${symbolsToFetch.length} from API)`)
+    const sentimentCount = results.filter(r => r.sentiment !== 0 || r.confidence > 0).length;
+    console.log(`Returning ${results.length} Twitter sentiment results (${recentData.length} from cache, ${symbolsToFetch.length} from API), ${sentimentCount} with actual sentiment`)
 
     return new Response(
       JSON.stringify({
         success: true,
         sentiment_data: results,
         total_processed: results.length,
+        sentimentCount: sentimentCount,
         source: 'twitter_api',
         fromDatabase: recentData.length,
         fromAPI: symbolsToFetch.length
