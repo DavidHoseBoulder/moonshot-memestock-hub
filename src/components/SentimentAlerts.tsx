@@ -14,38 +14,10 @@ interface Alert {
   actionable: boolean;
 }
 
-const mockAlerts: Alert[] = [
-  {
-    id: '1',
-    type: 'sentiment_spike',
-    symbol: 'DOGE',
-    message: 'Sentiment spiking +67% - Elon Musk tweet detected',
-    timestamp: new Date(Date.now() - 5 * 60 * 1000), // 5 minutes ago
-    severity: 'high',
-    actionable: true
-  },
-  {
-    id: '2',
-    type: 'viral_detected',
-    symbol: 'GME',
-    message: 'Viral TikTok about GameStop NFTs - 2.3M views in 1 hour',
-    timestamp: new Date(Date.now() - 12 * 60 * 1000), // 12 minutes ago
-    severity: 'high',
-    actionable: true
-  },
-  {
-    id: '3',
-    type: 'mood_shift',
-    symbol: 'AMC',
-    message: 'Community mood shifting to paper hands - consider exit strategy',
-    timestamp: new Date(Date.now() - 25 * 60 * 1000), // 25 minutes ago
-    severity: 'medium',
-    actionable: true
-  }
-];
+// Remove mock alerts - will fetch real alerts from database
 
 const SentimentAlerts = () => {
-  const [alerts, setAlerts] = useState<Alert[]>(mockAlerts);
+  const [alerts, setAlerts] = useState<Alert[]>([]);
   const [newAlert, setNewAlert] = useState<Alert | null>(null);
 
   // Simulate real-time alerts
@@ -60,20 +32,9 @@ const SentimentAlerts = () => {
         'Twitter influencer retweeted by 50K+ followers'
       ];
       
-      if (Math.random() > 0.7) { // 30% chance of new alert
-        const randomAlert: Alert = {
-          id: Date.now().toString(),
-          type: 'sentiment_spike',
-          symbol: symbols[Math.floor(Math.random() * symbols.length)],
-          message: messages[Math.floor(Math.random() * messages.length)],
-          timestamp: new Date(),
-          severity: ['high', 'medium', 'low'][Math.floor(Math.random() * 3)] as Alert['severity'],
-          actionable: Math.random() > 0.3
-        };
-        
-        setNewAlert(randomAlert);
-        setAlerts(prev => [randomAlert, ...prev.slice(0, 9)]); // Keep only 10 alerts
-      }
+      // Check for real alerts based on actual sentiment data
+      // This would integrate with real sentiment monitoring system
+      // For now, no random alerts are generated
     }, 15000); // Every 15 seconds
 
     return () => clearInterval(interval);

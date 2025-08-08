@@ -3,9 +3,10 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { TrendingUp, TrendingDown, Activity, BarChart3 } from "lucide-react";
+import { supabase } from "@/integrations/supabase/client";
 
 interface SentimentPoint {
-  timestamp: Date;
+  timestamp: string;
   sentiment: number;
   volume: number;
   source: string;
@@ -56,37 +57,53 @@ export const SentimentVelocityTracker: React.FC<SentimentVelocityProps> = ({
     return 'NEUTRAL';
   };
 
-  // Generate mock historical data for demonstration
-  const generateMockHistory = (symbol: string): SentimentPoint[] => {
-    const history: SentimentPoint[] = [];
-    const now = new Date();
-    
-    // Generate 24 hours of data points (every hour)
-    for (let i = 24; i >= 0; i--) {
-      const timestamp = new Date(now.getTime() - (i * 60 * 60 * 1000));
-      const baseSentiment = 0.4 + Math.random() * 0.4; // 0.4 to 0.8
-      
-      // Add some trend and volatility
-      const trendFactor = Math.sin((24 - i) / 6) * 0.1; // Cyclical trend
-      const noise = (Math.random() - 0.5) * 0.15; // Random noise
-      
-      const sentiment = Math.max(0.1, Math.min(0.9, baseSentiment + trendFactor + noise));
-      const volume = Math.floor(Math.random() * 100) + 10;
-      
-      history.push({
-        timestamp,
-        sentiment,
-        volume,
-        source: ['reddit', 'stocktwits', 'news', 'youtube'][Math.floor(Math.random() * 4)]
-      });
+  // Fetch actual historical sentiment data from database
+  const fetchHistoricalSentiment = async (symbol: string): Promise<SentimentPoint[]> => {
+    try {
+      const response = await supabase
+        .from('sentiment_history')
+        .select('collected_at, sentiment_score, source, metadata')
+        .eq('symbol', symbol.toUpperCase())
+        .gte('collected_at', new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString())
+        .order('collected_at', { ascending: true });
+
+      if (response.error) {
+        console.error('Error fetching sentiment history:', response.error);
+        return [];
+      }
+
+      return response.data?.map(row => ({
+        timestamp: row.collected_at,
+        sentiment: row.sentiment_score || 0.5,
+        volume: (row.metadata && typeof row.metadata === 'object' && 'volume' in row.metadata) 
+          ? (row.metadata as any).volume || 0 
+          : 0,
+        source: row.source
+      })) || [];
+    } catch (error) {
+      console.error('Error in fetchHistoricalSentiment:', error);
+      return [];
     }
-    
-    return history;
   };
 
   // Calculate velocity data for a symbol
-  const calculateVelocityData = (symbol: string): VelocityData => {
-    const history = generateMockHistory(symbol);
+  const calculateVelocityData = async (symbol: string): Promise<VelocityData> => {
+    const history = await fetchHistoricalSentiment(symbol);
+    
+    if (history.length === 0) {
+      return {
+        symbol,
+        currentSentiment: 0.5,
+        velocity1h: 0,
+        velocity6h: 0,
+        velocity24h: 0,
+        mentionFrequency: 0,
+        momentum: 'STABLE',
+        trend: 'NEUTRAL',
+        history: []
+      };
+    }
+    
     const current = history[history.length - 1];
     const oneHourAgo = history[history.length - 2];
     const sixHoursAgo = history[history.length - 7];
@@ -117,9 +134,9 @@ export const SentimentVelocityTracker: React.FC<SentimentVelocityProps> = ({
   const fetchVelocityData = async () => {
     setIsLoading(true);
     try {
-      // In a real implementation, this would call your sentiment APIs
-      // For now, generate mock data
-      const data = symbols.map(calculateVelocityData);
+      // Fetch real data from database
+      const dataPromises = symbols.map(calculateVelocityData);
+      const data = await Promise.all(dataPromises);
       setVelocityData(data);
       setLastUpdate(new Date());
     } catch (error) {

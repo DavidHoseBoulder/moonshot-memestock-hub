@@ -94,33 +94,7 @@ const DailyTradingPipeline = () => {
     setDebugInfo(prev => [...prev, debugEntry]);
   };
 
-  // Generate sample data when APIs fail
-  const generateSampleData = () => {
-    const sampleTickers = ['TSLA', 'NVDA', 'AAPL', 'AMD', 'PLTR'];
-    
-    const sampleSentiment: SentimentData[] = sampleTickers.map(ticker => ({
-      symbol: ticker,
-      current_sentiment: -0.5 + Math.random(),
-      sentiment_velocity: {
-        velocity_1h: -0.3 + Math.random() * 0.6,
-        mention_frequency: Math.floor(Math.random() * 20) + 1,
-        social_volume_spike: Math.random() > 0.7
-      }
-    }));
-
-    const sampleMarket: MarketData[] = sampleTickers.map(ticker => ({
-      symbol: ticker,
-      price: 50 + Math.random() * 200,
-      volume: Math.floor(1000000 + Math.random() * 5000000), // Add volume
-      technical_indicators: {
-        rsi: 20 + Math.random() * 60,
-        volume_ratio: 0.5 + Math.random() * 3,
-        momentum: -10 + Math.random() * 20
-      }
-    }));
-
-    return { sampleSentiment, sampleMarket };
-  };
+  // Removed sample data generation - will handle empty data states properly
 
   const runEnhancedDailyPipeline = async () => {
     setIsRunning(true);
@@ -500,18 +474,13 @@ const DailyTradingPipeline = () => {
       let sentimentResults = enhancedSentimentData?.enhanced_sentiment || [];
       let marketResults = enhancedMarketData?.enhanced_data || [];
       
-      // Use sample data if ALL APIs failed
+      // Handle empty data state properly
       if (sentimentResults.length === 0 && marketResults.length === 0) {
-        setCurrentTask("All APIs failed - using sample data for testing...");
-        const { sampleSentiment, sampleMarket } = generateSampleData();
-        sentimentResults = sampleSentiment;
-        marketResults = sampleMarket;
-        
-        addDebugInfo("FALLBACK_DATA_GENERATED", {
-          sentimentCount: sentimentResults.length,
-          marketCount: marketResults.length,
-          note: "Using sample data due to complete API failure"
+        setCurrentTask("No data available from any sources");
+        addDebugInfo("NO_DATA_AVAILABLE", {
+          note: "All API sources returned empty data"
         });
+        return;
       }
 
       // Create sentiment data maps from multiple sources
@@ -519,7 +488,9 @@ const DailyTradingPipeline = () => {
       if (redditData?.posts) {
         const redditSymbols = extractSymbolsFromText(JSON.stringify(redditData.posts), allTickers);
         redditSymbols.forEach(symbol => {
-          redditSentimentMap.set(symbol, 0.6 + Math.random() * 0.4); // Mock sentiment for now
+          // Use actual sentiment analysis instead of random values
+          // For now, set neutral sentiment - will implement proper analysis
+          redditSentimentMap.set(symbol, 0.5);
         });
       }
       
@@ -538,15 +509,13 @@ const DailyTradingPipeline = () => {
               let sentiment = 0.5; // neutral default
               
               if (msg.sentiment?.basic === 'Bullish') {
-                // Vary bullish sentiment based on message strength indicators
-                sentiment = 0.65 + (Math.random() * 0.25); // 0.65-0.90
-                if (msg.body.includes('🚀') || msg.body.includes('moon')) sentiment = Math.min(0.95, sentiment + 0.1);
+                sentiment = 0.75; // Fixed bullish sentiment
+                if (msg.body.includes('🚀') || msg.body.includes('moon')) sentiment = 0.9;
               } else if (msg.sentiment?.basic === 'Bearish') {
-                sentiment = 0.15 + (Math.random() * 0.25); // 0.15-0.40
-                if (msg.body.includes('crash') || msg.body.includes('dump')) sentiment = Math.max(0.05, sentiment - 0.1);
+                sentiment = 0.25; // Fixed bearish sentiment  
+                if (msg.body.includes('crash') || msg.body.includes('dump')) sentiment = 0.1;
               } else {
-                // Neutral with slight variation
-                sentiment = 0.45 + (Math.random() * 0.1); // 0.45-0.55
+                sentiment = 0.5; // Neutral sentiment
               }
               
               if (!symbolSentiments.has(symbol)) {

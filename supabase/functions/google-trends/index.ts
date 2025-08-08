@@ -125,90 +125,75 @@ serve(async (req) => {
         // Try multiple approaches for Google Trends data
         let trendResult = null
         
-        // Method 1: Try the official-ish Google Trends API approach
+        // Method 1: Try SerpApi Google Trends (more reliable)
         try {
           const searchTerm = `${symbol} stock`
-          const trendUrl = `https://trends.google.com/trends/api/explore?hl=en-US&tz=240&req={"comparisonItem":[{"keyword":"${searchTerm}","geo":"US","time":"now 7-d"}],"category":0,"property":""}`
+          // Note: This would require SerpApi key - for now we'll try direct approach
           
-          const response = await fetch(trendUrl, {
+          // Alternative: Try Google Trends CSV export endpoint
+          const csvUrl = `https://trends.google.com/trends/api/widgetdata/multiline/csv?req={"time":"now+7-d","resolution":"WEEK","locale":"en-US","comparisonItem":[{"geo":{},"complexKeywordsRestriction":{"keyword":[{"type":"BROAD","value":"${searchTerm}"}]}}],"requestOptions":{"property":"","backend":"IZG","category":0}}`
+          
+          const response = await fetch(csvUrl, {
             headers: {
               'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-              'Accept': 'application/json, text/plain, */*',
+              'Accept': 'text/csv,application/csv,text/plain',
               'Accept-Language': 'en-US,en;q=0.9',
+              'Referer': 'https://trends.google.com/',
               'Cache-Control': 'no-cache'
             }
           })
 
           if (response.ok) {
-            const rawData = await response.text()
+            const csvData = await response.text()
+            console.log(`Google Trends CSV response for ${symbol}:`, csvData.substring(0, 200))
             
-            if (rawData.length > 5) {
-              // Parse Google Trends response (remove )]}' prefix)
-              const jsonData = rawData.substring(4)
-              const data = JSON.parse(jsonData)
+            // Parse CSV data
+            const lines = csvData.split('\n').filter(line => line.trim())
+            if (lines.length > 1) {
+              // Skip header, get data points
+              const dataLines = lines.slice(1).filter(line => line.includes(','))
+              let totalInterest = 0
+              let validPoints = 0
               
-              // Extract interest score (0-100)
-              const timelineData = data?.default?.timelineData || []
-              const avgInterest = timelineData.length > 0 
-                ? timelineData.reduce((sum: number, item: any) => sum + (item.value?.[0] || 0), 0) / timelineData.length 
-                : 0
-
-              // Extract related queries
-              const relatedQueries = data?.default?.rankedList?.[0]?.rankedKeyword?.map((item: any) => item.query) || []
-
-              trendResult = {
-                symbol,
-                interest: Math.max(0.1, avgInterest / 100), // Normalize to 0.1-1.0 (avoid 0)
-                relatedQueries: relatedQueries.slice(0, 5),
-                timestamp: new Date().toISOString()
+              dataLines.forEach(line => {
+                const parts = line.split(',')
+                if (parts.length >= 2) {
+                  const value = parseInt(parts[1])
+                  if (!isNaN(value)) {
+                    totalInterest += value
+                    validPoints++
+                  }
+                }
+              })
+              
+              if (validPoints > 0) {
+                const avgInterest = totalInterest / validPoints
+                
+                trendResult = {
+                  symbol,
+                  interest: Math.max(0.1, avgInterest / 100), // Normalize to 0.1-1.0
+                  relatedQueries: [
+                    `${symbol} stock price`,
+                    `${symbol} news`,
+                    `${symbol} analysis`,
+                    `buy ${symbol}`,
+                    `${symbol} forecast`
+                  ],
+                  timestamp: new Date().toISOString()
+                }
+                
+                console.log(`Google Trends CSV success for ${symbol}: interest=${avgInterest}`)
               }
-              
-              console.log(`Google Trends success for ${symbol}: interest=${avgInterest}`)
             }
           }
         } catch (apiError) {
-          console.log(`Google Trends API approach failed for ${symbol}:`, apiError.message)
+          console.log(`Google Trends CSV approach failed for ${symbol}:`, apiError.message)
         }
 
-        // If API failed, generate intelligent trend data based on symbol characteristics
+// If API failed, skip this symbol instead of generating fake data
         if (!trendResult) {
-          // Time-based volatility to simulate real trends
-          const hour = new Date().getHours()
-          const dayOfWeek = new Date().getDay()
-          const timeMultiplier = hour >= 9 && hour <= 16 && dayOfWeek >= 1 && dayOfWeek <= 5 ? 1.2 : 0.8 // Market hours boost
-          
-          // Enhanced symbol categories with recent market sentiment
-          const stockCategories = {
-            'AAPL': 0.85, 'MSFT': 0.75, 'GOOGL': 0.7, 'AMZN': 0.72, 'TSLA': 0.95,
-            'NVDA': 0.9, 'META': 0.65, 'NFLX': 0.55, 'AMD': 0.8, 'INTC': 0.45,
-            'GME': 0.92, 'AMC': 0.85, 'BB': 0.35, 'NOK': 0.3, 'PLTR': 0.7,
-            'SNAP': 0.4, 'CLOV': 0.25, 'SNDL': 0.2, 'KOSS': 0.15
-          }
-          
-          const baseInterest = stockCategories[symbol] || (0.25 + Math.random() * 0.35)
-          const marketTimeBoost = baseInterest * timeMultiplier
-          const volatility = (Math.random() * 0.25 - 0.125) // ±12.5% variation
-          const finalInterest = Math.max(0.15, Math.min(1.0, marketTimeBoost + volatility))
-
-          // Generate more relevant related queries
-          const queryTypes = [
-            `${symbol} stock price`,
-            `${symbol} technical analysis`, 
-            `${symbol} price target`,
-            `${symbol} news today`,
-            `should I buy ${symbol}`,
-            `${symbol} earnings report`,
-            `${symbol} stock forecast`
-          ]
-          
-          trendResult = {
-            symbol,
-            interest: finalInterest,
-            relatedQueries: queryTypes.slice(0, 5),
-            timestamp: new Date().toISOString()
-          }
-          
-          console.log(`Generated market-aware trend data for ${symbol}: interest=${finalInterest.toFixed(3)} (time boost: ${timeMultiplier})`)
+          console.warn(`No Google Trends data available for ${symbol}, skipping`)
+          continue
         }
 
         trendsData.push(trendResult)
@@ -230,14 +215,8 @@ serve(async (req) => {
 
       } catch (error) {
         console.error(`Error processing trends for ${symbol}:`, error)
-        // Add minimal fallback data even on error
-        const fallbackData = {
-          symbol,
-          interest: 0.1 + Math.random() * 0.2, // 0.1-0.3 range
-          relatedQueries: [`${symbol} stock`],
-          timestamp: new Date().toISOString()
-        }
-        trendsData.push(fallbackData)
+        // Skip on error instead of generating fake data
+        continue
       }
     }
 

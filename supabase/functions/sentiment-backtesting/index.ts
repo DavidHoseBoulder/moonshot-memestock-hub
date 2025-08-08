@@ -77,16 +77,21 @@ Deno.serve(async (req) => {
       console.error('Error fetching sentiment data:', sentimentError)
     }
 
-    // If no sentiment data found, generate mock data for demonstration
-    let processedSentimentData = sentimentData
+    // If no sentiment data found, return error instead of mock data
     if (!sentimentData || sentimentData.length === 0) {
-      console.log('No sentiment data found, generating mock data for demonstration')
-      processedSentimentData = marketData.map((_, index) => ({
-        post_created_at: marketData[Math.min(index, marketData.length - 1)].timestamp,
-        overall_sentiment: 0.2 + (Math.random() * 0.6), // Random sentiment between 0.2-0.8
-        symbols_mentioned: [params.symbol.toUpperCase()]
-      }))
+      console.log('No sentiment data found for backtesting')
+      return new Response(
+        JSON.stringify({ 
+          success: false, 
+          error: 'No sentiment data available for backtesting',
+          symbol: params.symbol,
+          period: `${params.startDate} to ${params.endDate}`
+        }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
     }
+    
+    const processedSentimentData = sentimentData
 
     if (!marketData || marketData.length === 0) {
       return new Response(
