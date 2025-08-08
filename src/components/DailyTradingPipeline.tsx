@@ -223,7 +223,7 @@ const DailyTradingPipeline = () => {
         sampleTrend: trendsData?.trends?.[0] || null
       });
 
-      setProgress(35);
+      setProgress(95);
 
       // Step 3: YouTube sentiment data
       setCurrentTask("Fetching YouTube sentiment data...");
@@ -243,7 +243,27 @@ const DailyTradingPipeline = () => {
 
       setProgress(40);
 
-      // Step 4: Enhanced sentiment analysis with multi-source data
+      // Step 4: Twitter sentiment data
+      setCurrentTask("Fetching Twitter sentiment data...");
+      const { data: twitterData, error: twitterError } = await supabase.functions.invoke('twitter-sentiment', {
+        body: { symbols: allTickers.slice(0, 10) }
+      });
+
+      if (twitterError) {
+        console.warn('Twitter sentiment fetch failed:', twitterError);
+      }
+      
+      addDebugInfo("TWITTER_SENTIMENT_DATA", { 
+        sentimentCount: twitterData?.sentiment_data?.length || 0,
+        source: twitterData?.source || 'twitter',
+        fromDatabase: twitterData?.fromDatabase || 0,
+        fromAPI: twitterData?.fromAPI || 0,
+        note: twitterData?.note || null
+      });
+
+      setProgress(45);
+
+      // Step 5: Enhanced sentiment analysis with multi-source data
       setCurrentTask("Running enhanced AI sentiment analysis with multi-source data...");
       
       // Combine all content for sentiment analysis
@@ -270,6 +290,15 @@ const DailyTradingPipeline = () => {
           created_utc: new Date(message.created_at).getTime() / 1000,
           subreddit: 'stocktwits',
           author: message.user.username
+        })),
+        ...(twitterData?.sentiment_data || []).map((tweet: any) => ({
+          title: tweet.topTweets?.[0]?.text?.substring(0, 50) + '...' || 'Twitter Sentiment',
+          selftext: tweet.topTweets?.map((t: any) => t.text).join(' ') || '',
+          score: tweet.totalEngagement || 10,
+          num_comments: tweet.tweetCount || 5,
+          created_utc: Date.now() / 1000,
+          subreddit: 'twitter',
+          author: 'twitter_user'
         }))
       ];
 
@@ -278,6 +307,8 @@ const DailyTradingPipeline = () => {
         redditPosts: redditData?.posts?.length || 0,
         newsArticles: newsData?.articles?.length || 0,
         stocktwitsMessages: stocktwitsData?.messages?.length || 0,
+        youtubeComments: youtubeData?.youtube_sentiment?.length || 0,
+        twitterTweets: twitterData?.sentiment_data?.length || 0,
         sampleContent: allContent.slice(0, 2)
       });
 
@@ -293,7 +324,7 @@ const DailyTradingPipeline = () => {
       console.log('Enhanced sentiment response:', enhancedSentimentData, 'Error:', sentimentError);
       
       if (sentimentError) throw sentimentError;
-      setProgress(50);
+      setProgress(55);
 
       addDebugInfo("MULTI_SOURCE_SENTIMENT", {
         totalContentPieces: allContent.length,

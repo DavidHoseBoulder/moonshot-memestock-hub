@@ -120,7 +120,8 @@ const SentimentDashboard = () => {
     stocktwits: { status: 'unavailable' as 'unavailable' | 'live' | 'cached' | 'fallback', lastUpdate: undefined as Date | undefined },
     news: { status: 'unavailable' as 'unavailable' | 'live' | 'cached' | 'fallback', lastUpdate: undefined as Date | undefined },
     youtube: { status: 'unavailable' as 'unavailable' | 'live' | 'cached' | 'fallback', lastUpdate: undefined as Date | undefined },
-    trends: { status: 'unavailable' as 'unavailable' | 'live' | 'cached' | 'fallback', lastUpdate: undefined as Date | undefined }
+    trends: { status: 'unavailable' as 'unavailable' | 'live' | 'cached' | 'fallback', lastUpdate: undefined as Date | undefined },
+    twitter: { status: 'unavailable' as 'unavailable' | 'live' | 'cached' | 'fallback', lastUpdate: undefined as Date | undefined }
   });
   
   const { toast } = useToast();
@@ -177,7 +178,8 @@ const SentimentDashboard = () => {
       stocktwits: { status: 'unavailable', lastUpdate: undefined },
       news: { status: 'unavailable', lastUpdate: undefined },
       youtube: { status: 'unavailable', lastUpdate: undefined },
-      trends: { status: 'unavailable', lastUpdate: undefined }
+      trends: { status: 'unavailable', lastUpdate: undefined },
+      twitter: { status: 'unavailable', lastUpdate: undefined }
     });
 
     try {
@@ -312,6 +314,11 @@ const SentimentDashboard = () => {
               source="Trends" 
               status={dataSourceStatus.trends.status} 
               lastUpdate={dataSourceStatus.trends.lastUpdate}
+            />
+            <DataSourceIndicator 
+              source="Twitter" 
+              status={dataSourceStatus.twitter.status} 
+              lastUpdate={dataSourceStatus.twitter.lastUpdate}
             />
           </div>
         </div>

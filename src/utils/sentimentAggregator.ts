@@ -18,6 +18,7 @@ export interface AggregatedSentiment {
     news: boolean;
     google_trends: boolean;
     youtube: boolean;
+    twitter: boolean;
   };
   coverage: number; // 0 to 1 - percentage of sources available
 }
@@ -31,9 +32,11 @@ export function aggregateSentiment(
   news?: number,
   googleTrends?: number,
   youtube?: number,
+  twitter?: number,
   redditConfidence: number = 0.7,
   stocktwitsConfidence: number = 0.8,
-  newsConfidence: number = 0.9
+  newsConfidence: number = 0.9,
+  twitterConfidence: number = 0.8
 ): AggregatedSentiment {
   
   const sources: SentimentSource[] = [
@@ -71,6 +74,13 @@ export function aggregateSentiment(
       confidence: 0.7,
       weight: 0.9,
       available: youtube !== undefined && youtube !== null
+    },
+    {
+      name: 'twitter',
+      sentiment: twitter || 0,
+      confidence: twitterConfidence,
+      weight: 1.4, // Twitter gets high weight for real-time sentiment
+      available: twitter !== undefined && twitter !== null
     }
   ];
 
@@ -86,7 +96,8 @@ export function aggregateSentiment(
         stocktwits: false,
         news: false,
         google_trends: false,
-        youtube: false
+        youtube: false,
+        twitter: false
       },
       coverage: 0
     };
@@ -120,7 +131,8 @@ export function aggregateSentiment(
       stocktwits: sources[1].available,
       news: sources[2].available,
       google_trends: sources[3].available,
-      youtube: sources[4].available
+      youtube: sources[4].available,
+      twitter: sources[5].available
     },
     coverage: coveragePenalty
   };
