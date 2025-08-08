@@ -29,10 +29,15 @@ const SentimentDashboardPage = () => {
     },
     {
       name: "Google Trends",
-      status: "down" as const,
-      coverage: 0,
-      lastUpdate: new Date("2024-01-07T12:15:00"),
-      errorMessage: "API connection failed"
+      status: "active" as const,
+      coverage: 85,
+      lastUpdate: new Date("2024-01-07T14:35:00"),
+    },
+    {
+      name: "Twitter",
+      status: "active" as const,
+      coverage: 65,
+      lastUpdate: new Date("2024-01-07T14:33:00"),
     },
     {
       name: "YouTube Sentiment",
