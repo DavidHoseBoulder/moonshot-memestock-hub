@@ -1,5 +1,5 @@
 // Stage 1: Batch sentiment sourcing strategy
-import { createClient } from '@supabase/supabase-js';
+import { supabase } from '@/integrations/supabase/client';
 
 export interface BatchProcessingConfig {
   maxBatchSize: number;
@@ -30,7 +30,7 @@ export interface BatchResult {
 
 export class SentimentBatchProcessor {
   private config: BatchProcessingConfig;
-  private supabase;
+  private supabaseClient;
   private activeBatches: Map<string, SentimentBatch>;
   private lastApiCall: Map<string, number>;
 
@@ -39,11 +39,8 @@ export class SentimentBatchProcessor {
     this.activeBatches = new Map();
     this.lastApiCall = new Map();
     
-    // Initialize Supabase client
-    this.supabase = createClient(
-      import.meta.env.VITE_SUPABASE_URL,
-      import.meta.env.VITE_SUPABASE_ANON_KEY
-    );
+    // Use the existing configured Supabase client
+    this.supabaseClient = supabase;
   }
 
   /**
@@ -174,7 +171,7 @@ export class SentimentBatchProcessor {
       for (const timeframe of timeframes) {
         const startTime = new Date(now.getTime() - timeframe.hours * 60 * 60 * 1000);
         
-        const { data } = await this.supabase
+        const { data } = await this.supabaseClient
           .from('sentiment_history')
           .select('sentiment_score, confidence_score')
           .eq('symbol', symbol)
@@ -223,7 +220,7 @@ export class SentimentBatchProcessor {
    */
   private async deriveSentimentFromTrends(symbol: string): Promise<any | null> {
     try {
-      const { data } = await this.supabase
+      const { data } = await this.supabaseClient
         .from('sentiment_history')
         .select('sentiment_score, created_at')
         .eq('symbol', symbol)
@@ -268,7 +265,7 @@ export class SentimentBatchProcessor {
       const sectorPeers = this.getSectorPeers(symbol);
       
       if (sectorPeers.length > 0) {
-        const { data } = await this.supabase
+        const { data } = await this.supabaseClient
           .from('sentiment_history')
           .select('sentiment_score, confidence_score')
           .in('symbol', sectorPeers)
@@ -311,7 +308,7 @@ export class SentimentBatchProcessor {
   }
 
   private async getRecentSentimentData(symbols: string[]) {
-    const { data } = await this.supabase
+    const { data } = await this.supabaseClient
       .from('sentiment_history')
       .select('symbol, source, created_at')
       .in('symbol', symbols)
@@ -355,13 +352,13 @@ export class SentimentBatchProcessor {
 
   private async callBatchAPI(functionName: string, symbols: string[]) {
     // Batch API calls to edge functions
-    return this.supabase.functions.invoke(functionName, {
+    return this.supabaseClient.functions.invoke(functionName, {
       body: { symbols, limit: symbols.length }
     });
   }
 
   private async storeSyntheticSentiment(symbol: string, data: any, source: string) {
-    await this.supabase
+    await this.supabaseClient
       .from('sentiment_history')
       .insert({
         symbol,

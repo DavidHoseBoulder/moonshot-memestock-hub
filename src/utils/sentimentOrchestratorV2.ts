@@ -1,7 +1,7 @@
 // Enhanced sentiment orchestrator implementing the 3-stage strategy
 import { SentimentBatchProcessor, DEFAULT_BATCH_CONFIG, BatchResult } from './sentimentBatchProcessor';
 import { aggregateSentiment, AggregatedSentiment } from './sentimentAggregator';
-import { createClient } from '@supabase/supabase-js';
+import { supabase } from '@/integrations/supabase/client';
 
 export interface OrchestrationResult {
   totalSymbols: number;
@@ -31,16 +31,13 @@ export interface OrchestrationConfig {
 
 export class SentimentOrchestratorV2 {
   private batchProcessor: SentimentBatchProcessor;
-  private supabase;
+  private supabaseClient;
   private config: OrchestrationConfig;
 
   constructor(config: OrchestrationConfig) {
     this.config = config;
     this.batchProcessor = new SentimentBatchProcessor(DEFAULT_BATCH_CONFIG);
-    this.supabase = createClient(
-      import.meta.env.VITE_SUPABASE_URL,
-      import.meta.env.VITE_SUPABASE_ANON_KEY
-    );
+    this.supabaseClient = supabase;
   }
 
   /**
@@ -155,7 +152,7 @@ export class SentimentOrchestratorV2 {
   private async getEnhancedSentiment(symbol: string): Promise<AggregatedSentiment | null> {
     try {
       // Get recent sentiment data from all sources
-      const { data } = await this.supabase
+      const { data } = await this.supabaseClient
         .from('sentiment_history')
         .select('*')
         .eq('symbol', symbol)
@@ -222,7 +219,7 @@ export class SentimentOrchestratorV2 {
 
       try {
         // Get historical data for this source
-        const { data: historicalData } = await this.supabase
+        const { data: historicalData } = await this.supabaseClient
           .from('sentiment_history')
           .select('sentiment_score, confidence_score, created_at')
           .eq('symbol', symbol)
