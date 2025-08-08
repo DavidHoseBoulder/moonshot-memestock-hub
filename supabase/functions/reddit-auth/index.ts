@@ -157,6 +157,9 @@ Deno.serve(async (req) => {
 
     console.log('Successfully authenticated with Reddit')
 
+    // Parse the token response
+    const tokenData = await tokenResponse.json()
+
     // Parse request body to get subreddit and action - moved this after auth
     // const { subreddit = 'stocks', action = 'hot', limit = 25 } = await req.json().catch(() => ({}))
 
