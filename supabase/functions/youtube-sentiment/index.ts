@@ -40,31 +40,15 @@ serve(async (req) => {
 
     const youtubeApiKey = Deno.env.get('YOUTUBE_API_KEY')
     if (!youtubeApiKey) {
-      console.log('YouTube API key not found, returning mock data')
+      console.log('YouTube API key not found, returning empty data')
       
-      // Return mock data when API key is missing
-      const mockData = symbols.slice(0, 10).map((symbol: string) => ({
-        symbol,
-        sentiment: Math.random() * 0.8 - 0.4, // -0.4 to 0.4
-        commentCount: Math.floor(Math.random() * 100) + 20,
-        avgLikes: Math.floor(Math.random() * 10) + 2,
-        topComments: [
-          {
-            text: `${symbol} looking bullish today!`,
-            likeCount: 5,
-            publishedAt: new Date().toISOString(),
-            authorDisplayName: 'MockUser1'
-          }
-        ],
-        timestamp: new Date().toISOString()
-      }))
-
       return new Response(
         JSON.stringify({
-          success: true,
-          youtube_sentiment: mockData,
-          total_processed: mockData.length,
-          source: 'youtube_mock'
+          success: false,
+          youtube_sentiment: [],
+          total_processed: 0,
+          source: 'youtube_unavailable',
+          error: 'YouTube API key not configured'
         }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       )
@@ -72,10 +56,10 @@ serve(async (req) => {
 
     const youtubeSentiment: YouTubeSentiment[] = []
 
-    for (const symbol of symbols.slice(0, 10)) { // Limit to 10 symbols
+    for (const symbol of symbols.slice(0, 5)) { // Limit to 5 symbols to reduce API calls
       try {
-        // Search for recent videos about the stock
-        const searchUrl = `https://www.googleapis.com/youtube/v3/search?part=snippet&q=${symbol}+stock+analysis&type=video&order=date&maxResults=5&key=${youtubeApiKey}`
+        // Search for recent videos about the stock (reduced maxResults to save quota)
+        const searchUrl = `https://www.googleapis.com/youtube/v3/search?part=snippet&q=${symbol}+stock+analysis&type=video&order=date&maxResults=3&key=${youtubeApiKey}`
         
         const searchResponse = await fetch(searchUrl)
         if (!searchResponse.ok) {
@@ -93,10 +77,10 @@ serve(async (req) => {
 
         let allComments: YouTubeComment[] = []
         
-        // Get comments from top videos
-        for (const video of videos.slice(0, 3)) {
+        // Get comments from top videos (reduced to 2 videos)
+        for (const video of videos.slice(0, 2)) {
           try {
-            const commentsUrl = `https://www.googleapis.com/youtube/v3/commentThreads?part=snippet&videoId=${video.id.videoId}&maxResults=20&order=relevance&key=${youtubeApiKey}`
+            const commentsUrl = `https://www.googleapis.com/youtube/v3/commentThreads?part=snippet&videoId=${video.id.videoId}&maxResults=10&order=relevance&key=${youtubeApiKey}`
             
             const commentsResponse = await fetch(commentsUrl)
             if (!commentsResponse.ok) continue
@@ -159,8 +143,8 @@ serve(async (req) => {
 
         console.log(`YouTube sentiment for ${symbol}: ${avgSentiment.toFixed(3)} from ${allComments.length} comments`)
 
-        // Rate limiting
-        await new Promise(resolve => setTimeout(resolve, 1000))
+        // Rate limiting - increased delay to reduce API pressure
+        await new Promise(resolve => setTimeout(resolve, 2000))
 
       } catch (error) {
         console.error(`Error processing YouTube data for ${symbol}:`, error)
