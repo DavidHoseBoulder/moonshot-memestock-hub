@@ -3,7 +3,8 @@ import SentimentHistoryViewer from "@/components/SentimentHistoryViewer";
 import SentimentVelocityTracker from "@/components/SentimentVelocityTracker";
 import SentimentCoverageMonitor from "@/components/SentimentCoverageMonitor";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { MessageSquare, History, Zap, Activity } from "lucide-react";
+import { MessageSquare, History, Zap, Activity, Settings } from "lucide-react";
+import { SentimentOrchestrationDashboard } from "@/components/SentimentOrchestrationDashboard";
 
 const SentimentDashboardPage = () => {
   // Sample data for coverage monitor
@@ -69,7 +70,7 @@ const SentimentDashboardPage = () => {
       </div>
 
       <Tabs defaultValue="dashboard" className="space-y-6">
-        <TabsList className="grid w-full grid-cols-4">
+        <TabsList className="grid w-full grid-cols-5">
           <TabsTrigger value="dashboard" className="flex items-center gap-2">
             <MessageSquare className="w-4 h-4" />
             Live Dashboard
@@ -85,6 +86,10 @@ const SentimentDashboardPage = () => {
           <TabsTrigger value="coverage" className="flex items-center gap-2">
             <Activity className="w-4 h-4" />
             Coverage Monitor
+          </TabsTrigger>
+          <TabsTrigger value="orchestration" className="flex items-center gap-2">
+            <Settings className="w-4 h-4" />
+            Orchestration V2
           </TabsTrigger>
         </TabsList>
 
@@ -105,6 +110,10 @@ const SentimentDashboardPage = () => {
             dataSourcesStatus={sampleDataSources}
             tickerCoverage={tickerCoverage}
           />
+        </TabsContent>
+
+        <TabsContent value="orchestration" className="space-y-6">
+          <SentimentOrchestrationDashboard />
         </TabsContent>
       </Tabs>
     </div>
