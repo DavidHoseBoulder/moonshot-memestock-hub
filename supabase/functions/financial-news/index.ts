@@ -41,40 +41,84 @@ Deno.serve(async (req) => {
     }
 
     const { symbols, days = 1 } = await req.json()
-    const symbolsQuery = symbols ? symbols.join(' OR ') : 'stocks OR trading OR market'
     
-    console.log(`Fetching financial news for: ${symbolsQuery}`)
+    console.log(`Fetching financial news for ${symbols?.length || 0} symbols...`)
 
-    // Fetch from NewsAPI
-    const fromDate = new Date(Date.now() - (days * 24 * 60 * 60 * 1000)).toISOString().split('T')[0]
-    const newsUrl = `https://newsapi.org/v2/everything?q=${encodeURIComponent(symbolsQuery)}&language=en&sortBy=publishedAt&from=${fromDate}&pageSize=50`
+    // Try multiple query strategies for better coverage
+    const queries = [
+      // Primary query with stock symbols
+      symbols ? symbols.slice(0, 15).map((symbol: string) => `"${symbol}"`).join(' OR ') : '',
+      // Secondary query with "stock" keyword
+      symbols ? symbols.slice(0, 10).map((symbol: string) => `"${symbol} stock"`).join(' OR ') : '',
+      // Fallback general financial query
+      'stock market earnings financial news'
+    ].filter(q => q);
 
-    const response = await fetch(newsUrl, {
-      headers: {
-        'X-API-Key': newsApiKey,
-        'User-Agent': 'Financial-Pipeline/1.0'
+    let allArticles: any[] = [];
+    const fromDate = new Date(Date.now() - (days * 24 * 60 * 60 * 1000)).toISOString().split('T')[0];
+    
+    for (const [index, query] of queries.entries()) {
+      try {
+        const newsUrl = `https://newsapi.org/v2/everything?q=${encodeURIComponent(query)}&language=en&sortBy=publishedAt&from=${fromDate}&pageSize=${index === 0 ? 100 : 50}&domains=reuters.com,bloomberg.com,cnbc.com,marketwatch.com,finance.yahoo.com,fool.com,seekingalpha.com,benzinga.com,finviz.com,biztoc.com`;
+
+        const response = await fetch(newsUrl, {
+          headers: {
+            'X-API-Key': newsApiKey,
+            'User-Agent': 'Financial-Pipeline/1.0'
+          }
+        });
+
+        if (response.ok) {
+          const data = await response.json();
+          if (data.articles && data.articles.length > 0) {
+            // Filter articles that mention our symbols
+            const relevantArticles = data.articles.filter((article: any) => {
+              const content = `${article.title} ${article.description || ''}`.toLowerCase();
+              const isFinancial = content.includes('stock') || content.includes('market') || 
+                                content.includes('trading') || content.includes('earnings') || 
+                                content.includes('revenue') || content.includes('shares');
+              
+              if (!symbols) return isFinancial;
+              
+              const mentionsSymbol = symbols.some((symbol: string) => 
+                content.includes(symbol.toLowerCase()) || 
+                content.includes(`$${symbol.toLowerCase()}`)
+              );
+              
+              return isFinancial && mentionsSymbol;
+            });
+            
+            allArticles.push(...relevantArticles);
+            console.log(`Query ${index + 1}: Found ${relevantArticles.length} relevant articles`);
+          }
+        } else {
+          console.warn(`Query ${index + 1} failed: ${response.status}`);
+        }
+      } catch (queryError) {
+        console.warn(`Query ${index + 1} error:`, queryError.message);
       }
-    })
-
-    if (!response.ok) {
-      throw new Error(`NewsAPI error: ${response.status} ${response.statusText}`)
+      
+      // Delay between queries to respect rate limits
+      if (index < queries.length - 1) {
+        await new Promise(resolve => setTimeout(resolve, 1000));
+      }
     }
 
-    const data = await response.json()
-    console.log(`Retrieved ${data.articles?.length || 0} financial news articles`)
+    // Remove duplicates and sort by publication date
+    const uniqueArticles = allArticles
+      .filter((article, index, self) => 
+        index === self.findIndex(a => a.url === article.url)
+      )
+      .sort((a, b) => new Date(b.publishedAt).getTime() - new Date(a.publishedAt).getTime())
+      .slice(0, 100); // Limit to 100 most recent
 
-    // Filter for financial relevance
-    const financialArticles = data.articles?.filter((article: any) => {
-      const text = `${article.title} ${article.description}`.toLowerCase()
-      return text.includes('stock') || text.includes('market') || text.includes('trading') ||
-             text.includes('earnings') || text.includes('revenue') || text.includes('shares')
-    }) || []
+    console.log(`Successfully fetched ${uniqueArticles.length} unique financial articles`);
 
     return new Response(
       JSON.stringify({ 
-        articles: financialArticles,
-        totalResults: financialArticles.length,
-        source: 'NewsAPI'
+        articles: uniqueArticles,
+        totalResults: uniqueArticles.length,
+        source: 'NewsAPI Enhanced'
       }),
       { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     )
