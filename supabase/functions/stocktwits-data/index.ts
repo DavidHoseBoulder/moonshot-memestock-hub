@@ -1,26 +1,43 @@
 
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
-// Simple in-memory cache with TTL
-const cache = new Map<string, { data: any; timestamp: number }>();
-const CACHE_TTL = 15 * 60 * 1000; // 15 minutes
+// Initialize Supabase client
+const supabaseUrl = Deno.env.get('SUPABASE_URL')!
+const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
+const supabase = createClient(supabaseUrl, supabaseKey)
 
-function getCachedData(key: string) {
-  const cached = cache.get(key);
-  if (cached && Date.now() - cached.timestamp < CACHE_TTL) {
-    return cached.data;
+// Check database for recent data (last 30 minutes)
+async function getRecentSentimentData(symbols: string[]): Promise<{ symbol: string; data: any }[]> {
+  const thirtyMinutesAgo = new Date(Date.now() - 30 * 60 * 1000).toISOString()
+  
+  const { data, error } = await supabase
+    .from('sentiment_history')
+    .select('symbol, sentiment_score, confidence_score, metadata, collected_at')
+    .in('symbol', symbols)
+    .eq('source', 'stocktwits')
+    .gte('collected_at', thirtyMinutesAgo)
+    .order('collected_at', { ascending: false })
+  
+  if (error) {
+    console.warn('Database query error:', error)
+    return []
   }
-  cache.delete(key);
-  return null;
-}
-
-function setCachedData(key: string, data: any) {
-  cache.set(key, { data, timestamp: Date.now() });
+  
+  // Group by symbol, taking most recent for each
+  const symbolMap = new Map()
+  data?.forEach(row => {
+    if (!symbolMap.has(row.symbol)) {
+      symbolMap.set(row.symbol, row)
+    }
+  })
+  
+  return Array.from(symbolMap.entries()).map(([symbol, data]) => ({ symbol, data }))
 }
 
 interface StockTwitsMessage {
@@ -54,61 +71,69 @@ Deno.serve(async (req) => {
       )
     }
 
-    // Create cache key for this request
-    const cacheKey = `stocktwits_${symbols.join(',')}_${limit}`;
-    const cached = getCachedData(cacheKey);
+    console.log(`Checking database for recent StockTwits data for ${symbols.length} symbols`)
     
-    if (cached) {
-      console.log(`Returning cached StockTwits data for ${symbols.length} symbols`);
-      return new Response(
-        JSON.stringify(cached),
-        { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
+    // First, check database for recent data
+    const recentData = await getRecentSentimentData(symbols)
+    const symbolsWithData = new Set(recentData.map(d => d.symbol))
+    const symbolsToFetch = symbols.filter(symbol => !symbolsWithData.has(symbol))
+    
+    console.log(`Found ${recentData.length} symbols with recent data, need to fetch ${symbolsToFetch.length} symbols`)
+    
+    let allMessages: StockTwitsMessage[] = []
+    
+    // Convert database data to StockTwits message format
+    recentData.forEach(({ symbol, data }) => {
+      if (data.metadata?.messages) {
+        allMessages.push(...data.metadata.messages)
+      }
+    })
+    
+    // Only fetch missing symbols from API
+    if (symbolsToFetch.length > 0) {
+      console.log(`Fetching fresh StockTwits data for ${symbolsToFetch.length} symbols`)
+      
+      for (const symbol of symbolsToFetch.slice(0, 5)) { // Reduced to 5 to minimize API calls
+        try {
+          const stocktwitsUrl = `https://api.stocktwits.com/api/2/streams/symbol/${symbol}.json?limit=${Math.min(limit, 20)}`
+          
+          const response = await fetch(stocktwitsUrl, {
+            headers: {
+              'User-Agent': 'Financial-Pipeline/1.0'
+            }
+          })
 
-    console.log(`Fetching StockTwits data for symbols: ${symbols.slice(0, 5).join(', ')}${symbols.length > 5 ? '...' : ''}`)
-
-    const allMessages: StockTwitsMessage[] = []
-    
-    // Fetch data for each symbol (StockTwits API doesn't support bulk requests)
-    // Prioritize high-volume symbols and limit to 8 to reduce API calls
-    const prioritizedSymbols = symbols
-      .slice(0, 8) // Reduced from 10 to 8
-      .sort((a, b) => {
-        // Prioritize major symbols
-        const priority = ['TSLA', 'AAPL', 'NVDA', 'AMD', 'META', 'AMZN', 'MSFT', 'GME', 'AMC'];
-        return priority.indexOf(a) - priority.indexOf(b);
-      });
-    
-    for (const symbol of prioritizedSymbols) {
-      try {
-        const stocktwitsUrl = `https://api.stocktwits.com/api/2/streams/symbol/${symbol}.json?limit=${Math.min(limit, 20)}`
-        
-        const response = await fetch(stocktwitsUrl, {
-          headers: {
-            'User-Agent': 'Financial-Pipeline/1.0'
+          if (response.ok) {
+            const data = await response.json()
+            if (data.messages && Array.isArray(data.messages)) {
+              allMessages.push(...data.messages)
+              
+              // Store in database for future use
+              await supabase
+                .from('sentiment_history')
+                .insert({
+                  symbol,
+                  source: 'stocktwits',
+                  sentiment_score: 0, // We'll calculate this from messages
+                  confidence_score: data.messages.length > 0 ? 0.7 : 0,
+                  metadata: { messages: data.messages },
+                  collected_at: new Date().toISOString(),
+                  data_timestamp: new Date().toISOString()
+                })
+            }
+          } else if (response.status === 429) {
+            console.warn(`Rate limited for symbol ${symbol}`)
+            break
+          } else {
+            console.warn(`Failed to fetch ${symbol}: ${response.status}`)
           }
-        })
-
-        if (response.ok) {
-          const data = await response.json()
-          if (data.messages && Array.isArray(data.messages)) {
-            allMessages.push(...data.messages)
-          }
-        } else if (response.status === 429) {
-          console.warn(`Rate limited for symbol ${symbol}`)
-          await new Promise(resolve => setTimeout(resolve, 2000)) // Increased delay
-          break; // Stop on rate limit
-        } else {
-          console.warn(`Failed to fetch ${symbol}: ${response.status}`)
+          
+          await new Promise(resolve => setTimeout(resolve, 250)) // Delay between requests
+          
+        } catch (error) {
+          console.warn(`Error fetching ${symbol}:`, error.message)
+          continue
         }
-        
-        // Increased delay to avoid rate limiting
-        await new Promise(resolve => setTimeout(resolve, 200))
-        
-      } catch (error) {
-        console.warn(`Error fetching ${symbol}:`, error.message)
-        continue
       }
     }
 
@@ -133,17 +158,15 @@ Deno.serve(async (req) => {
         index === self.findIndex(m => m.id === message.id))
       .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
 
-    console.log(`Successfully retrieved ${uniqueMessages.length} StockTwits messages`)
+    console.log(`Returning ${uniqueMessages.length} StockTwits messages (${recentData.length} from cache, ${symbolsToFetch.length} fetched)`)
 
     const result = { 
       messages: uniqueMessages,
       totalResults: uniqueMessages.length,
       source: 'StockTwits API',
-      cached: false
+      fromDatabase: recentData.length,
+      fromAPI: symbolsToFetch.length
     };
-
-    // Cache the result
-    setCachedData(cacheKey, result);
 
     return new Response(
       JSON.stringify(result),
