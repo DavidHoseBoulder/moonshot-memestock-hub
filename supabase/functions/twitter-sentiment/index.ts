@@ -207,12 +207,12 @@ Deno.serve(async (req) => {
       // Smart prioritization by category (social sentiment focus)
       const prioritizedSymbols = prioritizeSymbolsByCategory(symbolsToFetch)
       
-      // Process symbols in batches to avoid rate limits
-      for (const symbol of prioritizedSymbols.slice(0, 5)) { // Reduced from 10 to 5
+      // Process symbols in batches to avoid rate limits (free tier: 75 requests/15min)
+      for (const symbol of prioritizedSymbols.slice(0, 3)) { // Reduced to 3 for free tier
         try {
           // Search for tweets about the stock symbol
           const searchQuery = `$${symbol} OR ${symbol} stock -is:retweet lang:en`;
-          const twitterUrl = `https://api.twitter.com/2/tweets/search/recent?query=${encodeURIComponent(searchQuery)}&max_results=20&tweet.fields=created_at,public_metrics,author_id`;
+          const twitterUrl = `https://api.twitter.com/2/tweets/search/recent?query=${encodeURIComponent(searchQuery)}&max_results=10&tweet.fields=created_at,public_metrics,author_id`;
           
           const response = await fetch(twitterUrl, {
             headers: {
@@ -301,8 +301,8 @@ Deno.serve(async (req) => {
             console.warn(`Failed to fetch Twitter data for ${symbol}: ${response.status}`);
           }
           
-          // Delay to respect rate limits (450 requests per 15 minutes)
-          await new Promise(resolve => setTimeout(resolve, 2000));
+          // Delay to respect rate limits (free tier: 75 requests per 15 minutes = ~12 seconds between requests)
+          await new Promise(resolve => setTimeout(resolve, 15000)); // 15 second delay for free tier
           
         } catch (error) {
           console.warn(`Error fetching Twitter data for ${symbol}:`, error.message);
