@@ -23,6 +23,7 @@ export interface OrchestrationConfig {
   enableRedundancy: boolean;
   enableMultiTimescale: boolean;
   analysisLookbackHours: number; // Used when Stage 1 is skipped
+  maxAnalysisLookbackHours: number; // Fallback window when data is sparse
   qualityGate: {
     minSources: number;
     minConfidence: number;
@@ -152,19 +153,34 @@ export class SentimentOrchestratorV2 {
    */
   private async getEnhancedSentiment(symbol: string): Promise<AggregatedSentiment | null> {
     try {
-      // Get sentiment data using adaptive lookback (wider when Stage 1 is off)
-      const lookbackHours = this.config.enableBatchProcessing ? 2 : (this.config.analysisLookbackHours ?? 24);
-      const { data } = await this.supabaseClient
-        .from('sentiment_history')
-        .select('*')
-        .eq('symbol', symbol)
-        .gte('created_at', new Date(Date.now() - lookbackHours * 60 * 60 * 1000).toISOString())
-        .order('created_at', { ascending: false });
+// Get sentiment data using adaptive lookback (wider when Stage 1 is off)
+const primaryLookbackHours = this.config.enableBatchProcessing ? 2 : (this.config.analysisLookbackHours ?? 24);
+const maxLookbackHours = this.config.maxAnalysisLookbackHours ?? 168; // 7 days
+const fromISO = (hrs: number) => new Date(Date.now() - hrs * 60 * 60 * 1000).toISOString();
 
-      if (!data || data.length === 0) {
-        console.log(`No recent data for ${symbol}`);
-        return null;
-      }
+// Prefer data_timestamp for freshness
+let { data } = await this.supabaseClient
+  .from('sentiment_history')
+  .select('*')
+  .eq('symbol', symbol)
+  .gte('data_timestamp', fromISO(primaryLookbackHours))
+  .order('data_timestamp', { ascending: false });
+
+// Fallback: widen lookback when Stage 1 is off and no data found
+if ((!data || data.length === 0) && !this.config.enableBatchProcessing && maxLookbackHours > primaryLookbackHours) {
+  const widened = await this.supabaseClient
+    .from('sentiment_history')
+    .select('*')
+    .eq('symbol', symbol)
+    .gte('data_timestamp', fromISO(maxLookbackHours))
+    .order('data_timestamp', { ascending: false });
+  data = widened.data ?? null;
+}
+
+if (!data || data.length === 0) {
+  console.log(`No data in last ${!this.config.enableBatchProcessing ? maxLookbackHours : primaryLookbackHours}h for ${symbol}`);
+  return null;
+}
 
       // Group by source and get latest values
       const sourceData = this.groupBySourceLatest(data);
@@ -267,8 +283,12 @@ export class SentimentOrchestratorV2 {
   private groupBySourceLatest(data: any[]): { [source: string]: any } {
     const grouped: { [source: string]: any } = {};
     
-    // Sort by created_at descending, then group by source
-    const sorted = data.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+// Sort by data_timestamp (fallback to created_at) descending, then group by source
+const sorted = data.sort((a, b) => {
+  const ta = new Date((a as any).data_timestamp || (a as any).created_at).getTime();
+  const tb = new Date((b as any).data_timestamp || (b as any).created_at).getTime();
+  return tb - ta;
+});
     
     for (const item of sorted) {
       if (!grouped[item.source]) {
@@ -370,7 +390,8 @@ export const DEFAULT_ORCHESTRATION_CONFIG: OrchestrationConfig = {
   enableBatchProcessing: true,
   enableRedundancy: true,
   enableMultiTimescale: true,
-  analysisLookbackHours: 24,
+analysisLookbackHours: 24,
+  maxAnalysisLookbackHours: 168,
   qualityGate: {
     minSources: 2,
     minConfidence: 0.3,
