@@ -39,6 +39,39 @@ interface SentimentResult {
   timestamp: string;
 }
 
+// Check database for recent Twitter sentiment data (last 30 minutes)
+async function getRecentTwitterSentiment(symbols: string[]) {
+  const { createClient } = await import('https://esm.sh/@supabase/supabase-js@2')
+  const supabaseUrl = Deno.env.get('SUPABASE_URL')!
+  const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
+  const supabase = createClient(supabaseUrl, supabaseKey)
+  
+  const thirtyMinutesAgo = new Date(Date.now() - 30 * 60 * 1000).toISOString()
+  
+  const { data, error } = await supabase
+    .from('sentiment_history')
+    .select('symbol, sentiment_score, confidence_score, metadata, collected_at')
+    .in('symbol', symbols)
+    .eq('source', 'twitter')
+    .gte('collected_at', thirtyMinutesAgo)
+    .order('collected_at', { ascending: false })
+  
+  if (error) {
+    console.warn('Database query error:', error)
+    return []
+  }
+  
+  // Group by symbol, taking most recent for each
+  const symbolMap = new Map()
+  data?.forEach(row => {
+    if (!symbolMap.has(row.symbol)) {
+      symbolMap.set(row.symbol, row)
+    }
+  })
+  
+  return Array.from(symbolMap.entries()).map(([symbol, data]) => ({ symbol, data }))
+}
+
 // Simple sentiment analysis using keyword scoring
 function analyzeSentiment(text: string): { sentiment: number; confidence: number } {
   const bullishKeywords = [
@@ -91,18 +124,45 @@ Deno.serve(async (req) => {
       )
     }
 
+    console.log(`Checking database for recent Twitter sentiment for ${symbols.length} symbols`)
+    
+    // First, check database for recent data
+    const recentData = await getRecentTwitterSentiment(symbols)
+    const symbolsWithData = new Set(recentData.map(d => d.symbol))
+    const symbolsToFetch = symbols.filter(symbol => !symbolsWithData.has(symbol))
+    
+    console.log(`Found ${recentData.length} symbols with recent Twitter data, need to fetch ${symbolsToFetch.length} symbols`)
+    
+    const results: SentimentResult[] = []
+    
+    // Convert database data to SentimentResult format
+    recentData.forEach(({ symbol, data }) => {
+      if (data.metadata) {
+        results.push({
+          symbol,
+          sentiment: data.sentiment_score || 0,
+          confidence: data.confidence_score || 0,
+          tweetCount: data.metadata.tweetCount || 0,
+          totalEngagement: data.metadata.totalEngagement || 0,
+          topTweets: data.metadata.topTweets || [],
+          timestamp: data.collected_at
+        })
+      }
+    })
+
     // Check if Twitter Bearer Token is available
     const bearerToken = Deno.env.get('TWITTER_BEARER_TOKEN');
     
-    if (!bearerToken) {
-      console.log('Twitter Bearer Token not available, generating simulated sentiment data');
+    if (!bearerToken && symbolsToFetch.length > 0) {
+    
+      console.log('Twitter Bearer Token not available, using cached data and simulated data for missing symbols');
       
-      // Generate realistic simulated data based on market conditions
-      const results: SentimentResult[] = symbols.slice(0, 15).map(symbol => {
+      // Generate simulated data for missing symbols
+      symbolsToFetch.slice(0, 10).forEach(symbol => {
         const baseVolatility = Math.random() * 0.4 - 0.2; // -0.2 to 0.2
         const marketBoost = new Date().getHours() >= 9 && new Date().getHours() <= 16 ? 0.1 : 0;
         
-        return {
+        results.push({
           symbol,
           sentiment: Math.max(-1, Math.min(1, baseVolatility + marketBoost)),
           confidence: 0.3 + Math.random() * 0.4, // 0.3 to 0.7
@@ -116,7 +176,7 @@ Deno.serve(async (req) => {
             }
           ],
           timestamp: new Date().toISOString()
-        };
+        });
       });
 
       return new Response(
@@ -124,104 +184,133 @@ Deno.serve(async (req) => {
           success: true,
           sentiment_data: results,
           total_processed: results.length,
-          source: 'simulated_twitter',
-          note: 'Simulated data - Twitter API key not configured'
+          source: 'twitter_cached_and_simulated',
+          fromDatabase: recentData.length,
+          simulated: symbolsToFetch.length,
+          note: 'Twitter API key not configured'
         }),
         { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
-    console.log(`Fetching Twitter sentiment for symbols: ${symbols.slice(0, 5).join(', ')}${symbols.length > 5 ? '...' : ''}`)
-
-    const results: SentimentResult[] = [];
-    
-    // Process symbols in batches to avoid rate limits
-    for (const symbol of symbols.slice(0, 10)) {
-      try {
-        // Search for tweets about the stock symbol
-        const searchQuery = `$${symbol} OR ${symbol} stock -is:retweet lang:en`;
-        const twitterUrl = `https://api.twitter.com/2/tweets/search/recent?query=${encodeURIComponent(searchQuery)}&max_results=50&tweet.fields=created_at,public_metrics,author_id`;
-        
-        const response = await fetch(twitterUrl, {
-          headers: {
-            'Authorization': `Bearer ${bearerToken}`,
-            'User-Agent': 'Financial-Sentiment-Bot/1.0'
-          }
-        });
-
-        if (response.ok) {
-          const data: TwitterSearchResponse = await response.json();
+    // Only fetch missing symbols from API
+    if (symbolsToFetch.length > 0 && bearerToken) {
+      console.log(`Fetching fresh Twitter data for ${symbolsToFetch.length} symbols`)
+      
+      // Process symbols in batches to avoid rate limits
+      for (const symbol of symbolsToFetch.slice(0, 5)) { // Reduced from 10 to 5
+        try {
+          // Search for tweets about the stock symbol
+          const searchQuery = `$${symbol} OR ${symbol} stock -is:retweet lang:en`;
+          const twitterUrl = `https://api.twitter.com/2/tweets/search/recent?query=${encodeURIComponent(searchQuery)}&max_results=20&tweet.fields=created_at,public_metrics,author_id`;
           
-          if (data.data && data.data.length > 0) {
-            let totalSentiment = 0;
-            let totalConfidence = 0;
-            let totalEngagement = 0;
-            const topTweets: Array<{ text: string; engagement: number; created_at: string }> = [];
+          const response = await fetch(twitterUrl, {
+            headers: {
+              'Authorization': `Bearer ${bearerToken}`,
+              'User-Agent': 'Financial-Sentiment-Bot/1.0'
+            }
+          });
 
-            data.data.forEach(tweet => {
-              const analysis = analyzeSentiment(tweet.text);
-              const engagement = tweet.public_metrics.like_count + 
-                               tweet.public_metrics.retweet_count + 
-                               tweet.public_metrics.reply_count;
+          if (response.ok) {
+            const data: TwitterSearchResponse = await response.json();
+            
+            if (data.data && data.data.length > 0) {
+              let totalSentiment = 0;
+              let totalConfidence = 0;
+              let totalEngagement = 0;
+              const topTweets: Array<{ text: string; engagement: number; created_at: string }> = [];
+
+              data.data.forEach(tweet => {
+                const analysis = analyzeSentiment(tweet.text);
+                const engagement = tweet.public_metrics.like_count + 
+                                 tweet.public_metrics.retweet_count + 
+                                 tweet.public_metrics.reply_count;
+                
+                totalSentiment += analysis.sentiment * analysis.confidence;
+                totalConfidence += analysis.confidence;
+                totalEngagement += engagement;
+
+                if (topTweets.length < 3 && tweet.text.length > 20) {
+                  topTweets.push({
+                    text: tweet.text.substring(0, 200),
+                    engagement,
+                    created_at: tweet.created_at
+                  });
+                }
+              });
+
+              const sentimentResult = {
+                symbol,
+                sentiment: totalConfidence > 0 ? totalSentiment / totalConfidence : 0,
+                confidence: Math.min(totalConfidence / data.data.length, 1.0),
+                tweetCount: data.data.length,
+                totalEngagement,
+                topTweets: topTweets.sort((a, b) => b.engagement - a.engagement),
+                timestamp: new Date().toISOString()
+              };
+
+              results.push(sentimentResult);
+
+              // Store in database for future use
+              const { createClient } = await import('https://esm.sh/@supabase/supabase-js@2')
+              const supabaseUrl = Deno.env.get('SUPABASE_URL')!
+              const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
+              const supabase = createClient(supabaseUrl, supabaseKey)
               
-              totalSentiment += analysis.sentiment * analysis.confidence;
-              totalConfidence += analysis.confidence;
-              totalEngagement += engagement;
-
-              if (topTweets.length < 3 && tweet.text.length > 20) {
-                topTweets.push({
-                  text: tweet.text.substring(0, 200),
-                  engagement,
-                  created_at: tweet.created_at
-                });
-              }
-            });
-
-            results.push({
-              symbol,
-              sentiment: totalConfidence > 0 ? totalSentiment / totalConfidence : 0,
-              confidence: Math.min(totalConfidence / data.data.length, 1.0),
-              tweetCount: data.data.length,
-              totalEngagement,
-              topTweets: topTweets.sort((a, b) => b.engagement - a.engagement),
-              timestamp: new Date().toISOString()
-            });
+              await supabase
+                .from('sentiment_history')
+                .insert({
+                  symbol,
+                  source: 'twitter',
+                  sentiment_score: sentimentResult.sentiment,
+                  confidence_score: sentimentResult.confidence,
+                  metadata: {
+                    tweetCount: sentimentResult.tweetCount,
+                    totalEngagement: sentimentResult.totalEngagement,
+                    topTweets: sentimentResult.topTweets
+                  },
+                  collected_at: new Date().toISOString(),
+                  data_timestamp: new Date().toISOString()
+                })
+            } else {
+              // No tweets found
+              results.push({
+                symbol,
+                sentiment: 0,
+                confidence: 0,
+                tweetCount: 0,
+                totalEngagement: 0,
+                topTweets: [],
+                timestamp: new Date().toISOString()
+              });
+            }
+          } else if (response.status === 429) {
+            console.warn(`Twitter rate limited for symbol ${symbol}`);
+            break; // Stop processing on rate limit
           } else {
-            // No tweets found
-            results.push({
-              symbol,
-              sentiment: 0,
-              confidence: 0,
-              tweetCount: 0,
-              totalEngagement: 0,
-              topTweets: [],
-              timestamp: new Date().toISOString()
-            });
+            console.warn(`Failed to fetch Twitter data for ${symbol}: ${response.status}`);
           }
-        } else if (response.status === 429) {
-          console.warn(`Twitter rate limited for symbol ${symbol}`);
-          break; // Stop processing on rate limit
-        } else {
-          console.warn(`Failed to fetch Twitter data for ${symbol}: ${response.status}`);
+          
+          // Delay to respect rate limits (450 requests per 15 minutes)
+          await new Promise(resolve => setTimeout(resolve, 2000));
+          
+        } catch (error) {
+          console.warn(`Error fetching Twitter data for ${symbol}:`, error.message);
+          continue;
         }
-        
-        // Delay to respect rate limits (450 requests per 15 minutes)
-        await new Promise(resolve => setTimeout(resolve, 2000));
-        
-      } catch (error) {
-        console.warn(`Error fetching Twitter data for ${symbol}:`, error.message);
-        continue;
       }
     }
 
-    console.log(`Successfully processed ${results.length} symbols for Twitter sentiment`);
+    console.log(`Returning ${results.length} Twitter sentiment results (${recentData.length} from cache, ${symbolsToFetch.length} from API)`)
 
     return new Response(
       JSON.stringify({
         success: true,
         sentiment_data: results,
         total_processed: results.length,
-        source: 'twitter_api'
+        source: 'twitter_api',
+        fromDatabase: recentData.length,
+        fromAPI: symbolsToFetch.length
       }),
       { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );

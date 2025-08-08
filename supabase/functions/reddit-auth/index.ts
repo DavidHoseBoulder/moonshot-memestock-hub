@@ -5,6 +5,11 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
+// Initialize Supabase client
+const supabaseUrl = Deno.env.get('SUPABASE_URL')!
+const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
+const supabase = createClient(supabaseUrl, supabaseKey)
+
 interface RedditTokenResponse {
   access_token: string
   token_type: string
@@ -23,6 +28,26 @@ interface RedditPostData {
   author: string
 }
 
+// Check database for recent Reddit data (last 30 minutes)
+async function getRecentRedditData() {
+  const thirtyMinutesAgo = new Date(Date.now() - 30 * 60 * 1000).toISOString()
+  
+  const { data, error } = await supabase
+    .from('sentiment_history')
+    .select('metadata, collected_at')
+    .eq('source', 'reddit')
+    .gte('collected_at', thirtyMinutesAgo)
+    .order('collected_at', { ascending: false })
+    .limit(1)
+  
+  if (error) {
+    console.warn('Database query error:', error)
+    return null
+  }
+  
+  return data?.[0] || null
+}
+
 Deno.serve(async (req) => {
   // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
@@ -30,7 +55,36 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const supabase = createClient(
+    // Parse request body to get subreddit and action
+    const { subreddit = 'stocks', action = 'hot', limit = 25 } = await req.json().catch(() => ({}))
+    
+    console.log(`Checking database for recent Reddit data`)
+    
+    // First, check database for recent data
+    const recentData = await getRecentRedditData()
+    
+    if (recentData && recentData.metadata?.posts) {
+      console.log(`Returning cached Reddit data from ${recentData.collected_at}`)
+      
+      return new Response(
+        JSON.stringify({ 
+          success: true, 
+          posts: recentData.metadata.posts,
+          subreddit,
+          action,
+          total: recentData.metadata.posts.length,
+          fromCache: true
+        }),
+        { 
+          status: 200,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+        }
+      )
+    }
+    
+    console.log(`No recent Reddit data found, fetching fresh data`)
+
+    const supabaseClient = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
       Deno.env.get('SUPABASE_ANON_KEY') ?? ''
     )
@@ -71,11 +125,10 @@ Deno.serve(async (req) => {
       )
     }
 
-    const tokenData: RedditTokenResponse = await tokenResponse.json()
     console.log('Successfully authenticated with Reddit')
 
-    // Parse request body to get subreddit and action
-    const { subreddit = 'stocks', action = 'hot', limit = 25 } = await req.json().catch(() => ({}))
+    // Parse request body to get subreddit and action - moved this after auth
+    // const { subreddit = 'stocks', action = 'hot', limit = 25 } = await req.json().catch(() => ({}))
 
     // Try different Reddit API approaches
     let redditApiUrl = `https://oauth.reddit.com/r/${subreddit}/${action}?limit=${limit}`
@@ -186,13 +239,31 @@ Deno.serve(async (req) => {
 
     console.log(`Successfully fetched ${posts.length} posts from r/${subreddit}`)
 
+    // Store in database for future use
+    await supabase
+      .from('sentiment_history')
+      .insert({
+        symbol: 'REDDIT_GENERAL', // General Reddit data
+        source: 'reddit',
+        sentiment_score: 0, // We'll calculate this later from posts
+        confidence_score: posts.length > 0 ? 0.7 : 0,
+        metadata: {
+          posts,
+          subreddit,
+          action
+        },
+        collected_at: new Date().toISOString(),
+        data_timestamp: new Date().toISOString()
+      })
+
     return new Response(
       JSON.stringify({ 
         success: true, 
         posts,
         subreddit,
         action,
-        total: posts.length
+        total: posts.length,
+        fromAPI: true
       }),
       { 
         status: 200, 

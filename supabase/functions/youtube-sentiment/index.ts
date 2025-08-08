@@ -1,9 +1,15 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
+
+// Initialize Supabase client
+const supabaseUrl = Deno.env.get('SUPABASE_URL')!
+const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
+const supabase = createClient(supabaseUrl, supabaseKey)
 
 interface YouTubeComment {
   text: string
@@ -21,6 +27,34 @@ interface YouTubeSentiment {
   timestamp: string
 }
 
+// Check database for recent YouTube sentiment data (last 30 minutes)
+async function getRecentYouTubeSentiment(symbols: string[]) {
+  const thirtyMinutesAgo = new Date(Date.now() - 30 * 60 * 1000).toISOString()
+  
+  const { data, error } = await supabase
+    .from('sentiment_history')
+    .select('symbol, sentiment_score, confidence_score, metadata, collected_at')
+    .in('symbol', symbols)
+    .eq('source', 'youtube')
+    .gte('collected_at', thirtyMinutesAgo)
+    .order('collected_at', { ascending: false })
+  
+  if (error) {
+    console.warn('Database query error:', error)
+    return []
+  }
+  
+  // Group by symbol, taking most recent for each
+  const symbolMap = new Map()
+  data?.forEach(row => {
+    if (!symbolMap.has(row.symbol)) {
+      symbolMap.set(row.symbol, row)
+    }
+  })
+  
+  return Array.from(symbolMap.entries()).map(([symbol, data]) => ({ symbol, data }))
+}
+
 serve(async (req) => {
   // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
@@ -29,7 +63,7 @@ serve(async (req) => {
 
   try {
     const { symbols, limit = 50 } = await req.json()
-    console.log(`Fetching YouTube sentiment for symbols: ${symbols?.join(', ')}`)
+    console.log(`Checking database for recent YouTube sentiment for ${symbols?.length} symbols`)
 
     if (!symbols || !Array.isArray(symbols)) {
       return new Response(
@@ -38,125 +72,174 @@ serve(async (req) => {
       )
     }
 
+    // First, check database for recent data
+    const recentData = await getRecentYouTubeSentiment(symbols)
+    const symbolsWithData = new Set(recentData.map(d => d.symbol))
+    const symbolsToFetch = symbols.filter(symbol => !symbolsWithData.has(symbol))
+    
+    console.log(`Found ${recentData.length} symbols with recent YouTube data, need to fetch ${symbolsToFetch.length} symbols`)
+    
+    const youtubeSentiment: YouTubeSentiment[] = []
+    
+    // Convert database data to YouTubeSentiment format
+    recentData.forEach(({ symbol, data }) => {
+      if (data.metadata) {
+        youtubeSentiment.push({
+          symbol,
+          sentiment: data.sentiment_score || 0,
+          commentCount: data.metadata.commentCount || 0,
+          avgLikes: data.metadata.avgLikes || 0,
+          topComments: data.metadata.topComments || [],
+          timestamp: data.collected_at
+        })
+      }
+    })
+
     const youtubeApiKey = Deno.env.get('YOUTUBE_API_KEY')
-    if (!youtubeApiKey) {
-      console.log('YouTube API key not found, returning empty data')
+    if (!youtubeApiKey && symbolsToFetch.length > 0) {
+      console.log('YouTube API key not found, returning cached data only')
       
       return new Response(
         JSON.stringify({
-          success: false,
-          youtube_sentiment: [],
-          total_processed: 0,
-          source: 'youtube_unavailable',
-          error: 'YouTube API key not configured'
+          success: true,
+          youtube_sentiment: youtubeSentiment,
+          total_processed: youtubeSentiment.length,
+          source: 'youtube_cached',
+          note: 'YouTube API key not configured - using cached data only'
         }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       )
     }
 
-    const youtubeSentiment: YouTubeSentiment[] = []
-
-    for (const symbol of symbols.slice(0, 5)) { // Limit to 5 symbols to reduce API calls
-      try {
-        // Search for recent videos about the stock (reduced maxResults to save quota)
-        const searchUrl = `https://www.googleapis.com/youtube/v3/search?part=snippet&q=${symbol}+stock+analysis&type=video&order=date&maxResults=3&key=${youtubeApiKey}`
-        
-        const searchResponse = await fetch(searchUrl)
-        if (!searchResponse.ok) {
-          console.log(`YouTube search failed for ${symbol}: ${searchResponse.status}`)
-          continue
-        }
-
-        const searchData = await searchResponse.json()
-        const videos = searchData.items || []
-
-        if (videos.length === 0) {
-          console.log(`No videos found for ${symbol}`)
-          continue
-        }
-
-        let allComments: YouTubeComment[] = []
-        
-        // Get comments from top videos (reduced to 2 videos)
-        for (const video of videos.slice(0, 2)) {
-          try {
-            const commentsUrl = `https://www.googleapis.com/youtube/v3/commentThreads?part=snippet&videoId=${video.id.videoId}&maxResults=10&order=relevance&key=${youtubeApiKey}`
-            
-            const commentsResponse = await fetch(commentsUrl)
-            if (!commentsResponse.ok) continue
-
-            const commentsData = await commentsResponse.json()
-            const comments = commentsData.items || []
-
-            const videoComments = comments.map((item: any) => ({
-              text: item.snippet.topLevelComment.snippet.textDisplay,
-              likeCount: item.snippet.topLevelComment.snippet.likeCount,
-              publishedAt: item.snippet.topLevelComment.snippet.publishedAt,
-              authorDisplayName: item.snippet.topLevelComment.snippet.authorDisplayName
-            }))
-
-            allComments = [...allComments, ...videoComments]
-          } catch (error) {
-            console.error(`Error fetching comments for video ${video.id.videoId}:`, error)
+    // Only fetch missing symbols from API
+    if (symbolsToFetch.length > 0 && youtubeApiKey) {
+      console.log(`Fetching fresh YouTube data for ${symbolsToFetch.length} symbols`)
+      
+      for (const symbol of symbolsToFetch.slice(0, 3)) { // Reduced to 3 symbols
+        try {
+          // Search for recent videos about the stock (reduced maxResults to save quota)
+          const searchUrl = `https://www.googleapis.com/youtube/v3/search?part=snippet&q=${symbol}+stock+analysis&type=video&order=date&maxResults=2&key=${youtubeApiKey}`
+          
+          const searchResponse = await fetch(searchUrl)
+          if (!searchResponse.ok) {
+            console.log(`YouTube search failed for ${symbol}: ${searchResponse.status}`)
+            continue
           }
+
+          const searchData = await searchResponse.json()
+          const videos = searchData.items || []
+
+          if (videos.length === 0) {
+            console.log(`No videos found for ${symbol}`)
+            continue
+          }
+
+          let allComments: YouTubeComment[] = []
+          
+          // Get comments from top videos (reduced to 1 video)
+          for (const video of videos.slice(0, 1)) {
+            try {
+              const commentsUrl = `https://www.googleapis.com/youtube/v3/commentThreads?part=snippet&videoId=${video.id.videoId}&maxResults=5&order=relevance&key=${youtubeApiKey}`
+              
+              const commentsResponse = await fetch(commentsUrl)
+              if (!commentsResponse.ok) continue
+
+              const commentsData = await commentsResponse.json()
+              const comments = commentsData.items || []
+
+              const videoComments = comments.map((item: any) => ({
+                text: item.snippet.topLevelComment.snippet.textDisplay,
+                likeCount: item.snippet.topLevelComment.snippet.likeCount,
+                publishedAt: item.snippet.topLevelComment.snippet.publishedAt,
+                authorDisplayName: item.snippet.topLevelComment.snippet.authorDisplayName
+              }))
+
+              allComments = [...allComments, ...videoComments]
+            } catch (error) {
+              console.error(`Error fetching comments for video ${video.id.videoId}:`, error)
+            }
+          }
+
+          // Calculate sentiment based on comments
+          let totalSentiment = 0
+          let sentimentCount = 0
+
+          allComments.forEach(comment => {
+            const text = comment.text.toLowerCase()
+            let sentiment = 0
+
+            // Simple sentiment analysis
+            const positiveWords = ['bullish', 'buy', 'moon', 'up', 'strong', 'good', 'great', 'profit', 'gain']
+            const negativeWords = ['bearish', 'sell', 'down', 'weak', 'bad', 'loss', 'crash', 'dump']
+
+            positiveWords.forEach(word => {
+              if (text.includes(word)) sentiment += 0.1
+            })
+
+            negativeWords.forEach(word => {
+              if (text.includes(word)) sentiment -= 0.1
+            })
+
+            totalSentiment += sentiment
+            sentimentCount++
+          })
+
+          const avgSentiment = sentimentCount > 0 ? totalSentiment / sentimentCount : 0
+          const avgLikes = allComments.length > 0 
+            ? allComments.reduce((sum, c) => sum + c.likeCount, 0) / allComments.length 
+            : 0
+
+          const sentimentData = {
+            symbol,
+            sentiment: Math.max(-1, Math.min(1, avgSentiment)), // Clamp to -1 to 1
+            commentCount: allComments.length,
+            avgLikes,
+            topComments: allComments
+              .sort((a, b) => b.likeCount - a.likeCount)
+              .slice(0, 3),
+            timestamp: new Date().toISOString()
+          }
+
+          youtubeSentiment.push(sentimentData)
+
+          // Store in database for future use
+          await supabase
+            .from('sentiment_history')
+            .insert({
+              symbol,
+              source: 'youtube',
+              sentiment_score: sentimentData.sentiment,
+              confidence_score: allComments.length > 0 ? 0.6 : 0,
+              metadata: {
+                commentCount: sentimentData.commentCount,
+                avgLikes: sentimentData.avgLikes,
+                topComments: sentimentData.topComments
+              },
+              collected_at: new Date().toISOString(),
+              data_timestamp: new Date().toISOString()
+            })
+
+          console.log(`YouTube sentiment for ${symbol}: ${avgSentiment.toFixed(3)} from ${allComments.length} comments`)
+
+          // Rate limiting - increased delay to reduce API pressure
+          await new Promise(resolve => setTimeout(resolve, 3000))
+
+        } catch (error) {
+          console.error(`Error processing YouTube data for ${symbol}:`, error)
         }
-
-        // Calculate sentiment based on comments
-        let totalSentiment = 0
-        let sentimentCount = 0
-
-        allComments.forEach(comment => {
-          const text = comment.text.toLowerCase()
-          let sentiment = 0
-
-          // Simple sentiment analysis
-          const positiveWords = ['bullish', 'buy', 'moon', 'up', 'strong', 'good', 'great', 'profit', 'gain']
-          const negativeWords = ['bearish', 'sell', 'down', 'weak', 'bad', 'loss', 'crash', 'dump']
-
-          positiveWords.forEach(word => {
-            if (text.includes(word)) sentiment += 0.1
-          })
-
-          negativeWords.forEach(word => {
-            if (text.includes(word)) sentiment -= 0.1
-          })
-
-          totalSentiment += sentiment
-          sentimentCount++
-        })
-
-        const avgSentiment = sentimentCount > 0 ? totalSentiment / sentimentCount : 0
-        const avgLikes = allComments.length > 0 
-          ? allComments.reduce((sum, c) => sum + c.likeCount, 0) / allComments.length 
-          : 0
-
-        youtubeSentiment.push({
-          symbol,
-          sentiment: Math.max(-1, Math.min(1, avgSentiment)), // Clamp to -1 to 1
-          commentCount: allComments.length,
-          avgLikes,
-          topComments: allComments
-            .sort((a, b) => b.likeCount - a.likeCount)
-            .slice(0, 3),
-          timestamp: new Date().toISOString()
-        })
-
-        console.log(`YouTube sentiment for ${symbol}: ${avgSentiment.toFixed(3)} from ${allComments.length} comments`)
-
-        // Rate limiting - increased delay to reduce API pressure
-        await new Promise(resolve => setTimeout(resolve, 2000))
-
-      } catch (error) {
-        console.error(`Error processing YouTube data for ${symbol}:`, error)
       }
     }
+
+    console.log(`Returning ${youtubeSentiment.length} YouTube sentiment results (${recentData.length} from cache, ${symbolsToFetch.length} from API)`)
 
     return new Response(
       JSON.stringify({
         success: true,
         youtube_sentiment: youtubeSentiment,
         total_processed: youtubeSentiment.length,
-        source: 'youtube'
+        source: 'youtube',
+        fromDatabase: recentData.length,
+        fromAPI: symbolsToFetch.length
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     )

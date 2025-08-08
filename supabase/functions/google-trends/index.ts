@@ -1,15 +1,49 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
+// Initialize Supabase client
+const supabaseUrl = Deno.env.get('SUPABASE_URL')!
+const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
+const supabase = createClient(supabaseUrl, supabaseKey)
+
 interface TrendData {
   symbol: string
   interest: number
   relatedQueries: string[]
   timestamp: string
+}
+
+// Check database for recent Google Trends data (last 30 minutes)
+async function getRecentTrendsData(symbols: string[]) {
+  const thirtyMinutesAgo = new Date(Date.now() - 30 * 60 * 1000).toISOString()
+  
+  const { data, error } = await supabase
+    .from('sentiment_history')
+    .select('symbol, sentiment_score, confidence_score, metadata, collected_at')
+    .in('symbol', symbols)
+    .eq('source', 'google_trends')
+    .gte('collected_at', thirtyMinutesAgo)
+    .order('collected_at', { ascending: false })
+  
+  if (error) {
+    console.warn('Database query error:', error)
+    return []
+  }
+  
+  // Group by symbol, taking most recent for each
+  const symbolMap = new Map()
+  data?.forEach(row => {
+    if (!symbolMap.has(row.symbol)) {
+      symbolMap.set(row.symbol, row)
+    }
+  })
+  
+  return Array.from(symbolMap.entries()).map(([symbol, data]) => ({ symbol, data }))
 }
 
 serve(async (req) => {
@@ -20,7 +54,7 @@ serve(async (req) => {
 
   try {
     const { symbols, days = 7 } = await req.json()
-    console.log(`Fetching Google Trends data for symbols: ${symbols?.join(', ')}`)
+    console.log(`Checking database for recent Google Trends data for ${symbols?.length} symbols`)
 
     if (!symbols || !Array.isArray(symbols)) {
       return new Response(
@@ -29,9 +63,29 @@ serve(async (req) => {
       )
     }
 
-    const trendsData: TrendData[] = []
+    // First, check database for recent data
+    const recentData = await getRecentTrendsData(symbols)
+    const symbolsWithData = new Set(recentData.map(d => d.symbol))
+    const symbolsToFetch = symbols.filter(symbol => !symbolsWithData.has(symbol))
+    
+    console.log(`Found ${recentData.length} symbols with recent trends data, need to fetch ${symbolsToFetch.length} symbols`)
 
-    for (const symbol of symbols.slice(0, 20)) { // Limit to 20 symbols to avoid rate limits
+    const trendsData: TrendData[] = []
+    
+    // Convert database data to TrendData format
+    recentData.forEach(({ symbol, data }) => {
+      if (data.metadata) {
+        trendsData.push({
+          symbol,
+          interest: data.sentiment_score || 0,
+          relatedQueries: data.metadata.relatedQueries || [],
+          timestamp: data.collected_at
+        })
+      }
+    })
+
+    // Only fetch missing symbols from API/generate
+    for (const symbol of symbolsToFetch.slice(0, 10)) { // Reduced from 20 to 10
       try {
         // Add longer delay to avoid rate limiting
         if (trendsData.length > 0) {
@@ -129,24 +183,44 @@ serve(async (req) => {
 
         trendsData.push(trendResult)
 
+        // Store in database for future use
+        await supabase
+          .from('sentiment_history')
+          .insert({
+            symbol,
+            source: 'google_trends',
+            sentiment_score: trendResult.interest,
+            confidence_score: 0.5, // Google Trends confidence
+            metadata: {
+              relatedQueries: trendResult.relatedQueries
+            },
+            collected_at: new Date().toISOString(),
+            data_timestamp: new Date().toISOString()
+          })
+
       } catch (error) {
         console.error(`Error processing trends for ${symbol}:`, error)
         // Add minimal fallback data even on error
-        trendsData.push({
+        const fallbackData = {
           symbol,
           interest: 0.1 + Math.random() * 0.2, // 0.1-0.3 range
           relatedQueries: [`${symbol} stock`],
           timestamp: new Date().toISOString()
-        })
+        }
+        trendsData.push(fallbackData)
       }
     }
+
+    console.log(`Returning ${trendsData.length} trends results (${recentData.length} from cache, ${symbolsToFetch.length} generated)`)
 
     return new Response(
       JSON.stringify({
         success: true,
         trends: trendsData,
         total_processed: trendsData.length,
-        source: 'google_trends'
+        source: 'google_trends',
+        fromDatabase: recentData.length,
+        fromAPI: symbolsToFetch.length
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     )
