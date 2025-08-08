@@ -276,9 +276,11 @@ const SentimentDashboard = () => {
     }
   };
 
-  useEffect(() => {
-    fetchRedditData();
-  }, []);
+  // Removed auto-fetch to prevent unnecessary API calls on page load
+  // Users can manually refresh data using the refresh button
+  // useEffect(() => {
+  //   fetchRedditData();
+  // }, []);
 
   return (
     <div className="space-y-6">
