@@ -69,12 +69,14 @@ interface SentimentResult {
   timestamp: string;
 }
 
+// Initialize Supabase client
+const { createClient } = await import('https://esm.sh/@supabase/supabase-js@2')
+const supabaseUrl = Deno.env.get('SUPABASE_URL')!
+const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
+const supabase = createClient(supabaseUrl, supabaseKey)
+
 // Check database for recent Twitter sentiment data (last 30 minutes)
 async function getRecentTwitterSentiment(symbols: string[]) {
-  const { createClient } = await import('https://esm.sh/@supabase/supabase-js@2')
-  const supabaseUrl = Deno.env.get('SUPABASE_URL')!
-  const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
-  const supabase = createClient(supabaseUrl, supabaseKey)
   
   const thirtyMinutesAgo = new Date(Date.now() - 30 * 60 * 1000).toISOString()
   
@@ -273,13 +275,8 @@ Deno.serve(async (req) => {
 
               results.push(sentimentResult);
 
-              // Store in database for future use
-              const { createClient } = await import('https://esm.sh/@supabase/supabase-js@2')
-              const supabaseUrl = Deno.env.get('SUPABASE_URL')!
-              const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
-              const supabase = createClient(supabaseUrl, supabaseKey)
-              
-              await supabase
+              // Store in database for future use - using the same client initialized at top
+              const { error: insertError } = await supabase
                 .from('sentiment_history')
                 .insert({
                   symbol,
@@ -294,17 +291,15 @@ Deno.serve(async (req) => {
                   collected_at: new Date().toISOString(),
                   data_timestamp: new Date().toISOString()
                 })
+              
+              if (insertError) {
+                console.warn(`Failed to store Twitter data for ${symbol}:`, insertError)
+              } else {
+                console.log(`Successfully stored Twitter sentiment for ${symbol}`)
+              }
             } else {
-              // No tweets found
-              results.push({
-                symbol,
-                sentiment: 0,
-                confidence: 0,
-                tweetCount: 0,
-                totalEngagement: 0,
-                topTweets: [],
-                timestamp: new Date().toISOString()
-              });
+              // No tweets found - don't add to results, just skip
+              console.log(`No tweets found for ${symbol}`)
             }
           } else if (response.status === 429) {
             console.warn(`Twitter rate limited for symbol ${symbol}`);

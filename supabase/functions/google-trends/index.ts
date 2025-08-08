@@ -190,16 +190,16 @@ serve(async (req) => {
           console.log(`Google Trends CSV approach failed for ${symbol}:`, apiError.message)
         }
 
-// If API failed, skip this symbol instead of generating fake data
+        // If API failed, skip this symbol instead of generating fake data
         if (!trendResult) {
-          console.warn(`No Google Trends data available for ${symbol}, skipping`)
+          console.error(`No Google Trends data available for ${symbol}, skipping`)
           continue
         }
 
         trendsData.push(trendResult)
 
         // Store in database for future use
-        await supabase
+        const { error: insertError } = await supabase
           .from('sentiment_history')
           .insert({
             symbol,
@@ -212,6 +212,12 @@ serve(async (req) => {
             collected_at: new Date().toISOString(),
             data_timestamp: new Date().toISOString()
           })
+        
+        if (insertError) {
+          console.warn(`Failed to store Google Trends data for ${symbol}:`, insertError)
+        } else {
+          console.log(`Successfully stored Google Trends data for ${symbol}`)
+        }
 
       } catch (error) {
         console.error(`Error processing trends for ${symbol}:`, error)
