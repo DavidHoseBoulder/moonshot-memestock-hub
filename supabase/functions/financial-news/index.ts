@@ -7,6 +7,36 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
+// Category-based prioritization for social sentiment
+function prioritizeSymbolsByCategory(symbols: string[]): string[] {
+  const categoryPriority = {
+    'Meme & Retail': 5,        // Highest social sentiment
+    'Tech & Momentum': 4,
+    'Fintech & Crypto': 4,
+    'AI & Data': 3,
+    'EV & Alt-Tech': 3,
+    'Consumer Buzz': 3,
+    'Media & Internet': 2,
+    'Biotech & Pharma': 2,
+    'Banking': 1,
+    'SPAC & Penny': 1          // Lower priority
+  };
+
+  const stockCategories: Record<string, string> = {
+    'GME': 'Meme & Retail', 'AMC': 'Meme & Retail', 'BB': 'Meme & Retail',
+    'TSLA': 'Tech & Momentum', 'AAPL': 'Tech & Momentum', 'NVDA': 'Tech & Momentum',
+    'COIN': 'Fintech & Crypto', 'RIOT': 'Fintech & Crypto', 'HOOD': 'Fintech & Crypto'
+  };
+
+  return symbols.sort((a, b) => {
+    const categoryA = stockCategories[a] || 'Banking';
+    const categoryB = stockCategories[b] || 'Banking';
+    const priorityA = categoryPriority[categoryA] || 1;
+    const priorityB = categoryPriority[categoryB] || 1;
+    return priorityB - priorityA;
+  });
+}
+
 interface NewsArticle {
   title: string;
   description: string;
@@ -44,12 +74,15 @@ Deno.serve(async (req) => {
     
     console.log(`Fetching financial news for ${symbols?.length || 0} symbols...`)
 
+    // Smart prioritization by category (social sentiment focus)
+    const prioritizedSymbols = symbols ? prioritizeSymbolsByCategory(symbols) : []
+    
     // Try multiple query strategies for better coverage
     const queries = [
-      // Primary query with stock symbols
-      symbols ? symbols.slice(0, 15).map((symbol: string) => `"${symbol}"`).join(' OR ') : '',
-      // Secondary query with "stock" keyword
-      symbols ? symbols.slice(0, 10).map((symbol: string) => `"${symbol} stock"`).join(' OR ') : '',
+      // Primary query with prioritized stock symbols
+      prioritizedSymbols ? prioritizedSymbols.slice(0, 15).map((symbol: string) => `"${symbol}"`).join(' OR ') : '',
+      // Secondary query with "stock" keyword for top symbols
+      prioritizedSymbols ? prioritizedSymbols.slice(0, 10).map((symbol: string) => `"${symbol} stock"`).join(' OR ') : '',
       // Fallback general financial query
       'stock market earnings financial news'
     ].filter(q => q);
@@ -91,6 +124,9 @@ Deno.serve(async (req) => {
             allArticles.push(...relevantArticles);
             console.log(`Query ${index + 1}: Found ${relevantArticles.length} relevant articles`);
           }
+        } else if (response.status === 429) {
+          console.warn(`Query ${index + 1} rate limited`);
+          break; // Stop processing to preserve quota
         } else {
           console.warn(`Query ${index + 1} failed: ${response.status}`);
         }

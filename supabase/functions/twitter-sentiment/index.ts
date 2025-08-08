@@ -5,6 +5,36 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
+// Category-based prioritization for social sentiment
+function prioritizeSymbolsByCategory(symbols: string[]): string[] {
+  const categoryPriority = {
+    'Meme & Retail': 5,        // Highest social sentiment
+    'Tech & Momentum': 4,
+    'Fintech & Crypto': 4,
+    'AI & Data': 3,
+    'EV & Alt-Tech': 3,
+    'Consumer Buzz': 3,
+    'Media & Internet': 2,
+    'Biotech & Pharma': 2,
+    'Banking': 1,
+    'SPAC & Penny': 1          // Lower priority
+  };
+
+  const stockCategories: Record<string, string> = {
+    'GME': 'Meme & Retail', 'AMC': 'Meme & Retail', 'BB': 'Meme & Retail',
+    'TSLA': 'Tech & Momentum', 'AAPL': 'Tech & Momentum', 'NVDA': 'Tech & Momentum',
+    'COIN': 'Fintech & Crypto', 'RIOT': 'Fintech & Crypto', 'HOOD': 'Fintech & Crypto'
+  };
+
+  return symbols.sort((a, b) => {
+    const categoryA = stockCategories[a] || 'Banking';
+    const categoryB = stockCategories[b] || 'Banking';
+    const priorityA = categoryPriority[categoryA] || 1;
+    const priorityB = categoryPriority[categoryB] || 1;
+    return priorityB - priorityA;
+  });
+}
+
 interface TwitterSearchResponse {
   data?: Array<{
     id: string;
@@ -174,8 +204,11 @@ Deno.serve(async (req) => {
     if (symbolsToFetch.length > 0 && bearerToken) {
       console.log(`Fetching fresh Twitter data for ${symbolsToFetch.length} symbols`)
       
+      // Smart prioritization by category (social sentiment focus)
+      const prioritizedSymbols = prioritizeSymbolsByCategory(symbolsToFetch)
+      
       // Process symbols in batches to avoid rate limits
-      for (const symbol of symbolsToFetch.slice(0, 5)) { // Reduced from 10 to 5
+      for (const symbol of prioritizedSymbols.slice(0, 5)) { // Reduced from 10 to 5
         try {
           // Search for tweets about the stock symbol
           const searchQuery = `$${symbol} OR ${symbol} stock -is:retweet lang:en`;
@@ -263,7 +296,7 @@ Deno.serve(async (req) => {
             }
           } else if (response.status === 429) {
             console.warn(`Twitter rate limited for symbol ${symbol}`);
-            break; // Stop processing on rate limit
+            break; // Stop processing to preserve quota
           } else {
             console.warn(`Failed to fetch Twitter data for ${symbol}: ${response.status}`);
           }
