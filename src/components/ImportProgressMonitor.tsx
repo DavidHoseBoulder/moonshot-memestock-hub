@@ -26,28 +26,22 @@ const ImportProgressMonitor = () => {
     try {
       setIsRefreshing(true);
 
-      // Run queries in parallel for efficiency
+      // Run core queries in parallel (no invalid distinct syntax)
       const [
         { count: totalCount, error: countError },
-        { count: distinctSymbolsCount, error: symbolsError },
         { data: detailStats, error: detailError },
         { data: earliestRow, error: earliestError },
         { data: latestRow, error: latestError },
-        { count: distinctDatesCount, error: datesError },
       ] = await Promise.all([
         supabase.from('enhanced_market_data').select('*', { count: 'exact', head: true }),
-        supabase.from('enhanced_market_data').select('distinct symbol', { count: 'exact', head: true }),
         supabase.from('enhanced_market_data').select('symbol, data_date, created_at').order('created_at', { ascending: false }).limit(1),
         supabase.from('enhanced_market_data').select('data_date').order('data_date', { ascending: true }).limit(1),
         supabase.from('enhanced_market_data').select('data_date').order('data_date', { ascending: false }).limit(1),
-        supabase.from('enhanced_market_data').select('distinct data_date', { count: 'exact', head: true }),
       ]);
 
       if (countError) throw countError;
-      if (symbolsError) throw symbolsError;
       if (earliestError) throw earliestError;
       if (latestError) throw latestError;
-      if (datesError) throw datesError;
 
       const detailedInfo = (!detailError && detailStats && detailStats.length > 0)
         ? { latest_symbol: detailStats[0].symbol, last_updated: detailStats[0].created_at }
@@ -56,12 +50,24 @@ const ImportProgressMonitor = () => {
       const earliest_date = earliestRow && earliestRow.length > 0 ? earliestRow[0].data_date : undefined;
       const latest_date = latestRow && latestRow.length > 0 ? latestRow[0].data_date : undefined;
 
+      // Estimate trading days (approx 5/7 of calendar days)
+      let estimatedTradingDays = 0;
+      if (earliest_date && latest_date) {
+        const diffMs = new Date(latest_date).getTime() - new Date(earliest_date).getTime();
+        const diffDays = Math.max(1, Math.ceil(diffMs / (1000 * 60 * 60 * 24)) + 1);
+        estimatedTradingDays = Math.max(1, Math.round((diffDays * 5) / 7));
+      }
+
+      // Estimate symbols processed from total rows / trading days (cap at 98)
+      const estimatedSymbols = totalCount && estimatedTradingDays
+        ? Math.min(98, Math.ceil(totalCount / estimatedTradingDays))
+        : 0;
+
       setStats({
-        symbols_with_data: distinctSymbolsCount || 0,
+        symbols_with_data: estimatedSymbols,
         total_data_points: totalCount || 0,
         earliest_date,
         latest_date,
-        distinct_dates: distinctDatesCount || 0,
         ...detailedInfo,
       });
 
@@ -89,7 +95,10 @@ const ImportProgressMonitor = () => {
   }, [autoRefresh]);
 
   const progressPercentage = stats ? Math.min(100, (stats.symbols_with_data / 98) * 100) : 0;
-  const estimatedDataPoints = stats?.distinct_dates ? stats.distinct_dates * 98 : 0;
+  const estimatedTradingDays = stats?.earliest_date && stats?.latest_date
+    ? Math.max(1, Math.round((((new Date(stats.latest_date).getTime() - new Date(stats.earliest_date).getTime()) / (1000 * 60 * 60 * 24)) + 1) * 5 / 7))
+    : 0;
+  const estimatedDataPoints = estimatedTradingDays * 98;
   const dataProgressPercentage = stats && estimatedDataPoints > 0 ? Math.min(100, (stats.total_data_points / estimatedDataPoints) * 100) : 0;
 
   return (
