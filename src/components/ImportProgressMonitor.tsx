@@ -25,37 +25,48 @@ const ImportProgressMonitor = () => {
     try {
       setIsRefreshing(true);
 
-      // Get overall stats
-      const { data: overallStats, error: overallError } = await supabase
+      // Get total data points (count only, no rows)
+      const { count: totalCount, error: countError } = await supabase
         .from('enhanced_market_data')
-        .select('symbol', { count: 'exact' });
+        .select('*', { count: 'exact', head: true });
 
-      if (overallError) throw overallError;
+      if (countError) throw countError;
 
-      // Get detailed stats with a simple query since we don't have the RPC function
+      // Latest record for symbol and timestamp
       const { data: detailStats, error: detailError } = await supabase
         .from('enhanced_market_data')
         .select('symbol, data_date, created_at')
         .order('created_at', { ascending: false })
         .limit(1);
 
-      
-      let detailedInfo = null;
-      if (!detailError && detailStats && detailStats.length > 0) {
-        detailedInfo = {
-          latest_symbol: detailStats[0].symbol,
-          latest_date: detailStats[0].data_date,
-          last_updated: detailStats[0].created_at
-        };
-      }
+      // Earliest and latest data_date for range
+      const [{ data: earliestRow, error: earliestError }, { data: latestRow, error: latestError }] = await Promise.all([
+        supabase.from('enhanced_market_data').select('data_date').order('data_date', { ascending: true }).limit(1),
+        supabase.from('enhanced_market_data').select('data_date').order('data_date', { ascending: false }).limit(1),
+      ]);
 
-      // Count unique symbols
-      const uniqueSymbols = new Set(overallStats?.map(row => row.symbol) || []);
+      if (earliestError) throw earliestError;
+      if (latestError) throw latestError;
+
+      const detailedInfo = (!detailError && detailStats && detailStats.length > 0)
+        ? {
+            latest_symbol: detailStats[0].symbol,
+            last_updated: detailStats[0].created_at
+          }
+        : {};
+
+      const earliest_date = earliestRow && earliestRow.length > 0 ? earliestRow[0].data_date : undefined;
+      const latest_date = latestRow && latestRow.length > 0 ? latestRow[0].data_date : undefined;
+
+      // Estimate symbols processed based on total datapoints (approx 765 days/symbol)
+      const estimatedSymbols = totalCount ? Math.min(98, Math.ceil(totalCount / 765)) : 0;
 
       setStats({
-        symbols_with_data: uniqueSymbols.size,
-        total_data_points: overallStats?.length || 0,
-        ...detailedInfo
+        symbols_with_data: estimatedSymbols,
+        total_data_points: totalCount || 0,
+        earliest_date,
+        latest_date,
+        ...detailedInfo,
       });
 
     } catch (error) {
@@ -90,7 +101,7 @@ const ImportProgressMonitor = () => {
       <CardHeader>
         <div className="flex items-center justify-between">
           <div>
-            <CardTitle>Historical Import Progress</CardTitle>
+            <CardTitle>Yahoo Market Data Import Progress</CardTitle>
             <CardDescription>Monitoring 2-year data import for 98 symbols</CardDescription>
           </div>
           <Button

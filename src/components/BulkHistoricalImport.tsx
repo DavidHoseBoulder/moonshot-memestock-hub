@@ -53,7 +53,7 @@ const BulkHistoricalImport = () => {
   return (
     <Card className="w-full max-w-2xl">
       <CardHeader>
-        <CardTitle>Bulk Historical Data Import</CardTitle>
+        <CardTitle>Yahoo Market Data Bulk Import</CardTitle>
         <CardDescription>
           Import historical market data for all {getAllTickers().length} symbols to populate the cache.
           This runs in the background and may take several minutes.
