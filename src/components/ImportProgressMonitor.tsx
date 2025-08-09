@@ -13,6 +13,7 @@ interface ImportStats {
   earliest_date?: string;
   latest_date?: string;
   last_updated?: string;
+  distinct_dates?: number;
 }
 
 const ImportProgressMonitor = () => {
@@ -25,47 +26,42 @@ const ImportProgressMonitor = () => {
     try {
       setIsRefreshing(true);
 
-      // Get total data points (count only, no rows)
-      const { count: totalCount, error: countError } = await supabase
-        .from('enhanced_market_data')
-        .select('*', { count: 'exact', head: true });
-
-      if (countError) throw countError;
-
-      // Latest record for symbol and timestamp
-      const { data: detailStats, error: detailError } = await supabase
-        .from('enhanced_market_data')
-        .select('symbol, data_date, created_at')
-        .order('created_at', { ascending: false })
-        .limit(1);
-
-      // Earliest and latest data_date for range
-      const [{ data: earliestRow, error: earliestError }, { data: latestRow, error: latestError }] = await Promise.all([
+      // Run queries in parallel for efficiency
+      const [
+        { count: totalCount, error: countError },
+        { count: distinctSymbolsCount, error: symbolsError },
+        { data: detailStats, error: detailError },
+        { data: earliestRow, error: earliestError },
+        { data: latestRow, error: latestError },
+        { count: distinctDatesCount, error: datesError },
+      ] = await Promise.all([
+        supabase.from('enhanced_market_data').select('*', { count: 'exact', head: true }),
+        supabase.from('enhanced_market_data').select('distinct symbol', { count: 'exact', head: true }),
+        supabase.from('enhanced_market_data').select('symbol, data_date, created_at').order('created_at', { ascending: false }).limit(1),
         supabase.from('enhanced_market_data').select('data_date').order('data_date', { ascending: true }).limit(1),
         supabase.from('enhanced_market_data').select('data_date').order('data_date', { ascending: false }).limit(1),
+        supabase.from('enhanced_market_data').select('distinct data_date', { count: 'exact', head: true }),
       ]);
 
+      if (countError) throw countError;
+      if (symbolsError) throw symbolsError;
       if (earliestError) throw earliestError;
       if (latestError) throw latestError;
+      if (datesError) throw datesError;
 
       const detailedInfo = (!detailError && detailStats && detailStats.length > 0)
-        ? {
-            latest_symbol: detailStats[0].symbol,
-            last_updated: detailStats[0].created_at
-          }
+        ? { latest_symbol: detailStats[0].symbol, last_updated: detailStats[0].created_at }
         : {};
 
       const earliest_date = earliestRow && earliestRow.length > 0 ? earliestRow[0].data_date : undefined;
       const latest_date = latestRow && latestRow.length > 0 ? latestRow[0].data_date : undefined;
 
-      // Estimate symbols processed based on total datapoints (approx 765 days/symbol)
-      const estimatedSymbols = totalCount ? Math.min(98, Math.ceil(totalCount / 765)) : 0;
-
       setStats({
-        symbols_with_data: estimatedSymbols,
+        symbols_with_data: distinctSymbolsCount || 0,
         total_data_points: totalCount || 0,
         earliest_date,
         latest_date,
+        distinct_dates: distinctDatesCount || 0,
         ...detailedInfo,
       });
 
@@ -92,9 +88,9 @@ const ImportProgressMonitor = () => {
     return () => clearInterval(interval);
   }, [autoRefresh]);
 
-  const progressPercentage = stats ? (stats.symbols_with_data / 98) * 100 : 0;
-  const estimatedDataPoints = 98 * 765; // 98 symbols * 765 days
-  const dataProgressPercentage = stats ? (stats.total_data_points / estimatedDataPoints) * 100 : 0;
+  const progressPercentage = stats ? Math.min(100, (stats.symbols_with_data / 98) * 100) : 0;
+  const estimatedDataPoints = stats?.distinct_dates ? stats.distinct_dates * 98 : 0;
+  const dataProgressPercentage = stats && estimatedDataPoints > 0 ? Math.min(100, (stats.total_data_points / estimatedDataPoints) * 100) : 0;
 
   return (
     <Card className="w-full">
@@ -102,7 +98,7 @@ const ImportProgressMonitor = () => {
         <div className="flex items-center justify-between">
           <div>
             <CardTitle>Yahoo Market Data Import Progress</CardTitle>
-            <CardDescription>Monitoring 2-year data import for 98 symbols</CardDescription>
+            <CardDescription>Monitoring Yahoo data import for 98 symbols</CardDescription>
           </div>
           <Button
             variant="outline"
