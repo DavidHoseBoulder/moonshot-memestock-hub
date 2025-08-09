@@ -144,3 +144,19 @@ export const getStocksByCategory = (category: string) => {
 export const getAllTickers = () => {
   return STOCK_UNIVERSE.map(stock => stock.ticker);
 };
+
+// Known safe ticker corrections (source mismatches or rebrands)
+export const TICKER_CORRECTIONS: Record<string, string> = {
+  ROBLOX: 'RBLX', // Company name vs ticker
+  C3AI: 'AI',     // Brand name vs ticker
+};
+
+// Returns canonical tickers with corrections applied and deduplicated
+export const getAllCanonicalTickers = () => {
+  const set = new Set<string>();
+  for (const { ticker } of STOCK_UNIVERSE) {
+    const corrected = TICKER_CORRECTIONS[ticker] ?? ticker;
+    set.add(corrected.toUpperCase());
+  }
+  return Array.from(set);
+};

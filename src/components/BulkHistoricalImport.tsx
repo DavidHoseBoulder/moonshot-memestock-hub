@@ -5,7 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
-import { STOCK_UNIVERSE, getAllTickers } from "@/data/stockUniverse";
+import { STOCK_UNIVERSE, getAllTickers, getAllCanonicalTickers } from "@/data/stockUniverse";
 
 const BulkHistoricalImport = () => {
   const [isImporting, setIsImporting] = useState(false);
@@ -13,6 +13,7 @@ const BulkHistoricalImport = () => {
   const [batchSize, setBatchSize] = useState(5);
   const [delayMs, setDelayMs] = useState(3000);
   const { toast } = useToast();
+  const tickers = getAllCanonicalTickers();
 
   const startBulkImport = async () => {
     try {
@@ -20,7 +21,7 @@ const BulkHistoricalImport = () => {
       
       const { data, error } = await supabase.functions.invoke('bulk-historical-import', {
         body: {
-          symbols: getAllTickers(), // Extract just the ticker strings
+          symbols: tickers, // Use corrected, deduped tickers
           days: days,
           batch_size: batchSize,
           delay_ms: delayMs
@@ -33,7 +34,7 @@ const BulkHistoricalImport = () => {
 
       toast({
         title: "Historical Import Started",
-        description: `Importing ${getAllTickers().length} symbols (${days} days). Est. duration: ${data.estimated_duration_minutes} minutes`,
+        description: `Importing ${tickers.length} symbols (${days} days). Est. duration: ${data.estimated_duration_minutes} minutes`,
       });
 
       console.log('Bulk import response:', data);
@@ -55,7 +56,7 @@ const BulkHistoricalImport = () => {
       <CardHeader>
         <CardTitle>Yahoo Market Data Bulk Import</CardTitle>
         <CardDescription>
-          Import historical market data for all {getAllTickers().length} symbols to populate the cache.
+          Import historical market data for all {tickers.length} symbols to populate the cache.
           This runs in the background and may take several minutes.
         </CardDescription>
       </CardHeader>
@@ -107,14 +108,14 @@ const BulkHistoricalImport = () => {
             disabled={isImporting}
             className="w-full"
           >
-            {isImporting ? 'Starting Import...' : `Import ${getAllTickers().length} Symbols`}
+            {isImporting ? 'Starting Import...' : `Import ${tickers.length} Symbols`}
           </Button>
         </div>
 
         <div className="text-sm text-muted-foreground space-y-1">
-          <p><strong>Estimated time:</strong> ~{Math.ceil((getAllTickers().length / batchSize) * (delayMs / 1000) / 60)} minutes</p>
-          <p><strong>Total API calls:</strong> ~{getAllTickers().length}</p>
-          <p><strong>Data points:</strong> ~{getAllTickers().length * days} records</p>
+          <p><strong>Estimated time:</strong> ~{Math.ceil((tickers.length / batchSize) * (delayMs / 1000) / 60)} minutes</p>
+          <p><strong>Total API calls:</strong> ~{tickers.length}</p>
+          <p><strong>Data points:</strong> ~{tickers.length * days} records</p>
         </div>
       </CardContent>
     </Card>

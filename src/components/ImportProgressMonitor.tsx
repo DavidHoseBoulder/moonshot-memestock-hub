@@ -5,6 +5,7 @@ import { Progress } from "@/components/ui/progress";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { RefreshCw } from "lucide-react";
+import { getAllCanonicalTickers } from "@/data/stockUniverse";
 
 interface ImportStats {
   symbols_with_data: number;
@@ -20,6 +21,7 @@ const ImportProgressMonitor = () => {
   const [stats, setStats] = useState<ImportStats | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [autoRefresh, setAutoRefresh] = useState(true);
+  const [isRetrying, setIsRetrying] = useState(false);
   const { toast } = useToast();
 
   const fetchStats = async () => {
@@ -83,6 +85,48 @@ const ImportProgressMonitor = () => {
     }
   };
 
+  const retryMissing = async () => {
+    try {
+      setIsRetrying(true);
+      const universe = getAllCanonicalTickers();
+
+      // Fetch symbols present (pull symbols column only to reduce payload)
+      const { data: rows, error } = await supabase
+        .from('enhanced_market_data')
+        .select('symbol')
+        .limit(100000);
+
+      if (error) throw error;
+
+      const present = new Set<string>((rows || []).map(r => String(r.symbol).toUpperCase()));
+      const missing = universe.filter(t => !present.has(t));
+
+      if (missing.length === 0) {
+        toast({ title: 'Up to date', description: 'All symbols in the universe have data.' });
+        return;
+      }
+
+      const { data, error: invokeError } = await supabase.functions.invoke('bulk-historical-import', {
+        body: {
+          symbols: missing,
+          days: 90,
+          batch_size: 5,
+          delay_ms: 3000,
+        },
+      });
+      if (invokeError) throw invokeError;
+
+      toast({
+        title: 'Retry started',
+        description: `Re-importing ${missing.length} missing symbols. Est. duration: ${data?.estimated_duration_minutes ?? '?'} minutes`,
+      });
+    } catch (e) {
+      console.error('Retry missing error:', e);
+      toast({ title: 'Retry failed', description: 'Could not start retry for missing symbols', variant: 'destructive' });
+    } finally {
+      setIsRetrying(false);
+    }
+  };
   useEffect(() => {
     fetchStats();
   }, []);
@@ -109,14 +153,19 @@ const ImportProgressMonitor = () => {
             <CardTitle>Yahoo Market Data Import Progress</CardTitle>
             <CardDescription>Monitoring Yahoo data import for 98 symbols</CardDescription>
           </div>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => fetchStats()}
-            disabled={isRefreshing}
-          >
-            <RefreshCw className={`w-4 h-4 ${isRefreshing ? 'animate-spin' : ''}`} />
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => fetchStats()}
+              disabled={isRefreshing}
+            >
+              <RefreshCw className={`w-4 h-4 ${isRefreshing ? 'animate-spin' : ''}`} />
+            </Button>
+            <Button size="sm" onClick={retryMissing} disabled={isRetrying}>
+              Retry Missing
+            </Button>
+          </div>
         </div>
       </CardHeader>
       <CardContent className="space-y-6">
