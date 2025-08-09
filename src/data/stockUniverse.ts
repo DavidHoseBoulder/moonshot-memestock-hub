@@ -145,18 +145,28 @@ export const getAllTickers = () => {
   return STOCK_UNIVERSE.map(stock => stock.ticker);
 };
 
-// Known safe ticker corrections (source mismatches or rebrands)
+// Known safe ticker corrections (source mismatches, rebrands, mergers)
 export const TICKER_CORRECTIONS: Record<string, string> = {
   ROBLOX: 'RBLX', // Company name vs ticker
   C3AI: 'AI',     // Brand name vs ticker
+  HLBZ: 'MCOM',   // Helbiz rebranded to micromobility.com
+  PACW: 'BANC',   // PacWest merged with Banc of California
 };
 
-// Returns canonical tickers with corrections applied and deduplicated
+// Some tickers consistently 404 or are delisted on Yahoo — skip them
+export const EXCLUDED_TICKERS = new Set<string>([
+  'VINE', // Fresh Vine Wine — often missing data
+  'CEI',  // Camber Energy — unreliable in Yahoo historical API
+]);
+
+// Returns canonical tickers with corrections applied, deduplicated, and exclusions removed
 export const getAllCanonicalTickers = () => {
   const set = new Set<string>();
   for (const { ticker } of STOCK_UNIVERSE) {
-    const corrected = TICKER_CORRECTIONS[ticker] ?? ticker;
-    set.add(corrected.toUpperCase());
+    const upper = ticker.toUpperCase();
+    if (EXCLUDED_TICKERS.has(upper)) continue;
+    const corrected = TICKER_CORRECTIONS[upper] ?? upper;
+    set.add(corrected);
   }
   return Array.from(set);
 };

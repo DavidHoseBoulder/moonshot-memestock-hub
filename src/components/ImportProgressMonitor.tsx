@@ -110,8 +110,8 @@ const ImportProgressMonitor = () => {
         body: {
           symbols: missing,
           days: 90,
-          batch_size: 5,
-          delay_ms: 3000,
+          batch_size: 3,
+          delay_ms: 5000,
         },
       });
       if (invokeError) throw invokeError;
