@@ -56,7 +56,7 @@ function passesFilters(post: RedditPost, subreddits?: string[], symbols?: string
   return subredditOk && symbolOk;
 }
 
-// Stream parse NDJSON (optionally gzip-compressed)
+// Stream parse NDJSON or a JSON array (optionally gzip-compressed)
 async function* streamNDJSON(url: string): AsyncGenerator<any> {
   const resp = await fetch(url);
   if (!resp.ok || !resp.body) throw new Error(`Failed to fetch ${url}: ${resp.status}`);
@@ -72,27 +72,117 @@ async function* streamNDJSON(url: string): AsyncGenerator<any> {
 
   const reader = stream.getReader();
   const decoder = new TextDecoder();
-  let { value, done } = await reader.read();
   let buffer = "";
+  let isArrayMode: boolean | null = null;
 
-  while (!done) {
+  // State for array-mode streaming JSON parsing
+  let inString = false;
+  let escapeNext = false;
+  let braceDepth = 0;
+  let objStart = -1;
+
+  while (true) {
+    const { value, done } = await reader.read();
+    if (done) break;
     buffer += decoder.decode(value, { stream: true });
-    let lines = buffer.split("\n");
-    buffer = lines.pop() ?? "";
-    for (const line of lines) {
-      if (!line.trim()) continue;
-      try {
-        yield JSON.parse(line);
-      } catch (_) {
-        // skip malformed line
+
+    // Decide mode once we have a non-whitespace char
+    if (isArrayMode === null) {
+      const m = buffer.match(/\S/);
+      if (!m) continue;
+      isArrayMode = buffer[m.index!] === '[';
+    }
+
+    if (isArrayMode) {
+      // Stream parse objects within a top-level JSON array
+      let flushUntil = -1;
+      for (let i = 0; i < buffer.length; i++) {
+        const ch = buffer[i];
+
+        if (inString) {
+          if (escapeNext) {
+            escapeNext = false;
+            continue;
+          }
+          if (ch === '\\') { escapeNext = true; continue; }
+          if (ch === '"') { inString = false; }
+          continue;
+        }
+
+        if (ch === '"') { inString = true; continue; }
+        if (ch === '{') {
+          if (braceDepth === 0) objStart = i;
+          braceDepth++;
+          continue;
+        }
+        if (ch === '}') {
+          braceDepth--;
+          if (braceDepth === 0 && objStart !== -1) {
+            const jsonStr = buffer.slice(objStart, i + 1);
+            try {
+              yield JSON.parse(jsonStr);
+            } catch (_) { /* skip malformed */ }
+            flushUntil = i; // we can safely drop everything up to this position
+            objStart = -1;
+          }
+          continue;
+        }
+        // ignore other characters (commas, spaces, brackets) at top level
+      }
+      if (flushUntil >= 0) {
+        buffer = buffer.slice(flushUntil + 1);
+      } else {
+        // Keep partial for next chunk
+        // but trim leading whitespace and opening bracket if we haven't started an object yet
+        if (braceDepth === 0 && objStart === -1) {
+          const firstObj = buffer.indexOf('{');
+          if (firstObj > 0) buffer = buffer.slice(firstObj);
+        }
+      }
+    } else {
+      // NDJSON: emit full lines
+      let idx: number;
+      while ((idx = buffer.indexOf('\n')) >= 0) {
+        const line = buffer.slice(0, idx).trim();
+        buffer = buffer.slice(idx + 1);
+        if (!line) continue;
+        try { yield JSON.parse(line); } catch (_) { /* skip */ }
       }
     }
-    ({ value, done } = await reader.read());
   }
-  if (buffer.trim()) {
-    try { yield JSON.parse(buffer); } catch (_) {}
+
+  // Flush remaining decoded text
+  buffer += decoder.decode();
+  if (isArrayMode) {
+    // Attempt to emit any final object in buffer
+    let flushUntil = -1;
+    for (let i = 0; i < buffer.length; i++) {
+      const ch = buffer[i];
+      if (inString) {
+        if (escapeNext) { escapeNext = false; continue; }
+        if (ch === '\\') { escapeNext = true; continue; }
+        if (ch === '"') { inString = false; }
+        continue;
+      }
+      if (ch === '"') { inString = true; continue; }
+      if (ch === '{') { if (braceDepth === 0) objStart = i; braceDepth++; continue; }
+      if (ch === '}') {
+        braceDepth--;
+        if (braceDepth === 0 && objStart !== -1) {
+          const jsonStr = buffer.slice(objStart, i + 1);
+          try { yield JSON.parse(jsonStr); } catch (_) {}
+          flushUntil = i;
+          objStart = -1;
+        }
+      }
+    }
+    if (flushUntil >= 0) buffer = buffer.slice(flushUntil + 1);
+  } else {
+    const line = buffer.trim();
+    if (line) { try { yield JSON.parse(line); } catch (_) {} }
   }
 }
+
 
 // Normalize raw pushshift objects to RedditPost shape
 function normalizeToRedditPost(raw: any): RedditPost | null {
