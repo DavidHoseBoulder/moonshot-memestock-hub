@@ -109,15 +109,20 @@ const RedditBackfillImport = () => {
               type="button"
               variant="outline"
               onClick={() => {
-                const syms = (typeof getAllCanonicalTickers === 'function' ? getAllCanonicalTickers() : getAllTickers()).join('|');
-                const subsList = subs
+                const symsArray = (typeof getAllCanonicalTickers === 'function' ? getAllCanonicalTickers() : getAllTickers());
+                const syms = symsArray
+                  .map((t) => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
+                  .join('|');
+
+                const subsArray = subs
                   .split(',')
                   .map((s) => s.trim())
-                  .filter(Boolean)
-                  .join('|')
-                  .replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-                const cmdSubm = `jq -c '.[]|select(.subreddit|test("^(?:${subsList})$";"i"))|select((.title+" "+(.selftext//""))|test("(^|[^A-Z])(?:${syms})([^A-Z]|$)";"i"))' submissions-RC_2025-06.json | pigz -9 > submissions-2025-06.filtered.jsonl.gz`;
-                const cmdComm = `jq -c '.[]|select(.subreddit|test("^(?:${subsList})$";"i"))|select((.body//"")|test("(^|[^A-Z])(?:${syms})([^A-Z]|$)";"i"))' comments-RC_2025-06.json | pigz -9 > comments-2025-06.filtered.jsonl.gz`;
+                  .filter(Boolean);
+                const subsEscaped = subsArray.map((s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+                const subsPattern = subsEscaped.join('|');
+
+                const cmdSubm = `jq -c '(.[]? // .) | select(type=="object") | select(.subreddit|test("^(?:${subsPattern})$";"i")) | select((.title+" "+(.selftext//""))|test("(^|[^A-Z])(?:${syms})([^A-Z]|$)";"i"))' submissions-RC_2025-06.json | pigz -9 > submissions-2025-06.filtered.jsonl.gz`;
+                const cmdComm = `jq -c '(.[]? // .) | select(type=="object") | select(.subreddit|test("^(?:${subsPattern})$";"i")) | select((.body//"")|test("(^|[^A-Z])(?:${syms})([^A-Z]|$)";"i"))' comments-RC_2025-06.json | pigz -9 > comments-2025-06.filtered.jsonl.gz`;
                 const verify = `zcat submissions-2025-06.filtered.jsonl.gz | head -n 3\nzcat comments-2025-06.filtered.jsonl.gz | head -n 3`;
                 const combined = `${cmdSubm}\n\n${cmdComm}\n\n# Verify\n${verify}`;
                 navigator.clipboard.writeText(combined);
