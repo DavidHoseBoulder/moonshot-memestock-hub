@@ -61,6 +61,8 @@ async function* streamNDJSON(url: string): AsyncGenerator<any> {
   const resp = await fetch(url);
   if (!resp.ok || !resp.body) throw new Error(`Failed to fetch ${url}: ${resp.status}`);
 
+  console.log(`[reddit-backfill-import] fetch ok url=${url} len=${resp.headers.get("content-length") ?? "unknown"} ce=${resp.headers.get("content-encoding") ?? "none"} ct=${resp.headers.get("content-type") ?? "unknown"}`);
+
   let stream: ReadableStream<Uint8Array> = resp.body as ReadableStream<Uint8Array>;
   // Handle gzip if needed
   const isGzip = url.endsWith(".gz") || resp.headers.get("content-encoding")?.includes("gzip");
@@ -80,12 +82,12 @@ async function* streamNDJSON(url: string): AsyncGenerator<any> {
   let escapeNext = false;
   let braceDepth = 0;
   let objStart = -1;
-
+  let previewLogged = false;
   while (true) {
     const { value, done } = await reader.read();
     if (done) break;
     buffer += decoder.decode(value, { stream: true });
-
+    if (!previewLogged && buffer.length) { try { console.log('[reddit-backfill-import] preview:', buffer.slice(0, 200)); } catch (_) {} previewLogged = true; }
     // Decide mode once we have a non-whitespace char (skip BOM)
     if (isArrayMode === null) {
       if (buffer.length && buffer.charCodeAt(0) === 0xFEFF) {
@@ -144,13 +146,36 @@ async function* streamNDJSON(url: string): AsyncGenerator<any> {
         }
       }
     } else {
-      // NDJSON: emit full lines
-      let idx: number;
-      while ((idx = buffer.indexOf('\n')) >= 0) {
-        const line = buffer.slice(0, idx).trim();
-        buffer = buffer.slice(idx + 1);
-        if (!line) continue;
-        try { yield JSON.parse(line); } catch (_) { /* skip */ }
+      // NDJSON or concatenated JSON objects without newlines
+      let flushUntil = -1;
+      for (let i = 0; i < buffer.length; i++) {
+        const ch = buffer[i];
+        if (inString) {
+          if (escapeNext) { escapeNext = false; continue; }
+          if (ch === '\\') { escapeNext = true; continue; }
+          if (ch === '"') { inString = false; }
+          continue;
+        }
+        if (ch === '"') { inString = true; continue; }
+        if (ch === '{') {
+          if (braceDepth === 0) objStart = i;
+          braceDepth++;
+          continue;
+        }
+        if (ch === '}') {
+          braceDepth--;
+          if (braceDepth === 0 && objStart !== -1) {
+            const jsonStr = buffer.slice(objStart, i + 1);
+            try { yield JSON.parse(jsonStr); } catch (_) {}
+            flushUntil = i;
+            objStart = -1;
+          }
+          continue;
+        }
+        // allow newline-delimited too; handled by brace scanning
+      }
+      if (flushUntil >= 0) {
+        buffer = buffer.slice(flushUntil + 1);
       }
     }
   }
@@ -182,8 +207,32 @@ async function* streamNDJSON(url: string): AsyncGenerator<any> {
     }
     if (flushUntil >= 0) buffer = buffer.slice(flushUntil + 1);
   } else {
+    // Final flush for NDJSON/concatenated objects
+    let flushed = false;
+    let flushUntil = -1;
+    for (let i = 0; i < buffer.length; i++) {
+      const ch = buffer[i];
+      if (inString) {
+        if (escapeNext) { escapeNext = false; continue; }
+        if (ch === '\\') { escapeNext = true; continue; }
+        if (ch === '"') { inString = false; }
+        continue;
+      }
+      if (ch === '"') { inString = true; continue; }
+      if (ch === '{') { if (braceDepth === 0) objStart = i; braceDepth++; continue; }
+      if (ch === '}') {
+        braceDepth--;
+        if (braceDepth === 0 && objStart !== -1) {
+          const jsonStr = buffer.slice(objStart, i + 1);
+          try { yield JSON.parse(jsonStr); flushed = true; } catch (_) {}
+          flushUntil = i;
+          objStart = -1;
+        }
+      }
+    }
+    if (flushUntil >= 0) buffer = buffer.slice(flushUntil + 1);
     const text = buffer.trim().replace(/^\uFEFF/, '');
-    if (text) {
+    if (!flushed && text) {
       try {
         const parsed = JSON.parse(text);
         if (Array.isArray(parsed)) {
