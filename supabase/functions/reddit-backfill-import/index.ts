@@ -56,6 +56,17 @@ function passesFilters(post: RedditPost, subreddits?: string[], symbols?: string
   return subredditOk && symbolOk;
 }
 
+// Sanitize potentially mis-encoded characters to valid JSON punctuation
+function sanitizeChunk(s: string): string {
+  return s
+    .replaceAll('\u00A8', '{') // ¨ -> {
+    .replaceAll('\u00BC', '}') // ¼ -> }
+    .replaceAll('\u00FF', '[') // ÿ -> [
+    .replaceAll('\u00A6', ']') // ¦ -> ]
+    .replaceAll('\u00A3', '#') // £ -> #
+    .replaceAll('\u00BDn', '\n'); // ½n -> newline
+}
+
 // Stream parse NDJSON or a JSON array (optionally gzip-compressed)
 async function* streamNDJSON(url: string): AsyncGenerator<any> {
   const resp = await fetch(url);
@@ -86,7 +97,9 @@ async function* streamNDJSON(url: string): AsyncGenerator<any> {
   while (true) {
     const { value, done } = await reader.read();
     if (done) break;
-    buffer += decoder.decode(value, { stream: true });
+    const decoded = decoder.decode(value, { stream: true });
+    const sanitized = sanitizeChunk(decoded);
+    buffer += sanitized;
     if (!previewLogged && buffer.length) { try { console.log('[reddit-backfill-import] preview:', buffer.slice(0, 200)); } catch (_) {} previewLogged = true; }
     // Decide mode once we have a non-whitespace char (skip BOM)
     if (isArrayMode === null) {
