@@ -86,11 +86,15 @@ async function* streamNDJSON(url: string): AsyncGenerator<any> {
     if (done) break;
     buffer += decoder.decode(value, { stream: true });
 
-    // Decide mode once we have a non-whitespace char
+    // Decide mode once we have a non-whitespace char (skip BOM)
     if (isArrayMode === null) {
+      if (buffer.length && buffer.charCodeAt(0) === 0xFEFF) {
+        buffer = buffer.slice(1);
+      }
       const m = buffer.match(/\S/);
       if (!m) continue;
-      isArrayMode = buffer[m.index!] === '[';
+      const first = buffer[m.index!];
+      isArrayMode = first === '[';
     }
 
     if (isArrayMode) {
@@ -178,8 +182,19 @@ async function* streamNDJSON(url: string): AsyncGenerator<any> {
     }
     if (flushUntil >= 0) buffer = buffer.slice(flushUntil + 1);
   } else {
-    const line = buffer.trim();
-    if (line) { try { yield JSON.parse(line); } catch (_) {} }
+    const text = buffer.trim().replace(/^\uFEFF/, '');
+    if (text) {
+      try {
+        const parsed = JSON.parse(text);
+        if (Array.isArray(parsed)) {
+          for (const item of parsed) {
+            if (item && typeof item === 'object') yield item;
+          }
+        } else {
+          yield parsed;
+        }
+      } catch (_) { /* skip */ }
+    }
   }
 }
 
