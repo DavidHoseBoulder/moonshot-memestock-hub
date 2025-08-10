@@ -110,3 +110,6 @@ verify_jwt = false
 
 [functions.youtube-sentiment]
 verify_jwt = false
+
+[functions.reddit-backfill-import]
+verify_jwt = false
