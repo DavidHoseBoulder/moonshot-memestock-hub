@@ -68,7 +68,7 @@ function sanitizeChunk(s: string): string {
     .replaceAll('\u00BDn', '\n'); // ½n -> newline
 }
 
-// Stream parse NDJSON or a JSON array (optionally gzip-compressed)
+// Stream parse NDJSON lines (optionally gzip-compressed)
 async function* streamNDJSON(url: string): AsyncGenerator<any> {
   const resp = await fetch(url);
   if (!resp.ok || !resp.body) throw new Error(`Failed to fetch ${url}: ${resp.status}`);
@@ -76,6 +76,7 @@ async function* streamNDJSON(url: string): AsyncGenerator<any> {
   console.log(`[reddit-backfill-import] fetch ok url=${url} len=${resp.headers.get("content-length") ?? "unknown"} ce=${resp.headers.get("content-encoding") ?? "none"} ct=${resp.headers.get("content-type") ?? "unknown"}`);
 
   let stream: ReadableStream<Uint8Array> = resp.body as ReadableStream<Uint8Array>;
+
   // Handle gzip if needed
   const urlPath = (() => { try { return new URL(url).pathname.toLowerCase(); } catch { return url.toLowerCase(); } })();
   const contentEncoding = (resp.headers.get("content-encoding") || "").toLowerCase();
@@ -85,186 +86,62 @@ async function* streamNDJSON(url: string): AsyncGenerator<any> {
     contentType.includes("gzip") ||
     contentType === "application/x-gzip" || contentType === "application/gzip";
   if (isGzip) {
-    // @ts-ignore - DecompressionStream available in Deno runtime
-    const ds = new DecompressionStream("gzip");
-    stream = stream.pipeThrough(ds);
+    try {
+      // @ts-ignore - DecompressionStream available in Supabase Edge Runtime
+      const ds = new DecompressionStream("gzip");
+      stream = stream.pipeThrough(ds);
+      console.log('[reddit-backfill-import] using gzip decompression');
+    } catch (e) {
+      console.error('[reddit-backfill-import] gzip not supported in runtime:', e);
+      throw new Error('gzip decompression not supported by runtime');
+    }
   }
 
   const reader = stream.getReader();
   const decoder = new TextDecoder();
-  let buffer = "";
-  let isArrayMode: boolean | null = null;
+  let carry = "";
+  let linesSeen = 0;
+  let yielded = 0;
 
-  // State for array-mode streaming JSON parsing
-  let inString = false;
-  let escapeNext = false;
-  let braceDepth = 0;
-  let objStart = -1;
-  let previewLogged = false;
   while (true) {
     const { value, done } = await reader.read();
     if (done) break;
-    const decoded = decoder.decode(value, { stream: true });
-    const sanitized = sanitizeChunk(decoded);
-    buffer += sanitized;
-    if (!previewLogged && buffer.length) { try { console.log('[reddit-backfill-import] preview:', buffer.slice(0, 200)); } catch (_) {} previewLogged = true; }
-    // Decide mode once we have a non-whitespace char (skip BOM)
-    if (isArrayMode === null) {
-      if (buffer.length && buffer.charCodeAt(0) === 0xFEFF) {
-        buffer = buffer.slice(1);
-      }
-      const m = buffer.match(/\S/);
-      if (!m) continue;
-      const first = buffer[m.index!];
-      isArrayMode = first === '[';
-    }
+    const chunk = decoder.decode(value, { stream: true });
 
-    if (isArrayMode) {
-      // Stream parse objects within a top-level JSON array
-      let flushUntil = -1;
-      for (let i = 0; i < buffer.length; i++) {
-        const ch = buffer[i];
-
-        if (inString) {
-          if (escapeNext) {
-            escapeNext = false;
-            continue;
-          }
-          if (ch === '\\') { escapeNext = true; continue; }
-          if (ch === '"') { inString = false; }
-          continue;
-        }
-
-        if (ch === '"') { inString = true; continue; }
-        if (ch === '{') {
-          if (braceDepth === 0) objStart = i;
-          braceDepth++;
-          continue;
-        }
-        if (ch === '}') {
-          braceDepth--;
-          if (braceDepth === 0 && objStart !== -1) {
-            const jsonStr = buffer.slice(objStart, i + 1);
-            try {
-              yield JSON.parse(jsonStr);
-            } catch (_) { /* skip malformed */ }
-            flushUntil = i; // we can safely drop everything up to this position
-            objStart = -1;
-          }
-          continue;
-        }
-        // ignore other characters (commas, spaces, brackets) at top level
-      }
-      if (flushUntil >= 0) {
-        buffer = buffer.slice(flushUntil + 1);
-      } else {
-        // Keep partial for next chunk
-        // but trim leading whitespace and opening bracket if we haven't started an object yet
-        if (braceDepth === 0 && objStart === -1) {
-          const firstObj = buffer.indexOf('{');
-          if (firstObj > 0) buffer = buffer.slice(firstObj);
-        }
-      }
-    } else {
-      // NDJSON or concatenated JSON objects without newlines
-      let flushUntil = -1;
-      for (let i = 0; i < buffer.length; i++) {
-        const ch = buffer[i];
-        if (inString) {
-          if (escapeNext) { escapeNext = false; continue; }
-          if (ch === '\\') { escapeNext = true; continue; }
-          if (ch === '"') { inString = false; }
-          continue;
-        }
-        if (ch === '"') { inString = true; continue; }
-        if (ch === '{') {
-          if (braceDepth === 0) objStart = i;
-          braceDepth++;
-          continue;
-        }
-        if (ch === '}') {
-          braceDepth--;
-          if (braceDepth === 0 && objStart !== -1) {
-            const jsonStr = buffer.slice(objStart, i + 1);
-            try { yield JSON.parse(jsonStr); } catch (_) {}
-            flushUntil = i;
-            objStart = -1;
-          }
-          continue;
-        }
-        // allow newline-delimited too; handled by brace scanning
-      }
-      if (flushUntil >= 0) {
-        buffer = buffer.slice(flushUntil + 1);
-      }
-    }
-  }
-
-  // Flush remaining decoded text
-  buffer += decoder.decode();
-  if (isArrayMode) {
-    // Attempt to emit any final object in buffer
-    let flushUntil = -1;
-    for (let i = 0; i < buffer.length; i++) {
-      const ch = buffer[i];
-      if (inString) {
-        if (escapeNext) { escapeNext = false; continue; }
-        if (ch === '\\') { escapeNext = true; continue; }
-        if (ch === '"') { inString = false; }
-        continue;
-      }
-      if (ch === '"') { inString = true; continue; }
-      if (ch === '{') { if (braceDepth === 0) objStart = i; braceDepth++; continue; }
-      if (ch === '}') {
-        braceDepth--;
-        if (braceDepth === 0 && objStart !== -1) {
-          const jsonStr = buffer.slice(objStart, i + 1);
-          try { yield JSON.parse(jsonStr); } catch (_) {}
-          flushUntil = i;
-          objStart = -1;
-        }
-      }
-    }
-    if (flushUntil >= 0) buffer = buffer.slice(flushUntil + 1);
-  } else {
-    // Final flush for NDJSON/concatenated objects
-    let flushed = false;
-    let flushUntil = -1;
-    for (let i = 0; i < buffer.length; i++) {
-      const ch = buffer[i];
-      if (inString) {
-        if (escapeNext) { escapeNext = false; continue; }
-        if (ch === '\\') { escapeNext = true; continue; }
-        if (ch === '"') { inString = false; }
-        continue;
-      }
-      if (ch === '"') { inString = true; continue; }
-      if (ch === '{') { if (braceDepth === 0) objStart = i; braceDepth++; continue; }
-      if (ch === '}') {
-        braceDepth--;
-        if (braceDepth === 0 && objStart !== -1) {
-          const jsonStr = buffer.slice(objStart, i + 1);
-          try { yield JSON.parse(jsonStr); flushed = true; } catch (_) {}
-          flushUntil = i;
-          objStart = -1;
-        }
-      }
-    }
-    if (flushUntil >= 0) buffer = buffer.slice(flushUntil + 1);
-    const text = buffer.trim().replace(/^\uFEFF/, '');
-    if (!flushed && text) {
+    // Accumulate into carry and split on newlines
+    carry += chunk;
+    let idx: number;
+    while ((idx = carry.indexOf('\n')) !== -1) {
+      const line = carry.slice(0, idx).trim();
+      carry = carry.slice(idx + 1);
+      if (!line) { linesSeen++; continue; }
+      linesSeen++;
       try {
-        const parsed = JSON.parse(text);
-        if (Array.isArray(parsed)) {
-          for (const item of parsed) {
-            if (item && typeof item === 'object') yield item;
-          }
-        } else {
-          yield parsed;
+        const obj = JSON.parse(line);
+        yielded++;
+        if (yielded <= 1) {
+          try { console.log('[reddit-backfill-import] first line preview:', line.slice(0, 200)); } catch {}
         }
-      } catch (_) { /* skip */ }
+        yield obj;
+      } catch (err) {
+        // Skip malformed line but keep streaming
+        if ((linesSeen % 1000) === 0) console.warn('[reddit-backfill-import] skipped malformed line at', linesSeen);
+      }
     }
   }
+
+  // Flush remaining
+  if (carry.trim()) {
+    try {
+      const obj = JSON.parse(carry.trim());
+      yielded++;
+      yield obj;
+    } catch (_) {
+      console.warn('[reddit-backfill-import] trailing chunk not valid JSON, discarded');
+    }
+  }
+
+  console.log(`[reddit-backfill-import] stream complete linesSeen=${linesSeen} yielded=${yielded}`);
 }
 
 
