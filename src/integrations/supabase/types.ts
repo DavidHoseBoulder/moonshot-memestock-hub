@@ -158,6 +158,57 @@ export type Database = {
         }
         Relationships: []
       }
+      import_runs: {
+        Row: {
+          analyzed_total: number | null
+          batch_size: number | null
+          created_at: string
+          error: string | null
+          file: string | null
+          finished_at: string | null
+          id: string
+          inserted_total: number | null
+          queued_total: number | null
+          run_id: string
+          scanned_total: number | null
+          started_at: string
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          analyzed_total?: number | null
+          batch_size?: number | null
+          created_at?: string
+          error?: string | null
+          file?: string | null
+          finished_at?: string | null
+          id?: string
+          inserted_total?: number | null
+          queued_total?: number | null
+          run_id: string
+          scanned_total?: number | null
+          started_at?: string
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          analyzed_total?: number | null
+          batch_size?: number | null
+          created_at?: string
+          error?: string | null
+          file?: string | null
+          finished_at?: string | null
+          id?: string
+          inserted_total?: number | null
+          queued_total?: number | null
+          run_id?: string
+          scanned_total?: number | null
+          started_at?: string
+          status?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       market_data: {
         Row: {
           asset_type: string

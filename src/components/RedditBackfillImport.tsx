@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { getAllTickers, getAllCanonicalTickers } from "@/data/stockUniverse";
 import { supabase } from "@/integrations/supabase/client";
@@ -15,9 +16,11 @@ const RedditBackfillImport = () => {
   const [urlsText, setUrlsText] = useState("");
   const [subs, setSubs] = useState(DEFAULT_SUBS);
   const [batchSize, setBatchSize] = useState(25);
+  const [maxItems, setMaxItems] = useState<number>(25000);
   const [isRunning, setIsRunning] = useState(false);
   const [currentRunId, setCurrentRunId] = useState<string | null>(null);
   const [insertedCount, setInsertedCount] = useState<number | null>(null);
+  const [runInfo, setRunInfo] = useState<{ status: string; scanned: number; queued: number; analyzed: number; inserted: number; finished_at: string | null } | null>(null);
   const startBackfill = async () => {
     const urls = urlsText
       .split(/\r?\n/)

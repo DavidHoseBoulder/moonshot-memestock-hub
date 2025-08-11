@@ -22,6 +22,7 @@ interface BackfillRequest {
   symbols?: string[]; // filter list
   batch_size?: number; // 20-50 recommended
   run_id?: string; // optional client-provided run identifier
+  max_items?: number; // safety cap; 0 or negative = no limit
 }
 
 const corsHeaders = {
@@ -34,6 +35,14 @@ const SERVICE_ROLE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
 // Create a service client (needed for efficient inserts)
 const supabase = createClient(SUPABASE_URL, SERVICE_ROLE);
+
+// Run tracking helpers
+async function upsertRun(runId: string, patch: Record<string, any>) {
+  await supabase.from('import_runs').upsert({ run_id: runId, ...patch }, { onConflict: 'run_id' });
+}
+async function updateRun(runId: string, patch: Record<string, any>) {
+  await supabase.from('import_runs').update({ ...patch }).eq('run_id', runId);
+}
 
 // Helper: chunk an array
 function chunk<T>(arr: T[], size: number): T[][] {
@@ -261,6 +270,9 @@ async function processPipeline(posts: RedditPost[], batchSize: number, runId?: s
       const inserted = await insertSentimentHistory(rows);
       totalInserted += inserted;
       console.log(`[reddit-backfill-import] Batch ${i + 1}/${batches.length} analyzed=${analyzed.length} inserted=${inserted}`);
+      if (runId) {
+        await updateRun(runId, { analyzed_total: totalAnalyzed, inserted_total: totalInserted });
+      }
     } catch (err) {
       console.error(`[reddit-backfill-import] Error in batch ${i + 1}:`, err);
       // continue with next batch
@@ -297,6 +309,7 @@ Deno.serve(async (req) => {
       ],
       symbols = [],
       batch_size = 25,
+      max_items = 25000,
     } = body ?? {};
     const run_id = body?.run_id ?? (crypto?.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`);
     if (batch_size < 5 || batch_size > 100) {
@@ -333,8 +346,14 @@ Deno.serve(async (req) => {
         );
       }
 
-      // Kick off background processing immediately to avoid request-time compute limits
-      // @ts-ignore EdgeRuntime is available in Supabase Edge Functions
+// Prepare run record and limits
+const urlPath = (() => { try { return new URL(jsonl_url).pathname; } catch { return jsonl_url; } })();
+const basename = urlPath.split('/').pop() ?? 'unknown';
+const maxCap = (!max_items || max_items <= 0) ? Number.POSITIVE_INFINITY : max_items;
+await upsertRun(run_id, { status: 'running', file: basename, batch_size });
+
+// Kick off background processing immediately to avoid request-time compute limits
+// @ts-ignore EdgeRuntime is available in Supabase Edge Functions
       EdgeRuntime.waitUntil((async () => {
         try {
           console.log(`[reddit-backfill-import] background start url=${jsonl_url} batch_size=${batch_size}`);
@@ -347,17 +366,24 @@ Deno.serve(async (req) => {
             if (passesFilters(norm, subreddits, symbols)) {
               collected.push(norm);
             }
-            if (collected.length >= 25000) break; // safety cap per invocation
+            if (collected.length >= maxCap) break; // safety cap per invocation
           }
           console.log(`[reddit-backfill-import] background scanned=${scanned} queued=${collected.length}`);
-          await processPipeline(collected, batch_size, run_id);
-        } catch (err) {
+          await updateRun(run_id, { scanned_total: scanned, queued_total: collected.length });
+          const result = await processPipeline(collected, batch_size, run_id);
+          await updateRun(run_id, {
+            status: 'succeeded',
+            finished_at: new Date().toISOString(),
+            analyzed_total: result.totalAnalyzed,
+            inserted_total: result.totalInserted,
+          });
+        } catch (err: any) {
           console.error('[reddit-backfill-import] background error:', err);
+          await updateRun(run_id, { status: 'failed', error: String(err?.message ?? err), finished_at: new Date().toISOString() });
         }
       })());
 
-      const urlPath = (() => { try { return new URL(jsonl_url).pathname; } catch { return jsonl_url; } })();
-      const basename = urlPath.split('/').pop() ?? 'unknown';
+// basename computed above
       return new Response(
         JSON.stringify({
           mode,
