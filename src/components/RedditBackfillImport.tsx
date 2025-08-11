@@ -56,6 +56,7 @@ const RedditBackfillImport = () => {
             symbols,
             batch_size: batchSize,
             run_id: runId,
+            max_items: maxItems,
           }
         });
         if (error) throw error;
@@ -68,6 +69,7 @@ const RedditBackfillImport = () => {
         title: "Reddit Backfill Started",
         description: `Queued ~${totalQueued} items across ~${totalEstimatedBatches} batches from ${totalInvoked} file(s). Run: ${runId}`,
       });
+      console.log('reddit-backfill-import multi response', { totalQueued, totalEstimatedBatches, totalInvoked, urls, runId });
       console.log('reddit-backfill-import multi response', { totalQueued, totalEstimatedBatches, totalInvoked, urls });
     } catch (e: any) {
       console.error(e);
@@ -92,6 +94,30 @@ const RedditBackfillImport = () => {
       active = false;
       clearInterval(interval);
     };
+  }, [currentRunId]);
+
+  useEffect(() => {
+    if (!currentRunId) return;
+    let active = true;
+    const interval = setInterval(async () => {
+      const { data, error } = await supabase
+        .from('import_runs')
+        .select('status, scanned_total, queued_total, analyzed_total, inserted_total, finished_at')
+        .eq('run_id', currentRunId)
+        .maybeSingle();
+      if (!active) return;
+      if (!error && data) {
+        setRunInfo({
+          status: data.status,
+          scanned: data.scanned_total ?? 0,
+          queued: data.queued_total ?? 0,
+          analyzed: data.analyzed_total ?? 0,
+          inserted: data.inserted_total ?? 0,
+          finished_at: data.finished_at ?? null,
+        });
+      }
+    }, 3000);
+    return () => { active = false; clearInterval(interval); };
   }, [currentRunId]);
 
   return (
@@ -161,10 +187,14 @@ const RedditBackfillImport = () => {
           <Label htmlFor="subs">Subreddits (comma-separated)</Label>
           <Textarea id="subs" rows={2} value={subs} onChange={(e) => setSubs(e.target.value)} />
         </div>
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <div className="space-y-2">
             <Label htmlFor="batch">Batch size</Label>
             <Input id="batch" type="number" min={5} max={100} value={batchSize} onChange={(e) => setBatchSize(parseInt(e.target.value || '25'))} />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="max-items">Max items (0 = unlimited)</Label>
+            <Input id="max-items" type="number" min={0} value={maxItems} onChange={(e) => setMaxItems(parseInt(e.target.value || '0'))} />
           </div>
           <div className="space-y-2">
             <Label>Symbols</Label>
@@ -175,9 +205,20 @@ const RedditBackfillImport = () => {
           {isRunning ? 'Starting…' : 'Start Reddit Backfill'}
         </Button>
         {currentRunId && (
-          <div className="text-sm text-muted-foreground space-y-1">
-            <p>Run ID: <code className="font-mono">{currentRunId}</code></p>
+          <div className="text-sm text-muted-foreground space-y-2">
+            <div className="flex items-center gap-2">
+              <span>Run ID:</span>
+              <code className="font-mono">{currentRunId}</code>
+              {runInfo && (
+                <Badge variant={runInfo.status === 'succeeded' ? 'default' : runInfo.status === 'failed' ? 'destructive' : 'secondary'}>
+                  {runInfo.status}
+                </Badge>
+              )}
+            </div>
             <p>Rows inserted: {insertedCount ?? 0} (auto-updating)</p>
+            {runInfo && (
+              <p>Scanned: {runInfo.scanned?.toLocaleString?.() ?? runInfo.scanned} · Queued: {runInfo.queued?.toLocaleString?.() ?? runInfo.queued} · Analyzed: {runInfo.analyzed?.toLocaleString?.() ?? runInfo.analyzed} · Inserted: {runInfo.inserted?.toLocaleString?.() ?? runInfo.inserted}{runInfo.finished_at ? ` · Finished: ${new Date(runInfo.finished_at).toLocaleTimeString()}` : ''}</p>
+            )}
           </div>
         )}
         <p className="text-xs text-muted-foreground">
