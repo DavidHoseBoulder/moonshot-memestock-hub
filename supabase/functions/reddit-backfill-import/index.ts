@@ -4,6 +4,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.7.1";
 
 // Types for incoming posts (normalized)
 interface RedditPost {
+  id?: string; // Reddit post id when available
   title: string;
   selftext?: string;
   score?: number;
@@ -173,6 +174,7 @@ function normalizeToRedditPost(raw: any): RedditPost | null {
   const selftext = raw?.selftext ?? raw?.body ?? "";
   if (!created_utc || !subreddit || (!title && !selftext)) return null;
   return {
+    id: raw?.id ? String(raw.id) : undefined,
     title,
     selftext,
     score: raw?.score ?? 0,
@@ -221,9 +223,12 @@ function toSentimentHistoryRows(analyzed: any[], originalMap: Map<string, Reddit
     const engagement = Number(item.score ?? fallbackOriginal?.score ?? 0) +
       Number(item.num_comments ?? fallbackOriginal?.num_comments ?? 0);
 
+    const source_id = (item.post_id ?? item.id ?? fallbackOriginal?.permalink ?? null) ? String(item.post_id ?? item.id ?? fallbackOriginal?.permalink) : null;
+
     return {
       symbol: symbol ?? "UNKNOWN",
       source: "reddit",
+      source_id: source_id,
       sentiment_score: scoreNumber,
       raw_sentiment: item.overall_sentiment ?? item.sentiment ?? null,
       confidence_score: confidence,
@@ -251,7 +256,7 @@ async function insertSentimentHistory(rows: any[]) {
   for (const part of chunks) {
     const { error } = await supabase
       .from("sentiment_history")
-      .insert(part, { returning: "minimal" });
+      .upsert(part, { onConflict: 'source,source_id', ignoreDuplicates: true, returning: "minimal" });
     if (error) throw error;
     inserted += part.length;
   }
@@ -268,14 +273,40 @@ async function processPipeline(posts: RedditPost[], batchSize: number, runId?: s
   // Worker to process a single batch index
   const processOne = async (i: number) => {
     const batch = batches[i];
+
+    // Filter out already-inserted posts by source_id (reddit id or permalink)
+    const candidateIds = batch
+      .map((p) => p.id || p.permalink)
+      .filter((v): v is string => Boolean(v));
+    let newBatch = batch;
+    if (candidateIds.length > 0) {
+      const { data: existing, error: existErr } = await supabase
+        .from('sentiment_history')
+        .select('source_id')
+        .eq('source', 'reddit')
+        .in('source_id', candidateIds);
+      if (!existErr && existing) {
+        const existingSet = new Set((existing as any[]).map((r: any) => r.source_id));
+        newBatch = batch.filter((p) => {
+          const key = p.id || p.permalink;
+          return key ? !existingSet.has(key) : true;
+        });
+      }
+    }
+
     // Correlate analyzed outputs back to originals
     const originalMap = new Map<string, RedditPost>();
-    for (const p of batch) {
-      const key = p.permalink ?? `${p.subreddit}-${p.author}-${p.created_utc}`;
+    for (const p of newBatch) {
+      const key = p.permalink || p.id || `${p.subreddit}-${p.author}-${p.created_utc}`;
       originalMap.set(key, p);
     }
 
-    const analyzed = await scoreBatch(batch);
+    if (newBatch.length === 0) {
+      console.log(`[reddit-backfill-import] Batch ${i + 1}/${batches.length} skipped (all duplicates)`);
+      return;
+    }
+
+    const analyzed = await scoreBatch(newBatch);
     const rows = toSentimentHistoryRows(analyzed, originalMap, runId);
     const inserted = await insertSentimentHistory(rows);
 
@@ -283,7 +314,7 @@ async function processPipeline(posts: RedditPost[], batchSize: number, runId?: s
     totalAnalyzed += analyzed.length;
     totalInserted += inserted;
 
-    console.log(`[reddit-backfill-import] Batch ${i + 1}/${batches.length} analyzed=${analyzed.length} inserted=${inserted}`);
+    console.log(`[reddit-backfill-import] Batch ${i + 1}/${batches.length} analyzed=${analyzed.length} inserted=${inserted} skipped=${batch.length - newBatch.length}`);
     if (runId) {
       await updateRun(runId, { analyzed_total: totalAnalyzed, inserted_total: totalInserted });
     }
@@ -383,7 +414,7 @@ Deno.serve(async (req) => {
 const urlPath = (() => { try { return new URL(jsonl_url).pathname; } catch { return jsonl_url; } })();
 const basename = urlPath.split('/').pop() ?? 'unknown';
 const maxCap = (!max_items || max_items <= 0) ? Number.POSITIVE_INFINITY : max_items;
-await upsertRun(run_id, { status: 'running', file: basename, batch_size });
+await upsertRun(run_id, { status: 'running', file: jsonl_url, batch_size });
 
 // Kick off background processing immediately to avoid request-time compute limits
 // @ts-ignore EdgeRuntime is available in Supabase Edge Functions
@@ -422,7 +453,7 @@ await upsertRun(run_id, { status: 'running', file: basename, batch_size });
           mode,
           accepted: true,
           note: 'Processing started in background',
-          file: basename,
+          file: jsonl_url,
           batch_size,
           concurrency: concurrency_safe,
           run_id,

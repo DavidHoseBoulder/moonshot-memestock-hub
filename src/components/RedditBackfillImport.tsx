@@ -22,6 +22,7 @@ const RedditBackfillImport = () => {
   const [currentRunId, setCurrentRunId] = useState<string | null>(null);
   const [insertedCount, setInsertedCount] = useState<number | null>(null);
   const [runInfo, setRunInfo] = useState<{ status: string; scanned: number; queued: number; analyzed: number; inserted: number; finished_at: string | null } | null>(null);
+  const [recentRuns, setRecentRuns] = useState<any[]>([]);
   const startBackfill = async () => {
     const urls = urlsText
       .split(/\r?\n/)
@@ -92,6 +93,16 @@ const RedditBackfillImport = () => {
     } else {
       toast({ title: 'Cancelling…', description: 'The run will stop at the next batch boundary.' });
     }
+  };
+
+  const resumeRun = async (run: any) => {
+    if (!run?.file || !String(run.file).startsWith('http')) {
+      toast({ title: 'Resume not available', description: 'This run lacks the original URL. Paste the URL to re-run.', variant: 'destructive' });
+      return;
+    }
+    setUrlsText(String(run.file));
+    if (run.batch_size) setBatchSize(run.batch_size);
+    setTimeout(() => startBackfill(), 0);
   };
 
   useEffect(() => {
