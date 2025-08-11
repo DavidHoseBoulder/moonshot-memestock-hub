@@ -76,7 +76,13 @@ async function* streamNDJSON(url: string): AsyncGenerator<any> {
 
   let stream: ReadableStream<Uint8Array> = resp.body as ReadableStream<Uint8Array>;
   // Handle gzip if needed
-  const isGzip = url.endsWith(".gz") || resp.headers.get("content-encoding")?.includes("gzip");
+  const urlPath = (() => { try { return new URL(url).pathname.toLowerCase(); } catch { return url.toLowerCase(); } })();
+  const contentEncoding = (resp.headers.get("content-encoding") || "").toLowerCase();
+  const contentType = (resp.headers.get("content-type") || "").toLowerCase();
+  const isGzip = urlPath.endsWith(".gz") || urlPath.endsWith(".gzip") ||
+    contentEncoding.includes("gzip") ||
+    contentType.includes("gzip") ||
+    contentType === "application/x-gzip" || contentType === "application/gzip";
   if (isGzip) {
     // @ts-ignore - DecompressionStream available in Deno runtime
     const ds = new DecompressionStream("gzip");
