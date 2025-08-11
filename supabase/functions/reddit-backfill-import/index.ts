@@ -21,6 +21,7 @@ interface BackfillRequest {
   subreddits?: string[]; // filter list
   symbols?: string[]; // filter list
   batch_size?: number; // 20-50 recommended
+  run_id?: string; // optional client-provided run identifier
 }
 
 const corsHeaders = {
@@ -298,7 +299,7 @@ async function scoreBatch(posts: RedditPost[]): Promise<any[]> {
 }
 
 // Map analyzed items to sentiment_history rows
-function toSentimentHistoryRows(analyzed: any[], originalMap: Map<string, RedditPost>) {
+function toSentimentHistoryRows(analyzed: any[], originalMap: Map<string, RedditPost>, runId?: string) {
   return analyzed.map((item) => {
     // Try multiple shapes for symbols
     const symbols = (item.symbols_mentioned ?? item.symbols ?? []) as string[];
@@ -338,6 +339,7 @@ function toSentimentHistoryRows(analyzed: any[], originalMap: Map<string, Reddit
         post_id: item.post_id ?? null,
         themes: item.key_themes ?? item.themes ?? null,
         signals: item.investment_signals ?? item.signals ?? null,
+        import_run_id: runId ?? null,
       },
       engagement_score: engagement,
       volume_indicator: 1,
@@ -360,7 +362,7 @@ async function insertSentimentHistory(rows: any[]) {
 }
 
 // Background processor
-async function processPipeline(posts: RedditPost[], batchSize: number) {
+async function processPipeline(posts: RedditPost[], batchSize: number, runId?: string) {
   console.log(`[reddit-backfill-import] Starting processing of ${posts.length} posts with batchSize ${batchSize}`);
   const batches = chunk(posts, batchSize);
   let totalAnalyzed = 0;
@@ -378,7 +380,7 @@ async function processPipeline(posts: RedditPost[], batchSize: number) {
     try {
       const analyzed = await scoreBatch(batch);
       totalAnalyzed += analyzed.length;
-      const rows = toSentimentHistoryRows(analyzed, originalMap);
+      const rows = toSentimentHistoryRows(analyzed, originalMap, runId);
       const inserted = await insertSentimentHistory(rows);
       totalInserted += inserted;
       console.log(`[reddit-backfill-import] Batch ${i + 1}/${batches.length} analyzed=${analyzed.length} inserted=${inserted}`);
@@ -419,7 +421,7 @@ Deno.serve(async (req) => {
       symbols = [],
       batch_size = 25,
     } = body ?? {};
-
+    const run_id = body?.run_id ?? (crypto?.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`);
     if (batch_size < 5 || batch_size > 100) {
       return new Response(
         JSON.stringify({ error: "batch_size must be between 5 and 100" }),
@@ -429,7 +431,7 @@ Deno.serve(async (req) => {
 
     if (mode === "posts") {
       const filtered = posts.filter((p) => passesFilters(p, subreddits, symbols));
-      const result = await processPipeline(filtered, batch_size);
+      const result = await processPipeline(filtered, batch_size, run_id);
       return new Response(
         JSON.stringify({ mode, received: posts.length, filtered: filtered.length, ...result }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" } }
@@ -471,7 +473,7 @@ Deno.serve(async (req) => {
             if (collected.length >= 25000) break; // safety cap per invocation
           }
           console.log(`[reddit-backfill-import] background scanned=${scanned} queued=${collected.length}`);
-          await processPipeline(collected, batch_size);
+          await processPipeline(collected, batch_size, run_id);
         } catch (err) {
           console.error('[reddit-backfill-import] background error:', err);
         }
@@ -486,6 +488,7 @@ Deno.serve(async (req) => {
           note: 'Processing started in background',
           file: basename,
           batch_size,
+          run_id,
         }),
         { status: 202, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );

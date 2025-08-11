@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -16,7 +16,8 @@ const RedditBackfillImport = () => {
   const [subs, setSubs] = useState(DEFAULT_SUBS);
   const [batchSize, setBatchSize] = useState(25);
   const [isRunning, setIsRunning] = useState(false);
-
+  const [currentRunId, setCurrentRunId] = useState<string | null>(null);
+  const [insertedCount, setInsertedCount] = useState<number | null>(null);
   const startBackfill = async () => {
     const urls = urlsText
       .split(/\r?\n/)
@@ -34,9 +35,11 @@ const RedditBackfillImport = () => {
 
     setIsRunning(true);
     try {
+      const runId = (crypto as any)?.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+      setCurrentRunId(runId);
+      setInsertedCount(null);
       const symbols = (typeof getAllCanonicalTickers === 'function' ? getAllCanonicalTickers() : getAllTickers());
       const subreddits = subs.split(",").map((s) => s.trim()).filter(Boolean);
-
       let totalQueued = 0;
       let totalEstimatedBatches = 0;
       let totalInvoked = 0;
@@ -49,6 +52,7 @@ const RedditBackfillImport = () => {
             subreddits,
             symbols,
             batch_size: batchSize,
+            run_id: runId,
           }
         });
         if (error) throw error;
@@ -59,7 +63,7 @@ const RedditBackfillImport = () => {
 
       toast({
         title: "Reddit Backfill Started",
-        description: `Queued ~${totalQueued} items across ~${totalEstimatedBatches} batches from ${totalInvoked} file(s).`,
+        description: `Queued ~${totalQueued} items across ~${totalEstimatedBatches} batches from ${totalInvoked} file(s). Run: ${runId}`,
       });
       console.log('reddit-backfill-import multi response', { totalQueued, totalEstimatedBatches, totalInvoked, urls });
     } catch (e: any) {
@@ -69,6 +73,23 @@ const RedditBackfillImport = () => {
       setIsRunning(false);
     }
   };
+
+  useEffect(() => {
+    if (!currentRunId) return;
+    let active = true;
+    const interval = setInterval(async () => {
+      const { count, error } = await supabase
+        .from('sentiment_history')
+        .select('id', { count: 'exact', head: true })
+        .filter('metadata->>import_run_id', 'eq', currentRunId);
+      if (!active) return;
+      if (!error) setInsertedCount(count ?? 0);
+    }, 3000);
+    return () => {
+      active = false;
+      clearInterval(interval);
+    };
+  }, [currentRunId]);
 
   return (
     <Card className="w-full">
@@ -150,6 +171,12 @@ const RedditBackfillImport = () => {
         <Button className="w-full" onClick={startBackfill} disabled={isRunning}>
           {isRunning ? 'Starting…' : 'Start Reddit Backfill'}
         </Button>
+        {currentRunId && (
+          <div className="text-sm text-muted-foreground space-y-1">
+            <p>Run ID: <code className="font-mono">{currentRunId}</code></p>
+            <p>Rows inserted: {insertedCount ?? 0} (auto-updating)</p>
+          </div>
+        )}
         <p className="text-xs text-muted-foreground">
           Note: .zst (Zstandard) archives are not supported in-edge. Please pre-decompress to .jsonl/.jsonl.gz.
         </p>
