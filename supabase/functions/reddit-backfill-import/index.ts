@@ -454,36 +454,40 @@ serve(async (req) => {
         );
       }
 
-      // Stream, filter, and collect a bounded number before backgrounding
-      const collected: RedditPost[] = [];
-      let scanned = 0;
-      for await (const raw of streamNDJSON(jsonl_url)) {
-        scanned++;
-        const norm = normalizeToRedditPost(raw);
-        if (!norm) continue;
-        if (passesFilters(norm, subreddits, symbols)) {
-          collected.push(norm);
+      // Kick off background processing immediately to avoid request-time compute limits
+      // @ts-ignore EdgeRuntime is available in Supabase Edge Functions
+      EdgeRuntime.waitUntil((async () => {
+        try {
+          console.log(`[reddit-backfill-import] background start url=${jsonl_url} batch_size=${batch_size}`);
+          const collected: RedditPost[] = [];
+          let scanned = 0;
+          for await (const raw of streamNDJSON(jsonl_url)) {
+            scanned++;
+            const norm = normalizeToRedditPost(raw);
+            if (!norm) continue;
+            if (passesFilters(norm, subreddits, symbols)) {
+              collected.push(norm);
+            }
+            if (collected.length >= 25000) break; // safety cap per invocation
+          }
+          console.log(`[reddit-backfill-import] background scanned=${scanned} queued=${collected.length}`);
+          await processPipeline(collected, batch_size);
+        } catch (err) {
+          console.error('[reddit-backfill-import] background error:', err);
         }
-        // avoid memory blowouts; cap to e.g., 25k per invocation
-        if (collected.length >= 25000) break;
-      }
+      })());
 
-      const estimatedBatches = Math.ceil(collected.length / batch_size);
-
-      // Run processing in background
-      // @ts-ignore EdgeRuntime available in Supabase Functions
-      EdgeRuntime.waitUntil(processPipeline(collected, batch_size));
-
+      const urlPath = (() => { try { return new URL(jsonl_url).pathname; } catch { return jsonl_url; } })();
+      const basename = urlPath.split('/').pop() ?? 'unknown';
       return new Response(
         JSON.stringify({
           mode,
-          scanned,
-          queued: collected.length,
+          accepted: true,
+          note: 'Processing started in background',
+          file: basename,
           batch_size,
-          estimated_batches: estimatedBatches,
-          note: "Processing started in background",
         }),
-        { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        { status: 202, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
