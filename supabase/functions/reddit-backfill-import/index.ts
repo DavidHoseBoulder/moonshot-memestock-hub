@@ -1,5 +1,5 @@
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
-import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+// import { serve } from "https://deno.land/std@0.168.0/http/server.ts"; // switched to Deno.serve
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.7.1";
 
 // Types for incoming posts (normalized)
@@ -395,7 +395,7 @@ async function processPipeline(posts: RedditPost[], batchSize: number) {
   return { totalAnalyzed, totalInserted };
 }
 
-serve(async (req) => {
+Deno.serve(async (req) => {
   // CORS preflight
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
