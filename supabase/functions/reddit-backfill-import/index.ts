@@ -200,11 +200,9 @@ async function scoreBatch(posts: RedditPost[]): Promise<any[]> {
 // Map analyzed items to sentiment_history rows
 function toSentimentHistoryRows(analyzed: any[], originalMap: Map<string, RedditPost>, runId?: string) {
   return analyzed.map((item) => {
-    // Try multiple shapes for symbols
     const symbols = (item.symbols_mentioned ?? item.symbols ?? []) as string[];
     const symbol = symbols?.[0] ?? null;
 
-    // Correlate back to original post if available (by permalink or composite key)
     const key = item.post_id || item.permalink || item.id || null;
     const fallbackOriginal = key ? originalMap.get(String(key)) : undefined;
 
@@ -223,12 +221,26 @@ function toSentimentHistoryRows(analyzed: any[], originalMap: Map<string, Reddit
     const engagement = Number(item.score ?? fallbackOriginal?.score ?? 0) +
       Number(item.num_comments ?? fallbackOriginal?.num_comments ?? 0);
 
-    const source_id = (item.post_id ?? item.id ?? fallbackOriginal?.permalink ?? null) ? String(item.post_id ?? item.id ?? fallbackOriginal?.permalink) : null;
+    // Ensure a deterministic, non-null source_id for idempotency
+    const rawCandidate = (item.post_id ?? item.id ?? fallbackOriginal?.id ?? fallbackOriginal?.permalink ?? null);
+    let source_id: string | null = rawCandidate ? String(rawCandidate) : null;
+    if (!source_id) {
+      const base = JSON.stringify({
+        subreddit: item.subreddit ?? fallbackOriginal?.subreddit ?? '',
+        author: item.author ?? fallbackOriginal?.author ?? '',
+        t: item.post_created_at ?? fallbackOriginal?.created_utc ?? 0,
+        title: (item.title ?? fallbackOriginal?.title ?? '').slice(0, 120),
+        body: (item.content ?? item.selftext ?? fallbackOriginal?.selftext ?? '').slice(0, 120),
+      });
+      let h = 5381;
+      for (let i = 0; i < base.length; i++) h = ((h << 5) + h) ^ base.charCodeAt(i);
+      source_id = `r_${Math.abs(h)}`;
+    }
 
     return {
       symbol: symbol ?? "UNKNOWN",
       source: "reddit",
-      source_id: source_id,
+      source_id,
       sentiment_score: scoreNumber,
       raw_sentiment: item.overall_sentiment ?? item.sentiment ?? null,
       confidence_score: confidence,

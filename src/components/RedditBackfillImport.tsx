@@ -5,6 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { useToast } from "@/hooks/use-toast";
 import { getAllTickers, getAllCanonicalTickers } from "@/data/stockUniverse";
 import { supabase } from "@/integrations/supabase/client";
@@ -70,7 +71,7 @@ const RedditBackfillImport = () => {
 
       toast({
         title: "Reddit Backfill Started",
-        description: `Queued ~${totalQueued} items across ~${totalEstimatedBatches} batches from ${totalInvoked} file(s). Run: ${runId}`,
+        description: `Started ${totalInvoked} file(s) in background. Run: ${runId}`,
       });
       console.log('reddit-backfill-import multi response', { totalQueued, totalEstimatedBatches, totalInvoked, urls, runId });
       console.log('reddit-backfill-import multi response', { totalQueued, totalEstimatedBatches, totalInvoked, urls });
@@ -145,6 +146,22 @@ const RedditBackfillImport = () => {
     }, 3000);
     return () => { active = false; clearInterval(interval); };
   }, [currentRunId]);
+
+  useEffect(() => {
+    let active = true;
+    const load = async () => {
+      const { data } = await supabase
+        .from('import_runs')
+        .select('run_id, status, file, batch_size, scanned_total, queued_total, analyzed_total, inserted_total, started_at, finished_at')
+        .order('started_at', { ascending: false })
+        .limit(20);
+      if (!active) return;
+      setRecentRuns(data ?? []);
+    };
+    load();
+    const id = setInterval(load, 5000);
+    return () => { active = false; clearInterval(id); };
+  }, []);
 
   return (
     <Card className="w-full">
@@ -261,6 +278,50 @@ const RedditBackfillImport = () => {
         <p className="text-xs text-muted-foreground">
           Note: .zst (Zstandard) archives are not supported in-edge. Please pre-decompress to .jsonl/.jsonl.gz.
         </p>
+
+        {recentRuns.length > 0 && (
+          <div className="space-y-2">
+            <Label>Recent runs</Label>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Status</TableHead>
+                  <TableHead>File</TableHead>
+                  <TableHead className="text-right">Scanned</TableHead>
+                  <TableHead className="text-right">Queued</TableHead>
+                  <TableHead className="text-right">Analyzed</TableHead>
+                  <TableHead className="text-right">Inserted</TableHead>
+                  <TableHead className="text-right">Batch</TableHead>
+                  <TableHead className="text-right">Started</TableHead>
+                  <TableHead className="text-right">Finished</TableHead>
+                  <TableHead className="text-right">Actions</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {recentRuns.map((r) => (
+                  <TableRow key={r.run_id}>
+                    <TableCell>
+                      <Badge variant={r.status === 'succeeded' ? 'default' : r.status === 'failed' ? 'destructive' : 'secondary'}>
+                        {r.status}
+                      </Badge>
+                    </TableCell>
+                    <TableCell className="truncate max-w-[240px]" title={r.file}>{r.file?.split('/').pop?.() ?? r.file}</TableCell>
+                    <TableCell className="text-right">{r.scanned_total ?? 0}</TableCell>
+                    <TableCell className="text-right">{r.queued_total ?? 0}</TableCell>
+                    <TableCell className="text-right">{r.analyzed_total ?? 0}</TableCell>
+                    <TableCell className="text-right">{r.inserted_total ?? 0}</TableCell>
+                    <TableCell className="text-right">{r.batch_size ?? '-'}</TableCell>
+                    <TableCell className="text-right">{r.started_at ? new Date(r.started_at).toLocaleTimeString() : '-'}</TableCell>
+                    <TableCell className="text-right">{r.finished_at ? new Date(r.finished_at).toLocaleTimeString() : '-'}</TableCell>
+                    <TableCell className="text-right">
+                      <Button size="sm" variant="outline" onClick={() => resumeRun(r)}>Resume</Button>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+        )}
       </CardContent>
     </Card>
   );
