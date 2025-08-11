@@ -23,6 +23,7 @@ interface BackfillRequest {
   batch_size?: number; // 20-50 recommended
   run_id?: string; // optional client-provided run identifier
   max_items?: number; // safety cap; 0 or negative = no limit
+  concurrency?: number; // number of batches to process in parallel (1-5)
 }
 
 const corsHeaders = {
@@ -42,6 +43,16 @@ async function upsertRun(runId: string, patch: Record<string, any>) {
 }
 async function updateRun(runId: string, patch: Record<string, any>) {
   await supabase.from('import_runs').update({ ...patch }).eq('run_id', runId);
+}
+
+// Check if a run has been requested to cancel
+async function isRunCancelling(runId: string): Promise<boolean> {
+  const { data } = await supabase
+    .from('import_runs')
+    .select('status')
+    .eq('run_id', runId)
+    .maybeSingle();
+  return (data?.status === 'cancelling' || data?.status === 'cancelled');
 }
 
 // Helper: chunk an array
@@ -247,43 +258,63 @@ async function insertSentimentHistory(rows: any[]) {
   return inserted;
 }
 
-// Background processor
-async function processPipeline(posts: RedditPost[], batchSize: number, runId?: string) {
-  console.log(`[reddit-backfill-import] Starting processing of ${posts.length} posts with batchSize ${batchSize}`);
+// Background processor with concurrency and cancel checks
+async function processPipeline(posts: RedditPost[], batchSize: number, runId?: string, concurrency: number = 1) {
+  console.log(`[reddit-backfill-import] Starting processing of ${posts.length} posts with batchSize ${batchSize} concurrency ${concurrency}`);
   const batches = chunk(posts, batchSize);
   let totalAnalyzed = 0;
   let totalInserted = 0;
 
-  for (let i = 0; i < batches.length; i++) {
+  // Worker to process a single batch index
+  const processOne = async (i: number) => {
     const batch = batches[i];
-    // Build a map to correlate analyzed outputs back to originals when possible
+    // Correlate analyzed outputs back to originals
     const originalMap = new Map<string, RedditPost>();
     for (const p of batch) {
       const key = p.permalink ?? `${p.subreddit}-${p.author}-${p.created_utc}`;
       originalMap.set(key, p);
     }
 
-    try {
-      const analyzed = await scoreBatch(batch);
-      totalAnalyzed += analyzed.length;
-      const rows = toSentimentHistoryRows(analyzed, originalMap, runId);
-      const inserted = await insertSentimentHistory(rows);
-      totalInserted += inserted;
-      console.log(`[reddit-backfill-import] Batch ${i + 1}/${batches.length} analyzed=${analyzed.length} inserted=${inserted}`);
-      if (runId) {
-        await updateRun(runId, { analyzed_total: totalAnalyzed, inserted_total: totalInserted });
-      }
-    } catch (err) {
-      console.error(`[reddit-backfill-import] Error in batch ${i + 1}:`, err);
-      // continue with next batch
+    const analyzed = await scoreBatch(batch);
+    const rows = toSentimentHistoryRows(analyzed, originalMap, runId);
+    const inserted = await insertSentimentHistory(rows);
+
+    // Update counters (single-threaded JS ensures atomic increments)
+    totalAnalyzed += analyzed.length;
+    totalInserted += inserted;
+
+    console.log(`[reddit-backfill-import] Batch ${i + 1}/${batches.length} analyzed=${analyzed.length} inserted=${inserted}`);
+    if (runId) {
+      await updateRun(runId, { analyzed_total: totalAnalyzed, inserted_total: totalInserted });
     }
+  };
 
-    // Gentle pacing to avoid hammering the scorer
-    await new Promise((r) => setTimeout(r, 400));
-  }
+  // Simple concurrency limiter
+  let nextIndex = 0;
+  const workers = Array.from({ length: Math.min(concurrency, batches.length) }, async () => {
+    while (nextIndex < batches.length) {
+      const i = nextIndex++;
+      // Cancel check before each batch
+      if (runId && await isRunCancelling(runId)) {
+        console.warn('[reddit-backfill-import] Cancelling run on request');
+        return; // exit worker loop
+      }
+      try {
+        await processOne(i);
+      } catch (err) {
+        console.error(`[reddit-backfill-import] Error in batch ${i + 1}:`, err);
+        // continue
+      }
+      // Gentle pacing
+      await new Promise((r) => setTimeout(r, 200));
+    }
+  });
 
-  console.log(`[reddit-backfill-import] Done. analyzed=${totalAnalyzed}, inserted=${totalInserted}`);
-  return { totalAnalyzed, totalInserted };
+  await Promise.all(workers);
+
+  const cancelled = runId ? await isRunCancelling(runId) : false;
+  console.log(`[reddit-backfill-import] Done. analyzed=${totalAnalyzed}, inserted=${totalInserted}, cancelled=${cancelled}`);
+  return { totalAnalyzed, totalInserted, cancelled };
 }
 
 Deno.serve(async (req) => {
@@ -310,8 +341,10 @@ Deno.serve(async (req) => {
       symbols = [],
       batch_size = 25,
       max_items = 25000,
+      concurrency = 3,
     } = body ?? {};
     const run_id = body?.run_id ?? (crypto?.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`);
+    const concurrency_safe = Math.min(5, Math.max(1, Number(concurrency ?? 3)));
     if (batch_size < 5 || batch_size > 100) {
       return new Response(
         JSON.stringify({ error: "batch_size must be between 5 and 100" }),
@@ -356,7 +389,7 @@ await upsertRun(run_id, { status: 'running', file: basename, batch_size });
 // @ts-ignore EdgeRuntime is available in Supabase Edge Functions
       EdgeRuntime.waitUntil((async () => {
         try {
-          console.log(`[reddit-backfill-import] background start url=${jsonl_url} batch_size=${batch_size}`);
+          console.log(`[reddit-backfill-import] background start url=${jsonl_url} batch_size=${batch_size} concurrency=${concurrency_safe}`);
           const collected: RedditPost[] = [];
           let scanned = 0;
           for await (const raw of streamNDJSON(jsonl_url)) {
@@ -370,9 +403,9 @@ await upsertRun(run_id, { status: 'running', file: basename, batch_size });
           }
           console.log(`[reddit-backfill-import] background scanned=${scanned} queued=${collected.length}`);
           await updateRun(run_id, { scanned_total: scanned, queued_total: collected.length });
-          const result = await processPipeline(collected, batch_size, run_id);
+          const result = await processPipeline(collected, batch_size, run_id, concurrency_safe);
           await updateRun(run_id, {
-            status: 'succeeded',
+            status: result.cancelled ? 'cancelled' : 'succeeded',
             finished_at: new Date().toISOString(),
             analyzed_total: result.totalAnalyzed,
             inserted_total: result.totalInserted,
@@ -391,6 +424,7 @@ await upsertRun(run_id, { status: 'running', file: basename, batch_size });
           note: 'Processing started in background',
           file: basename,
           batch_size,
+          concurrency: concurrency_safe,
           run_id,
         }),
         { status: 202, headers: { ...corsHeaders, "Content-Type": "application/json" } }

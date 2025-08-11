@@ -17,6 +17,7 @@ const RedditBackfillImport = () => {
   const [subs, setSubs] = useState(DEFAULT_SUBS);
   const [batchSize, setBatchSize] = useState(25);
   const [maxItems, setMaxItems] = useState<number>(25000);
+  const [concurrency, setConcurrency] = useState<number>(3);
   const [isRunning, setIsRunning] = useState(false);
   const [currentRunId, setCurrentRunId] = useState<string | null>(null);
   const [insertedCount, setInsertedCount] = useState<number | null>(null);
@@ -57,6 +58,7 @@ const RedditBackfillImport = () => {
             batch_size: batchSize,
             run_id: runId,
             max_items: maxItems,
+            concurrency,
           }
         });
         if (error) throw error;
@@ -76,6 +78,19 @@ const RedditBackfillImport = () => {
       toast({ title: "Backfill Error", description: e?.message ?? 'Failed to start backfill', variant: "destructive" });
     } finally {
       setIsRunning(false);
+    }
+  };
+
+  const cancelRun = async () => {
+    if (!currentRunId) return;
+    const { error } = await supabase
+      .from('import_runs')
+      .update({ status: 'cancelling' })
+      .eq('run_id', currentRunId);
+    if (error) {
+      toast({ title: 'Cancel failed', description: error.message, variant: 'destructive' });
+    } else {
+      toast({ title: 'Cancelling…', description: 'The run will stop at the next batch boundary.' });
     }
   };
 
@@ -187,7 +202,7 @@ const RedditBackfillImport = () => {
           <Label htmlFor="subs">Subreddits (comma-separated)</Label>
           <Textarea id="subs" rows={2} value={subs} onChange={(e) => setSubs(e.target.value)} />
         </div>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
           <div className="space-y-2">
             <Label htmlFor="batch">Batch size</Label>
             <Input id="batch" type="number" min={5} max={100} value={batchSize} onChange={(e) => setBatchSize(parseInt(e.target.value || '25'))} />
@@ -197,13 +212,24 @@ const RedditBackfillImport = () => {
             <Input id="max-items" type="number" min={0} value={maxItems} onChange={(e) => setMaxItems(parseInt(e.target.value || '0'))} />
           </div>
           <div className="space-y-2">
+            <Label htmlFor="concurrency">Concurrency</Label>
+            <Input id="concurrency" type="number" min={1} max={5} value={concurrency} onChange={(e) => setConcurrency(parseInt(e.target.value || '3'))} />
+          </div>
+          <div className="space-y-2">
             <Label>Symbols</Label>
             <p className="text-sm text-muted-foreground">Using {(typeof getAllCanonicalTickers === 'function' ? getAllCanonicalTickers() : getAllTickers()).length} tracked tickers</p>
           </div>
         </div>
-        <Button className="w-full" onClick={startBackfill} disabled={isRunning}>
-          {isRunning ? 'Starting…' : 'Start Reddit Backfill'}
-        </Button>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+          <Button className="w-full" onClick={startBackfill} disabled={isRunning}>
+            {isRunning ? 'Starting…' : 'Start Reddit Backfill'}
+          </Button>
+          {currentRunId && (runInfo?.status === 'running' || runInfo?.status === 'queued') && (
+            <Button type="button" variant="destructive" className="w-full" onClick={cancelRun}>
+              Cancel Run
+            </Button>
+          )}
+        </div>
         {currentRunId && (
           <div className="text-sm text-muted-foreground space-y-2">
             <div className="flex items-center gap-2">
