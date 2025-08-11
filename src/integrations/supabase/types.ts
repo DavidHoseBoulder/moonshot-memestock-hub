@@ -315,6 +315,7 @@ export type Database = {
           raw_sentiment: number | null
           sentiment_score: number | null
           source: string
+          source_id: string | null
           symbol: string
           updated_at: string
           volume_indicator: number | null
@@ -331,6 +332,7 @@ export type Database = {
           raw_sentiment?: number | null
           sentiment_score?: number | null
           source: string
+          source_id?: string | null
           symbol: string
           updated_at?: string
           volume_indicator?: number | null
@@ -347,6 +349,7 @@ export type Database = {
           raw_sentiment?: number | null
           sentiment_score?: number | null
           source?: string
+          source_id?: string | null
           symbol?: string
           updated_at?: string
           volume_indicator?: number | null
