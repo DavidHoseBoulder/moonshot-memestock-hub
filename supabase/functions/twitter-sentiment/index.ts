@@ -143,7 +143,7 @@ function analyzeSentiment(text: string): { sentiment: number; confidence: number
 
 // Unified ticker matching utilities (identical across platforms)
 const TICKER_LIST = (
-  'GME|AMC|BBBYQ|BB|NOK|KOSS|EXPR|WISH|CLOV|SNDL|TSLA|AAPL|MSFT|NVDA|AMD|PLTR|META|AMZN|SNAP|INTC|AI|BBAI|SOUN|UPST|SNOW|NET|DDOG|CRWD|PATH|COIN|RIOT|MARA|HOOD|SQ|PYPL|SOFI|LCID|RBLX|MSTR|NIO|XPEV|LI|RIVN|FSR|NKLA|ASTS|SPCE|QS|RUN|NVAX|SAVA|MRNA|BNTX|CYTO|MNMD|IOVA|VSTM|DIS|NFLX|WBD|TTD|ROKU|PARA|FUBO|PINS|BILI|CVNA|CHWY|ETSY|PTON|BYND|WMT|TGT|COST|BURL|NKE|FRCB|WAL|BANC|SCHW|GS|JPM|BAC|C|HBAN|USB|HYMC|MULN|MCOM|TTOO|MEGL|ILAG|ATER|CTRM'
+  'GME|AMC|BB|NOK|KOSS|CLOV|SNDL|DWAC|VFS|HKD|TSLA|AAPL|MSFT|NVDA|AMD|PLTR|META|AMZN|SNAP|INTC|AI|BBAI|SOUN|C3AI|UPST|SNOW|NET|DDOG|CRWD|PATH|COIN|RIOT|MARA|HOOD|SQ|PYPL|SOFI|LCID|RBLX|MSTR|NIO|XPEV|LI|RIVN|CHPT|NKLA|ASTS|SPCE|QS|RUN|NVAX|SAVA|MRNA|BNTX|CYTO|MNMD|IOVA|VSTM|PFE|GILD|DIS|NFLX|WBD|TTD|ROKU|PARA|FUBO|PINS|BILI|GOOGL|CVNA|CHWY|ETSY|PTON|BYND|WMT|TGT|COST|BURL|NKE|PNC|WAL|BANC|SCHW|GS|JPM|BAC|C|HBAN|USB|HYMC|MULN|MCOM|TTOO|FFIE|MEGL|ILAG|ATER|CTRM|BBIG'
 ).split('|');
 const SHORT_TICKERS = TICKER_LIST.filter(t => t.length <= 3);
 const LONG_TICKERS = TICKER_LIST.filter(t => t.length > 3);
@@ -156,6 +156,21 @@ function extractTickers(text: string): string[] {
   while ((m = SHORT_RE.exec(text)) !== null) out.push(m[2].toUpperCase());
   while ((m = LONG_RE.exec(text)) !== null) out.push(m[2].toUpperCase());
   return out;
+}
+
+// Backoff-aware fetch helper
+async function fetchWithBackoff(url: string, init: RequestInit = {}, maxRetries = 3, baseDelayMs = 2000): Promise<Response> {
+  let attempt = 0;
+  while (true) {
+    const res = await fetch(url, init);
+    if (res.ok || attempt >= maxRetries || (res.status < 500 && res.status !== 429)) return res;
+    const retryAfter = Number(res.headers.get('retry-after'));
+    const jitter = Math.floor(Math.random() * 250);
+    const delay = retryAfter ? retryAfter * 1000 : baseDelayMs * Math.pow(2, attempt) + jitter;
+    console.warn(`Backoff ${delay}ms for status ${res.status}`);
+    await new Promise(r => setTimeout(r, delay));
+    attempt++;
+  }
 }
 
 Deno.serve(async (req) => {
@@ -234,12 +249,12 @@ Deno.serve(async (req) => {
           const searchQuery = `$${symbol} OR ${symbol} stock -is:retweet lang:en`;
           const twitterUrl = `https://api.twitter.com/2/tweets/search/recent?query=${encodeURIComponent(searchQuery)}&max_results=10&tweet.fields=created_at,public_metrics,author_id`;
           
-          const response = await fetch(twitterUrl, {
+const response = await fetchWithBackoff(twitterUrl, {
             headers: {
               'Authorization': `Bearer ${bearerToken}`,
               'User-Agent': 'Financial-Sentiment-Bot/1.0'
             }
-          });
+          }, 3, 5000);
 
           if (response.ok) {
             const data: TwitterSearchResponse = await response.json();

@@ -40,7 +40,7 @@ function prioritizeSymbolsByCategory(symbols: string[]): string[] {
 }
 
 // Unified ticker set and extraction regex (shared across platforms)
-const CANONICAL_TICKERS = [ 'GME','AMC','BBBYQ','BB','NOK','KOSS','EXPR','WISH','CLOV','SNDL','TSLA','AAPL','MSFT','NVDA','AMD','PLTR','META','AMZN','SNAP','INTC','AI','BBAI','SOUN','UPST','SNOW','NET','DDOG','CRWD','PATH','COIN','RIOT','MARA','HOOD','SQ','PYPL','SOFI','LCID','RBLX','MSTR','NIO','XPEV','LI','RIVN','FSR','NKLA','ASTS','SPCE','QS','RUN','NVAX','SAVA','MRNA','BNTX','CYTO','MNMD','IOVA','VSTM','DIS','NFLX','WBD','TTD','ROKU','PARA','FUBO','PINS','BILI','CVNA','CHWY','ETSY','PTON','BYND','WMT','TGT','COST','BURL','NKE','FRCB','WAL','BANC','SCHW','GS','JPM','BAC','C','HBAN','USB','HYMC','MULN','MCOM','TTOO','MEGL','ILAG','ATER','CTRM' ] as const;
+const CANONICAL_TICKERS = [ 'GME','AMC','BB','NOK','KOSS','CLOV','SNDL','DWAC','VFS','HKD','TSLA','AAPL','MSFT','NVDA','AMD','PLTR','META','AMZN','SNAP','INTC','AI','BBAI','SOUN','C3AI','UPST','SNOW','NET','DDOG','CRWD','PATH','COIN','RIOT','MARA','HOOD','SQ','PYPL','SOFI','LCID','RBLX','MSTR','NIO','XPEV','LI','RIVN','CHPT','NKLA','ASTS','SPCE','QS','RUN','NVAX','SAVA','MRNA','BNTX','CYTO','MNMD','IOVA','VSTM','PFE','GILD','DIS','NFLX','WBD','TTD','ROKU','PARA','FUBO','PINS','BILI','GOOGL','CVNA','CHWY','ETSY','PTON','BYND','WMT','TGT','COST','BURL','NKE','PNC','WAL','BANC','SCHW','GS','JPM','BAC','C','HBAN','USB','HYMC','MULN','MCOM','TTOO','FFIE','MEGL','ILAG','ATER','CTRM','BBIG' ] as const;
 const SHORT_TICKERS = CANONICAL_TICKERS.filter(t => t.length <= 3);
 const LONG_TICKERS = CANONICAL_TICKERS.filter(t => t.length > 3);
 const SHORT_REGEX = new RegExp(`(^|\\W)(\\$(?:${SHORT_TICKERS.join('|')}))(\\W|$)`, 'gi');
@@ -108,6 +108,21 @@ async function getRecentYouTubeSentiment(symbols: string[]) {
   })
   
   return Array.from(symbolMap.entries()).map(([symbol, data]) => ({ symbol, data }))
+}
+
+// Backoff-aware fetch helper
+async function fetchWithBackoff(url: string, init: RequestInit = {}, maxRetries = 3, baseDelayMs = 1000): Promise<Response> {
+  let attempt = 0;
+  while (true) {
+    const res = await fetch(url, init);
+    if (res.ok || attempt >= maxRetries || (res.status < 500 && res.status !== 429)) return res;
+    const retryAfter = Number(res.headers.get('retry-after'));
+    const jitter = Math.floor(Math.random() * 250);
+    const delay = retryAfter ? retryAfter * 1000 : baseDelayMs * Math.pow(2, attempt) + jitter;
+    console.warn(`Backoff ${delay}ms for status ${res.status}`);
+    await new Promise(r => setTimeout(r, delay));
+    attempt++;
+  }
 }
 
 serve(async (req) => {
@@ -184,7 +199,7 @@ serve(async (req) => {
           // Search for recent videos about the stock (reduced maxResults to save quota)
           const searchUrl = `https://www.googleapis.com/youtube/v3/search?part=snippet&q=${symbol}+stock+analysis&type=video&order=date&maxResults=2&key=${youtubeApiKey}`
           
-          const searchResponse = await fetch(searchUrl)
+          const searchResponse = await fetchWithBackoff(searchUrl)
           if (!searchResponse.ok) {
             console.log(`YouTube search failed for ${symbol}: ${searchResponse.status}`)
             continue
@@ -205,7 +220,7 @@ serve(async (req) => {
             try {
               const commentsUrl = `https://www.googleapis.com/youtube/v3/commentThreads?part=snippet&videoId=${video.id.videoId}&maxResults=5&order=relevance&key=${youtubeApiKey}`
               
-              const commentsResponse = await fetch(commentsUrl)
+              const commentsResponse = await fetchWithBackoff(commentsUrl)
               if (!commentsResponse.ok) continue
 
               const commentsData = await commentsResponse.json()

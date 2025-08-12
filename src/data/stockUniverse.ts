@@ -8,14 +8,14 @@ export const STOCK_UNIVERSE: Stock[] = [
   // Meme & Retail
   { ticker: 'GME', category: 'Meme & Retail' },
   { ticker: 'AMC', category: 'Meme & Retail' },
-  { ticker: 'BBBYQ', category: 'Meme & Retail' },
   { ticker: 'BB', category: 'Meme & Retail' },
   { ticker: 'NOK', category: 'Meme & Retail' },
   { ticker: 'KOSS', category: 'Meme & Retail' },
-  { ticker: 'EXPR', category: 'Meme & Retail' },
-  { ticker: 'WISH', category: 'Meme & Retail' },
   { ticker: 'CLOV', category: 'Meme & Retail' },
   { ticker: 'SNDL', category: 'Meme & Retail' },
+  { ticker: 'DWAC', category: 'Meme & Retail' },
+  { ticker: 'VFS', category: 'Meme & Retail' },
+  { ticker: 'HKD', category: 'Meme & Retail' },
   
   // Tech & Momentum
   { ticker: 'TSLA', category: 'Tech & Momentum' },
@@ -58,7 +58,7 @@ export const STOCK_UNIVERSE: Stock[] = [
   { ticker: 'XPEV', category: 'EV & Alt-Tech' },
   { ticker: 'LI', category: 'EV & Alt-Tech' },
   { ticker: 'RIVN', category: 'EV & Alt-Tech' },
-  { ticker: 'FSR', category: 'EV & Alt-Tech' },
+  { ticker: 'CHPT', category: 'EV & Alt-Tech' },
   { ticker: 'NKLA', category: 'EV & Alt-Tech' },
   { ticker: 'ASTS', category: 'EV & Alt-Tech' },
   { ticker: 'SPCE', category: 'EV & Alt-Tech' },
@@ -74,6 +74,8 @@ export const STOCK_UNIVERSE: Stock[] = [
   { ticker: 'MNMD', category: 'Biotech & Pharma' },
   { ticker: 'IOVA', category: 'Biotech & Pharma' },
   { ticker: 'VSTM', category: 'Biotech & Pharma' },
+  { ticker: 'PFE', category: 'Biotech & Pharma' },
+  { ticker: 'GILD', category: 'Biotech & Pharma' },
   
   // Media & Internet
   { ticker: 'DIS', category: 'Media & Internet' },
@@ -85,7 +87,7 @@ export const STOCK_UNIVERSE: Stock[] = [
   { ticker: 'FUBO', category: 'Media & Internet' },
   { ticker: 'PINS', category: 'Media & Internet' },
   { ticker: 'BILI', category: 'Media & Internet' },
-  { ticker: 'ROBLOX', category: 'Media & Internet' },
+  { ticker: 'GOOGL', category: 'Media & Internet' },
   
   // Consumer Buzz
   { ticker: 'CVNA', category: 'Consumer Buzz' },
@@ -100,9 +102,9 @@ export const STOCK_UNIVERSE: Stock[] = [
   { ticker: 'NKE', category: 'Consumer Buzz' },
   
   // Banking
-  { ticker: 'FRCB', category: 'Banking' },
+  { ticker: 'PNC', category: 'Banking' },
   { ticker: 'WAL', category: 'Banking' },
-  { ticker: 'PACW', category: 'Banking' },
+  { ticker: 'BANC', category: 'Banking' },
   { ticker: 'SCHW', category: 'Banking' },
   { ticker: 'GS', category: 'Banking' },
   { ticker: 'JPM', category: 'Banking' },
@@ -114,14 +116,14 @@ export const STOCK_UNIVERSE: Stock[] = [
   // SPAC & Penny
   { ticker: 'HYMC', category: 'SPAC & Penny' },
   { ticker: 'MULN', category: 'SPAC & Penny' },
-  { ticker: 'HLBZ', category: 'SPAC & Penny' },
+  { ticker: 'MCOM', category: 'SPAC & Penny' },
   { ticker: 'TTOO', category: 'SPAC & Penny' },
-  { ticker: 'VINE', category: 'SPAC & Penny' },
+  { ticker: 'FFIE', category: 'SPAC & Penny' },
   { ticker: 'MEGL', category: 'SPAC & Penny' },
   { ticker: 'ILAG', category: 'SPAC & Penny' },
   { ticker: 'ATER', category: 'SPAC & Penny' },
   { ticker: 'CTRM', category: 'SPAC & Penny' },
-  { ticker: 'CEI', category: 'SPAC & Penny' },
+  { ticker: 'BBIG', category: 'SPAC & Penny' },
 ];
 
 export const CATEGORIES = [

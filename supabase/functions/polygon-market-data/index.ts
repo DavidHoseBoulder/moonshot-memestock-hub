@@ -25,6 +25,21 @@ interface PolygonMarketData {
   price_change_5d: number
 }
 
+// Backoff-aware fetch helper
+async function fetchWithBackoff(url: string, init: RequestInit = {}, maxRetries = 3, baseDelayMs = 2000): Promise<Response> {
+  let attempt = 0;
+  while (true) {
+    const res = await fetch(url, init);
+    if (res.ok || attempt >= maxRetries || (res.status < 500 && res.status !== 429)) return res;
+    const retryAfter = Number(res.headers.get('retry-after'));
+    const jitter = Math.floor(Math.random() * 250);
+    const delay = retryAfter ? retryAfter * 1000 : baseDelayMs * Math.pow(2, attempt) + jitter;
+    console.warn(`Backoff ${delay}ms for status ${res.status}`);
+    await new Promise(r => setTimeout(r, delay));
+    attempt++;
+  }
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders })
@@ -85,7 +100,7 @@ Deno.serve(async (req) => {
           
           console.log(`Fetching Polygon data for ${symbol} from ${fromDate} to ${toDate}`)
           
-          const response = await fetch(barsUrl)
+          const response = await fetchWithBackoff(barsUrl)
         
           if (!response.ok) {
             console.error(`Failed to fetch Polygon data for ${symbol}:`, response.status, response.statusText)

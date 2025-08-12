@@ -38,7 +38,18 @@ function prioritizeSymbolsByCategory(symbols: string[]): string[] {
 }
 
 // Unified ticker set and extraction regex (shared across platforms)
-const CANONICAL_TICKERS = [ 'GME','AMC','BBBYQ','BB','NOK','KOSS','EXPR','WISH','CLOV','SNDL','TSLA','AAPL','MSFT','NVDA','AMD','PLTR','META','AMZN','SNAP','INTC','AI','BBAI','SOUN','UPST','SNOW','NET','DDOG','CRWD','PATH','COIN','RIOT','MARA','HOOD','SQ','PYPL','SOFI','LCID','RBLX','MSTR','NIO','XPEV','LI','RIVN','FSR','NKLA','ASTS','SPCE','QS','RUN','NVAX','SAVA','MRNA','BNTX','CYTO','MNMD','IOVA','VSTM','DIS','NFLX','WBD','TTD','ROKU','PARA','FUBO','PINS','BILI','CVNA','CHWY','ETSY','PTON','BYND','WMT','TGT','COST','BURL','NKE','FRCB','WAL','BANC','SCHW','GS','JPM','BAC','C','HBAN','USB','HYMC','MULN','MCOM','TTOO','MEGL','ILAG','ATER','CTRM' ] as const;
+const CANONICAL_TICKERS = [
+  'GME','AMC','BB','NOK','KOSS','CLOV','SNDL','DWAC','VFS','HKD',
+  'TSLA','AAPL','MSFT','NVDA','AMD','PLTR','META','AMZN','SNAP','INTC',
+  'AI','BBAI','SOUN','C3AI','UPST','SNOW','NET','DDOG','CRWD','PATH',
+  'COIN','RIOT','MARA','HOOD','SQ','PYPL','SOFI','LCID','RBLX','MSTR',
+  'NIO','XPEV','LI','RIVN','CHPT','NKLA','ASTS','SPCE','QS','RUN',
+  'NVAX','SAVA','MRNA','BNTX','CYTO','MNMD','IOVA','VSTM','PFE','GILD',
+  'DIS','NFLX','WBD','TTD','ROKU','PARA','FUBO','PINS','BILI','GOOGL',
+  'CVNA','CHWY','ETSY','PTON','BYND','WMT','TGT','COST','BURL','NKE',
+  'PNC','WAL','BANC','SCHW','GS','JPM','BAC','C','HBAN','USB',
+  'HYMC','MULN','MCOM','TTOO','FFIE','MEGL','ILAG','ATER','CTRM','BBIG'
+] as const;
 const SHORT_TICKERS = CANONICAL_TICKERS.filter(t => t.length <= 3);
 const LONG_TICKERS = CANONICAL_TICKERS.filter(t => t.length > 3);
 const SHORT_REGEX = new RegExp(`(^|\\W)(\\$(?:${SHORT_TICKERS.join('|')}))(\\W|$)`, 'gi');
@@ -57,6 +68,21 @@ function extractTickers(text: string): string[] {
   }
   SHORT_REGEX.lastIndex = 0; LONG_REGEX.lastIndex = 0;
   return Array.from(found);
+}
+
+// Backoff-aware fetch helper
+async function fetchWithBackoff(url: string, init: RequestInit = {}, maxRetries = 3, baseDelayMs = 1000): Promise<Response> {
+  let attempt = 0;
+  while (true) {
+    const res = await fetch(url, init);
+    if (res.ok || attempt >= maxRetries || (res.status < 500 && res.status !== 429)) return res;
+    const retryAfter = Number(res.headers.get('retry-after'));
+    const jitter = Math.floor(Math.random() * 250);
+    const delay = retryAfter ? retryAfter * 1000 : baseDelayMs * Math.pow(2, attempt) + jitter;
+    console.warn(`Backoff for ${delay}ms (status ${res.status}) -> ${url}`);
+    await new Promise(r => setTimeout(r, delay));
+    attempt++;
+  }
 }
 
 // Initialize Supabase client
@@ -152,11 +178,11 @@ Deno.serve(async (req) => {
         try {
           const stocktwitsUrl = `https://api.stocktwits.com/api/2/streams/symbol/${symbol}.json?limit=${Math.min(limit, 20)}`
           
-          const response = await fetch(stocktwitsUrl, {
+          const response = await fetchWithBackoff(stocktwitsUrl, {
             headers: {
               'User-Agent': 'Financial-Pipeline/1.0'
             }
-          })
+          }, 3, 1000)
 
           if (response.ok) {
             const data = await response.json()
@@ -183,7 +209,7 @@ Deno.serve(async (req) => {
             console.warn(`Failed to fetch ${symbol}: ${response.status}`)
           }
           
-          await new Promise(resolve => setTimeout(resolve, 250)) // Delay between requests
+          await new Promise(resolve => setTimeout(resolve, 1200)) // Pacing between requests
           
         } catch (error) {
           console.warn(`Error fetching ${symbol}:`, error.message)
