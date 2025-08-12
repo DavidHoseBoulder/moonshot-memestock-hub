@@ -98,19 +98,37 @@ const ExtractionTester: React.FC = () => {
 
   const aggregatedMentions = useMemo(() => {
     const set = new Set<string>();
+
+    // Normalize helpers
+    const asArray = (val: any): any[] => (Array.isArray(val) ? val : []);
+
+    // financial-news may return an object with { articles: [] } or a raw array
+    const newsData = results["financial-news"] as any;
+    const newsArticles: any[] = Array.isArray(newsData)
+      ? newsData
+      : asArray(newsData?.articles);
+
     // financial-news: array of articles with symbols_mentioned
-    const news = results["financial-news"] as any[] | undefined;
-    news?.forEach(a => (a?.symbols_mentioned || []).forEach((t: string) => set.add(t)));
+    newsArticles.forEach((a: any) => asArray(a?.symbols_mentioned).forEach((t: string) => set.add(t)));
+
     // stocktwits: has ticker_counts or messages containing extracted tickers
     const st = results["stocktwits"] as any;
     if (st?.ticker_counts) {
       Object.keys(st.ticker_counts).forEach(t => set.add(t));
     }
-    // youtube/twitter may return per-symbol entries
-    const yt = results["youtube"] as any[] | undefined;
-    yt?.forEach(item => item?.symbol && set.add(item.symbol));
-    const tw = results["twitter"] as any[] | undefined;
-    tw?.forEach(item => item?.symbol && set.add(item.symbol));
+    if (Array.isArray(st?.messages)) {
+      st.messages.forEach((m: any) => asArray(m?.symbols).forEach((s: any) => s?.symbol && set.add(s.symbol)));
+    }
+
+    // youtube/twitter may return per-symbol entries or be nested
+    const ytData = results["youtube"] as any;
+    const ytItems: any[] = Array.isArray(ytData) ? ytData : asArray(ytData?.youtube_sentiment);
+    ytItems.forEach(item => item?.symbol && set.add(item.symbol));
+
+    const twData = results["twitter"] as any;
+    const twItems: any[] = Array.isArray(twData) ? twData : asArray(twData?.items || twData?.tweets || twData?.twitter_sentiment);
+    twItems.forEach(item => item?.symbol && set.add(item.symbol));
+
     return Array.from(set).sort();
   }, [results]);
 
