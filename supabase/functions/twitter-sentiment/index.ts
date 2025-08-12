@@ -141,6 +141,23 @@ function analyzeSentiment(text: string): { sentiment: number; confidence: number
   return { sentiment, confidence };
 }
 
+// Unified ticker matching utilities (identical across platforms)
+const TICKER_LIST = (
+  'GME|AMC|BBBYQ|BB|NOK|KOSS|EXPR|WISH|CLOV|SNDL|TSLA|AAPL|MSFT|NVDA|AMD|PLTR|META|AMZN|SNAP|INTC|AI|BBAI|SOUN|UPST|SNOW|NET|DDOG|CRWD|PATH|COIN|RIOT|MARA|HOOD|SQ|PYPL|SOFI|LCID|RBLX|MSTR|NIO|XPEV|LI|RIVN|FSR|NKLA|ASTS|SPCE|QS|RUN|NVAX|SAVA|MRNA|BNTX|CYTO|MNMD|IOVA|VSTM|DIS|NFLX|WBD|TTD|ROKU|PARA|FUBO|PINS|BILI|CVNA|CHWY|ETSY|PTON|BYND|WMT|TGT|COST|BURL|NKE|FRCB|WAL|BANC|SCHW|GS|JPM|BAC|C|HBAN|USB|HYMC|MULN|MCOM|TTOO|MEGL|ILAG|ATER|CTRM'
+).split('|');
+const SHORT_TICKERS = TICKER_LIST.filter(t => t.length <= 3);
+const LONG_TICKERS = TICKER_LIST.filter(t => t.length > 3);
+const SHORT_RE = new RegExp(`(^|\\W)\\$(${SHORT_TICKERS.join('|')})(?=\\W|$)`, 'gi');
+const LONG_RE = new RegExp(`(^|\\W)(${LONG_TICKERS.join('|')})(?=\\W|$)`, 'gi');
+function extractTickers(text: string): string[] {
+  if (!text) return [];
+  const out: string[] = [];
+  let m: RegExpExecArray | null;
+  while ((m = SHORT_RE.exec(text)) !== null) out.push(m[2].toUpperCase());
+  while ((m = LONG_RE.exec(text)) !== null) out.push(m[2].toUpperCase());
+  return out;
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders })
@@ -166,6 +183,7 @@ Deno.serve(async (req) => {
     console.log(`Found ${recentData.length} symbols with recent Twitter data, need to fetch ${symbolsToFetch.length} symbols`)
     
     const results: SentimentResult[] = []
+    const tickerCounts: Record<string, number> = {}
     
     // Convert database data to SentimentResult format
     recentData.forEach(({ symbol, data }) => {
@@ -238,6 +256,12 @@ Deno.serve(async (req) => {
                 const engagement = tweet.public_metrics.like_count + 
                                  tweet.public_metrics.retweet_count + 
                                  tweet.public_metrics.reply_count;
+                
+                // Ticker extraction and counting (case-insensitive, $ for short tickers)
+                const matches = extractTickers(tweet.text);
+                for (const sym of matches) {
+                  tickerCounts[sym] = (tickerCounts[sym] || 0) + 1;
+                }
                 
                 console.log(`Tweet: "${tweet.text.substring(0, 50)}..." - Sentiment: ${analysis.sentiment}, Confidence: ${analysis.confidence}`);
                 

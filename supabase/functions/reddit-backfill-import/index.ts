@@ -63,18 +63,34 @@ function chunk<T>(arr: T[], size: number): T[][] {
   return res;
 }
 
-// Helper: simple symbol match (case-sensitive tickers like TSLA, AAPL)
-function containsAnySymbol(text: string, symbols: string[]): boolean {
-  if (!symbols?.length) return true; // no filter
-  const upper = text.toUpperCase();
-  return symbols.some((s) => upper.includes(s.toUpperCase()));
+// Unified ticker matching based on refined methodology
+// Source list maintained identically across platforms
+const TICKER_LIST = (
+  'GME|AMC|BBBYQ|BB|NOK|KOSS|EXPR|WISH|CLOV|SNDL|TSLA|AAPL|MSFT|NVDA|AMD|PLTR|META|AMZN|SNAP|INTC|AI|BBAI|SOUN|UPST|SNOW|NET|DDOG|CRWD|PATH|COIN|RIOT|MARA|HOOD|SQ|PYPL|SOFI|LCID|RBLX|MSTR|NIO|XPEV|LI|RIVN|FSR|NKLA|ASTS|SPCE|QS|RUN|NVAX|SAVA|MRNA|BNTX|CYTO|MNMD|IOVA|VSTM|DIS|NFLX|WBD|TTD|ROKU|PARA|FUBO|PINS|BILI|CVNA|CHWY|ETSY|PTON|BYND|WMT|TGT|COST|BURL|NKE|FRCB|WAL|BANC|SCHW|GS|JPM|BAC|C|HBAN|USB|HYMC|MULN|MCOM|TTOO|MEGL|ILAG|ATER|CTRM'
+).split('|');
+const SHORT_TICKERS = TICKER_LIST.filter(t => t.length <= 3);
+const LONG_TICKERS = TICKER_LIST.filter(t => t.length > 3);
+const SHORT_RE = new RegExp(`(^|\\W)\\$(${SHORT_TICKERS.join('|')})(?=\\W|$)`, 'gi');
+const LONG_RE = new RegExp(`(^|\\W)(${LONG_TICKERS.join('|')})(?=\\W|$)`, 'gi');
+
+function extractTickers(text: string): string[] {
+  if (!text) return [];
+  const out: string[] = [];
+  let m: RegExpExecArray | null;
+  while ((m = SHORT_RE.exec(text)) !== null) out.push(m[2].toUpperCase());
+  while ((m = LONG_RE.exec(text)) !== null) out.push(m[2].toUpperCase());
+  return out;
 }
 
-// Helper: filter post by subreddit + symbols
-function passesFilters(post: RedditPost, subreddits?: string[], symbols?: string[]): boolean {
+function passesFilters(post: RedditPost, subreddits?: string[], symbolsFilter?: string[]): boolean {
   const subredditOk = !subreddits?.length || subreddits.map((s) => s.toLowerCase()).includes(post.subreddit?.toLowerCase());
-  const content = `${post.title ?? ""} ${post.selftext ?? ""}`;
-  const symbolOk = containsAnySymbol(content, symbols ?? []);
+  const content = `${post.title ?? ''} ${post.selftext ?? ''}`;
+  const matches = extractTickers(content);
+  const anyMatch = matches.length > 0;
+  if (!anyMatch) return false;
+  if (!symbolsFilter?.length) return subredditOk;
+  const filterSet = new Set(symbolsFilter.map(s => s.toUpperCase()));
+  const symbolOk = matches.some(m => filterSet.has(m));
   return subredditOk && symbolOk;
 }
 
@@ -325,6 +341,12 @@ async function processPipeline(posts: RedditPost[], batchSize: number, runId?: s
   const batches = chunk(posts, batchSize);
   let totalAnalyzed = 0;
   let totalInserted = 0;
+  const tickerCounts = new Map<string, number>();
+
+  const inc = (sym: string, n: number = 1) => {
+    const k = sym.toUpperCase();
+    tickerCounts.set(k, (tickerCounts.get(k) || 0) + n);
+  };
 
   // Worker to process a single batch index
   const processOne = async (i: number) => {
@@ -360,6 +382,13 @@ async function processPipeline(posts: RedditPost[], batchSize: number, runId?: s
     if (newBatch.length === 0) {
       console.log(`[reddit-backfill-import] Batch ${i + 1}/${batches.length} skipped (all duplicates)`);
       return;
+    }
+
+    // Count tickers for velocity/coverage from raw content
+    for (const p of newBatch) {
+      const text = `${p.title ?? ''} ${p.selftext ?? ''}`;
+      const matches = extractTickers(text);
+      for (const sym of matches) inc(sym, 1);
     }
 
     const analyzed = await scoreBatch(newBatch);
@@ -401,7 +430,8 @@ async function processPipeline(posts: RedditPost[], batchSize: number, runId?: s
 
   const cancelled = runId ? await isRunCancelling(runId) : false;
   console.log(`[reddit-backfill-import] Done. analyzed=${totalAnalyzed}, inserted=${totalInserted}, cancelled=${cancelled}`);
-  return { totalAnalyzed, totalInserted, cancelled };
+  const ticker_counts = Object.fromEntries(tickerCounts.entries());
+  return { totalAnalyzed, totalInserted, cancelled, ticker_counts };
 }
 
 Deno.serve(async (req) => {
