@@ -186,15 +186,59 @@ function normalizeToRedditPost(raw: any): RedditPost | null {
   };
 }
 
-// Call existing sentiment scorer edge function (OpenAI-based)
+// Call existing sentiment scorer edge function (OpenAI-based) with retries and Claude fallback
 async function scoreBatch(posts: RedditPost[]): Promise<any[]> {
-  const { data, error } = await supabase.functions.invoke("ai-sentiment-analysis", {
-    body: { posts },
-  });
-  if (error) throw error;
-  // Expect data.analyzed_posts or similar; fall back to data
-  const analyzed = (data?.analyzed_posts ?? data ?? []) as any[];
-  return analyzed;
+  const normalize = (resp: any): any[] => {
+    if (!resp) return [];
+    const body = resp;
+    // Try a few common shapes
+    return (body.analyzed_posts ?? body.posts ?? body.results ?? body) as any[];
+  };
+
+  const invoke = async (fn: string) => {
+    const { data, error } = await supabase.functions.invoke(fn, { body: { posts } });
+    if (error) throw error;
+    return normalize(data);
+  };
+
+  const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+  // Try OpenAI-backed scorer first, with exponential backoff
+  let lastErr: any = null;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      const analyzed = await invoke("ai-sentiment-analysis");
+      return analyzed;
+    } catch (err: any) {
+      lastErr = err;
+      const status = err?.context?.status ?? err?.status ?? 0;
+      const retriable = status === 0 || status === 429 || (status >= 500 && status < 600);
+      console.warn(`[reddit-backfill-import] ai-sentiment-analysis failed (attempt ${attempt + 1}) status=${status}`, err?.message || err);
+      if (!retriable) break;
+      const backoff = 500 * Math.pow(2, attempt) + Math.floor(Math.random() * 200);
+      await sleep(backoff);
+    }
+  }
+
+  // Fallback to Claude-backed scorer
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      const analyzed = await invoke("ai-sentiment-claude");
+      console.log('[reddit-backfill-import] used Claude fallback successfully');
+      return analyzed;
+    } catch (err: any) {
+      lastErr = err;
+      const status = err?.context?.status ?? err?.status ?? 0;
+      const retriable = status === 0 || status === 429 || (status >= 500 && status < 600);
+      console.warn(`[reddit-backfill-import] ai-sentiment-claude failed (attempt ${attempt + 1}) status=${status}`, err?.message || err);
+      if (!retriable) break;
+      const backoff = 800 * (attempt + 1) + Math.floor(Math.random() * 200);
+      await sleep(backoff);
+    }
+  }
+
+  console.error('[reddit-backfill-import] All analyzers failed; continuing without sentiment');
+  return [];
 }
 
 // Map analyzed items to sentiment_history rows
