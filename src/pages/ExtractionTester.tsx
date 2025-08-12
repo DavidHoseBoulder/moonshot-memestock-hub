@@ -132,6 +132,105 @@ const ExtractionTester: React.FC = () => {
     return Array.from(set).sort();
   }, [results]);
 
+  const perSourceSymbols = useMemo(() => {
+    const asArray = (val: any): any[] => (Array.isArray(val) ? val : []);
+
+    const stSet = new Set<string>();
+    const st = results["stocktwits"] as any;
+    if (st?.ticker_counts) {
+      Object.keys(st.ticker_counts).forEach((t) => stSet.add(t));
+    }
+    if (Array.isArray(st?.messages)) {
+      st.messages.forEach((m: any) =>
+        asArray(m?.symbols).forEach((s: any) => s?.symbol && stSet.add(s.symbol))
+      );
+    }
+
+    const ytSet = new Set<string>();
+    const ytData = results["youtube"] as any;
+    const ytItems: any[] = Array.isArray(ytData)
+      ? ytData
+      : asArray(ytData?.youtube_sentiment);
+    ytItems.forEach((item) => item?.symbol && ytSet.add(item.symbol));
+
+    const newsSet = new Set<string>();
+    const newsData = results["financial-news"] as any;
+    const newsArticles: any[] = Array.isArray(newsData)
+      ? newsData
+      : asArray(newsData?.articles);
+    newsArticles.forEach((a: any) =>
+      asArray(a?.symbols_mentioned).forEach((t: string) => newsSet.add(t))
+    );
+
+    const twSet = new Set<string>();
+    const twData = results["twitter"] as any;
+    const twItems: any[] = Array.isArray(twData)
+      ? twData
+      : asArray(twData?.items || twData?.tweets || twData?.twitter_sentiment);
+    twItems.forEach((item) => item?.symbol && twSet.add(item.symbol));
+
+    return {
+      stocktwits: Array.from(stSet).sort(),
+      youtube: Array.from(ytSet).sort(),
+      financialNews: Array.from(newsSet).sort(),
+      twitter: Array.from(twSet).sort(),
+    } as const;
+  }, [results]);
+
+  const counts = useMemo(
+    () => ({
+      stocktwits: perSourceSymbols.stocktwits.length,
+      youtube: perSourceSymbols.youtube.length,
+      financialNews: perSourceSymbols.financialNews.length,
+      twitter: perSourceSymbols.twitter.length,
+    }),
+    [perSourceSymbols]
+  );
+
+  const persistMentions = useCallback(async () => {
+    setLoading((l) => ({ ...l, persist: true }));
+    try {
+      const nowIso = new Date().toISOString();
+      const rows: any[] = [];
+      const entries = [
+        ["stocktwits", perSourceSymbols.stocktwits, counts.stocktwits] as const,
+        ["youtube", perSourceSymbols.youtube, counts.youtube] as const,
+        ["financial-news", perSourceSymbols.financialNews, counts.financialNews] as const,
+        ["twitter", perSourceSymbols.twitter, counts.twitter] as const,
+      ];
+
+      for (const [source, list, cnt] of entries) {
+        list.forEach((sym) =>
+          rows.push({
+            symbol: sym,
+            source,
+            data_timestamp: nowIso,
+            collected_at: nowIso,
+            sentiment_score: 0,
+            raw_sentiment: 0,
+            content_snippet: "Mention detected via Extraction Tester",
+            metadata: { origin: "extraction-tester", per_source_count: cnt, input_symbols: symbols },
+            volume_indicator: 1,
+          })
+        );
+      }
+
+      if (rows.length === 0) {
+        toast({ title: "Nothing to persist", description: "Run a test first." });
+        return;
+      }
+
+      const { error } = await supabase.from("sentiment_history").insert(rows);
+      if (error) throw error;
+      toast({ title: "Persisted mentions", description: `Inserted ${rows.length} rows into sentiment_history` });
+    } catch (e: any) {
+      console.error(e);
+      toast({ title: "Persist failed", description: e?.message || "Unknown error" });
+    } finally {
+      setLoading((l) => ({ ...l, persist: false }));
+    }
+  }, [counts, perSourceSymbols, symbols, toast]);
+
   return (
     <div className="container mx-auto px-4 py-6">
       <header className="mb-6">
@@ -165,8 +264,18 @@ const ExtractionTester: React.FC = () => {
 
         <section className="mb-6">
           <Card>
-            <CardHeader>
+            <CardHeader className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
               <CardTitle>Aggregated Mentions</CardTitle>
+              <div className="flex flex-wrap items-center gap-2">
+                <Badge variant="secondary">Total: {aggregatedMentions.length}</Badge>
+                <Badge variant="secondary">StockTwits: {counts.stocktwits}</Badge>
+                <Badge variant="secondary">YouTube: {counts.youtube}</Badge>
+                <Badge variant="secondary">Financial News: {counts.financialNews}</Badge>
+                <Badge variant="secondary">Twitter: {counts.twitter}</Badge>
+                <Button size="sm" onClick={persistMentions} disabled={aggregatedMentions.length === 0 || !!loading.persist}>
+                  {loading.persist ? 'Persisting...' : 'Persist to sentiment_history'}
+                </Button>
+              </div>
             </CardHeader>
             <CardContent>
               <div className="flex flex-wrap gap-2">
