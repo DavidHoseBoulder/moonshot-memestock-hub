@@ -12,6 +12,7 @@ import SentimentDashboardPage from "./pages/SentimentDashboard";
 import BulkImport from "./pages/BulkImport";
 import NotFound from "./pages/NotFound";
 import Auth from "./pages/Auth";
+import ExtractionTester from "./pages/ExtractionTester";
 
 const queryClient = new QueryClient();
 
@@ -50,6 +51,7 @@ const App: React.FC = () => {
             <Route path="/trading-pipeline" element={<ProtectedRoute><TradingPipeline /></ProtectedRoute>} />
             <Route path="/sentiment" element={<ProtectedRoute><SentimentDashboardPage /></ProtectedRoute>} />
             <Route path="/bulk-import" element={<ProtectedRoute><BulkImport /></ProtectedRoute>} />
+            <Route path="/dev/extraction-tester" element={<ProtectedRoute><ExtractionTester /></ProtectedRoute>} />
             <Route path="*" element={<NotFound />} />
           </Routes>
         </BrowserRouter>
