@@ -50,6 +50,39 @@ interface NewsArticle {
   symbols_mentioned?: string[];
 }
 
+// Canonical ticker set and compiled regex (cold start)
+const CANONICAL_TICKERS = [
+  'GME','AMC','BB','NOK','KOSS','CLOV','SNDL','DWAC','VFS','HKD',
+  'TSLA','AAPL','MSFT','NVDA','AMD','PLTR','META','AMZN','SNAP','INTC',
+  'AI','BBAI','SOUN','C3AI','UPST','SNOW','NET','DDOG','CRWD','PATH',
+  'COIN','RIOT','MARA','HOOD','SQ','PYPL','SOFI','LCID','RBLX','MSTR',
+  'NIO','XPEV','LI','RIVN','CHPT','NKLA','ASTS','SPCE','QS','RUN',
+  'NVAX','SAVA','MRNA','BNTX','CYTO','MNMD','IOVA','VSTM','PFE','GILD',
+  'DIS','NFLX','WBD','TTD','ROKU','PARA','FUBO','PINS','BILI','GOOGL',
+  'CVNA','CHWY','ETSY','PTON','BYND','WMT','TGT','COST','BURL','NKE',
+  'PNC','WAL','BANC','SCHW','GS','JPM','BAC','C','HBAN','USB',
+  'HYMC','MULN','MCOM','TTOO','FFIE','MEGL','ILAG','ATER','CTRM','BBIG'
+] as const;
+const SHORT_TICKERS = CANONICAL_TICKERS.filter(t => t.length <= 3);
+const LONG_TICKERS = CANONICAL_TICKERS.filter(t => t.length > 3);
+const SHORT_REGEX = new RegExp(`(^|\\W)(\\$(?:${SHORT_TICKERS.join('|')}))(\\W|$)`, 'gi');
+const LONG_REGEX = new RegExp(`(^|\\W)(${LONG_TICKERS.join('|')})(\\W|$)`, 'gi');
+function extractTickers(text: string): string[] {
+  if (!text) return [];
+  const found = new Set<string>();
+  let m: RegExpExecArray | null;
+  while ((m = SHORT_REGEX.exec(text)) !== null) {
+    const sym = m[2].replace('$','').toUpperCase();
+    if ((CANONICAL_TICKERS as readonly string[]).includes(sym)) found.add(sym);
+  }
+  while ((m = LONG_REGEX.exec(text)) !== null) {
+    const sym = (m[2] || '').toUpperCase();
+    if ((CANONICAL_TICKERS as readonly string[]).includes(sym)) found.add(sym);
+  }
+  SHORT_REGEX.lastIndex = 0; LONG_REGEX.lastIndex = 0;
+  return Array.from(found);
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders })
@@ -104,21 +137,21 @@ Deno.serve(async (req) => {
         if (response.ok) {
           const data = await response.json();
           if (data.articles && data.articles.length > 0) {
-            // Filter articles that mention our symbols
+            // Filter and enrich articles using unified ticker extraction
             const relevantArticles = data.articles.filter((article: any) => {
-              const content = `${article.title} ${article.description || ''}`.toLowerCase();
-              const isFinancial = content.includes('stock') || content.includes('market') || 
-                                content.includes('trading') || content.includes('earnings') || 
-                                content.includes('revenue') || content.includes('shares');
-              
-              if (!symbols) return isFinancial;
-              
-              const mentionsSymbol = symbols.some((symbol: string) => 
-                content.includes(symbol.toLowerCase()) || 
-                content.includes(`$${symbol.toLowerCase()}`)
-              );
-              
-              return isFinancial && mentionsSymbol;
+              const text = `${article.title || ''} ${article.description || ''} ${article.content || ''}`;
+              const lower = text.toLowerCase();
+              const isFinancial = lower.includes('stock') || lower.includes('market') || 
+                                  lower.includes('trading') || lower.includes('earnings') || 
+                                  lower.includes('revenue') || lower.includes('shares');
+              if (!isFinancial) return false;
+              if (!symbols) return true;
+              const found = extractTickers(text);
+              const filterSet = new Set(symbols.map((s: string) => s.toUpperCase()));
+              return found.some(s => filterSet.has(s));
+            }).map((article: any) => {
+              const text = `${article.title || ''} ${article.description || ''} ${article.content || ''}`;
+              return { ...article, symbols_mentioned: extractTickers(text) };
             });
             
             allArticles.push(...relevantArticles);
