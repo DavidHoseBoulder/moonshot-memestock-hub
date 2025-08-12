@@ -9,7 +9,7 @@ import { Progress } from "@/components/ui/progress";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { AlertTriangle, TrendingUp, Activity, Volume2, Target, Scan, Play, RefreshCw, Zap, Layers } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { STOCK_UNIVERSE, CATEGORIES, getStocksByCategory, getAllTickers } from "@/data/stockUniverse";
+import { CATEGORIES, getStocksByCategory } from "@/data/stockUniverse";
 import { supabase } from "@/integrations/supabase/client";
 import { calculateRSI, estimateRSIFromMomentum } from "@/utils/technicalIndicators";
 import { aggregateSentiment, getSentimentLabel } from "@/utils/sentimentAggregator";
@@ -96,6 +96,26 @@ const DailyTradingPipeline = () => {
 
   // Removed sample data generation - will handle empty data states properly
 
+  // Load active tickers from Supabase ticker_universe
+  const fetchActiveTickers = async (): Promise<string[]> => {
+    try {
+      const { data, error } = await (supabase as any)
+        .from('ticker_universe')
+        .select('symbol')
+        .eq('active', true)
+        .order('priority', { ascending: true })
+        .order('symbol', { ascending: true });
+      if (error) {
+        addDebugInfo('TICKER_LOAD_ERROR', { error: error.message });
+        return [];
+      }
+      return (data || []).map((r: any) => String(r.symbol).toUpperCase());
+    } catch (e: any) {
+      addDebugInfo('TICKER_LOAD_EXCEPTION', { error: e.message });
+      return [];
+    }
+  };
+
   const runEnhancedDailyPipeline = async () => {
     setIsRunning(true);
     setProgress(0);
@@ -103,8 +123,8 @@ const DailyTradingPipeline = () => {
     setDebugInfo([]);
     
     try {
-      const allTickers = getAllTickers();
-      console.log('Running ENHANCED pipeline for tickers:', allTickers.slice(0, 5), '... and', allTickers.length - 5, 'more');
+      const allTickers = await fetchActiveTickers();
+      console.log('Running ENHANCED pipeline for tickers:', allTickers.slice(0, 5), '... and', Math.max(0, allTickers.length - 5), 'more');
       addDebugInfo("PIPELINE_START", { totalTickers: allTickers.length, sampleTickers: allTickers.slice(0, 10) });
       
       // Step 1: Multi-source data collection

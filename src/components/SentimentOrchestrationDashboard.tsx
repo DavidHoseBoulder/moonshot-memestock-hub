@@ -10,7 +10,7 @@ import { Input } from '@/components/ui/input';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { AlertCircle, CheckCircle, Clock, Zap, TrendingUp, Database } from 'lucide-react';
 import { SentimentOrchestratorV2, DEFAULT_ORCHESTRATION_CONFIG, OrchestrationResult } from '@/utils/sentimentOrchestratorV2';
-import { STOCK_UNIVERSE, getAllTickers } from '@/data/stockUniverse';
+import { supabase } from "@/integrations/supabase/client";
 
 export const SentimentOrchestrationDashboard: React.FC = () => {
   const [orchestrator] = useState(() => new SentimentOrchestratorV2(DEFAULT_ORCHESTRATION_CONFIG));
@@ -21,8 +21,20 @@ export const SentimentOrchestrationDashboard: React.FC = () => {
 
   // Initialize with a subset of stock universe
   useEffect(() => {
-    const initialSymbols = getAllTickers().slice(0, 20);
-    setSelectedSymbols(initialSymbols);
+    let active = true;
+    (async () => {
+      const { data, error } = await (supabase as any)
+        .from('ticker_universe')
+        .select('symbol')
+        .eq('active', true)
+        .order('priority', { ascending: true })
+        .order('symbol', { ascending: true })
+        .limit(20);
+      if (!active) return;
+      const symbols = error ? [] : (data || []).map((r: any) => String(r.symbol));
+      setSelectedSymbols(symbols);
+    })();
+    return () => { active = false; };
   }, []);
 
   const runOrchestration = async () => {
