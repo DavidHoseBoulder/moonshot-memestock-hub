@@ -39,6 +39,28 @@ function prioritizeSymbolsByCategory(symbols: string[]): string[] {
   });
 }
 
+// Unified ticker set and extraction regex (shared across platforms)
+const CANONICAL_TICKERS = [ 'GME','AMC','BBBYQ','BB','NOK','KOSS','EXPR','WISH','CLOV','SNDL','TSLA','AAPL','MSFT','NVDA','AMD','PLTR','META','AMZN','SNAP','INTC','AI','BBAI','SOUN','UPST','SNOW','NET','DDOG','CRWD','PATH','COIN','RIOT','MARA','HOOD','SQ','PYPL','SOFI','LCID','RBLX','MSTR','NIO','XPEV','LI','RIVN','FSR','NKLA','ASTS','SPCE','QS','RUN','NVAX','SAVA','MRNA','BNTX','CYTO','MNMD','IOVA','VSTM','DIS','NFLX','WBD','TTD','ROKU','PARA','FUBO','PINS','BILI','CVNA','CHWY','ETSY','PTON','BYND','WMT','TGT','COST','BURL','NKE','FRCB','WAL','BANC','SCHW','GS','JPM','BAC','C','HBAN','USB','HYMC','MULN','MCOM','TTOO','MEGL','ILAG','ATER','CTRM' ] as const;
+const SHORT_TICKERS = CANONICAL_TICKERS.filter(t => t.length <= 3);
+const LONG_TICKERS = CANONICAL_TICKERS.filter(t => t.length > 3);
+const SHORT_REGEX = new RegExp(`(^|\\W)(\\$(?:${SHORT_TICKERS.join('|')}))(\\W|$)`, 'gi');
+const LONG_REGEX = new RegExp(`(^|\\W)(${LONG_TICKERS.join('|')})(\\W|$)`, 'gi');
+function extractTickers(text: string): string[] {
+  if (!text) return [];
+  const found = new Set<string>();
+  let m: RegExpExecArray | null;
+  while ((m = SHORT_REGEX.exec(text)) !== null) {
+    const sym = m[2].replace('$','').toUpperCase();
+    if ((CANONICAL_TICKERS as readonly string[]).includes(sym)) found.add(sym);
+  }
+  while ((m = LONG_REGEX.exec(text)) !== null) {
+    const sym = (m[2] || '').toUpperCase();
+    if ((CANONICAL_TICKERS as readonly string[]).includes(sym)) found.add(sym);
+  }
+  SHORT_REGEX.lastIndex = 0; LONG_REGEX.lastIndex = 0;
+  return Array.from(found);
+}
+
 // Initialize Supabase client
 const supabaseUrl = Deno.env.get('SUPABASE_URL')!
 const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
@@ -113,18 +135,27 @@ serve(async (req) => {
     console.log(`Found ${recentData.length} symbols with recent YouTube data, need to fetch ${symbolsToFetch.length} symbols`)
     
     const youtubeSentiment: YouTubeSentiment[] = []
+    const tickerCounts: Record<string, number> = {}
     
     // Convert database data to YouTubeSentiment format
     recentData.forEach(({ symbol, data }) => {
       if (data.metadata) {
+        const topComments = data.metadata.topComments || []
         youtubeSentiment.push({
           symbol,
           sentiment: data.sentiment_score || 0,
           commentCount: data.metadata.commentCount || 0,
           avgLikes: data.metadata.avgLikes || 0,
-          topComments: data.metadata.topComments || [],
+          topComments,
           timestamp: data.collected_at
         })
+        try {
+          (topComments as any[]).forEach((c: any) => {
+            const text = (c?.text ?? c?.textDisplay ?? '') as string
+            const tickers = extractTickers(text)
+            for (const t of tickers) tickerCounts[t] = (tickerCounts[t] || 0) + 1
+          })
+        } catch (_) {}
       }
     })
 
@@ -272,7 +303,8 @@ serve(async (req) => {
         total_processed: youtubeSentiment.length,
         source: 'youtube',
         fromDatabase: recentData.length,
-        fromAPI: symbolsToFetch.length
+        fromAPI: symbolsToFetch.length,
+        ticker_counts: tickerCounts
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     )
