@@ -5,7 +5,7 @@ import { Progress } from "@/components/ui/progress";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { RefreshCw } from "lucide-react";
-import { getAllCanonicalTickers } from "@/data/stockUniverse";
+
 
 interface ImportStats {
   symbols_with_data: number;
@@ -88,7 +88,12 @@ const ImportProgressMonitor = () => {
   const retryMissing = async () => {
     try {
       setIsRetrying(true);
-      const universe = getAllCanonicalTickers();
+      const { data: universeRows, error: uErr } = await (supabase as any)
+        .from('ticker_universe')
+        .select('symbol')
+        .eq('active', true);
+      if (uErr) throw uErr;
+      const universe = (universeRows || []).map(r => String(r.symbol));
 
       // Fetch symbols present (pull symbols column only to reduce payload)
       const { data: rows, error } = await supabase

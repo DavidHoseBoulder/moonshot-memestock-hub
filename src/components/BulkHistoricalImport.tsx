@@ -1,11 +1,11 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
-import { STOCK_UNIVERSE, getAllTickers, getAllCanonicalTickers } from "@/data/stockUniverse";
+
 
 const BulkHistoricalImport = () => {
   const [isImporting, setIsImporting] = useState(false);
@@ -13,7 +13,29 @@ const BulkHistoricalImport = () => {
   const [batchSize, setBatchSize] = useState(5);
   const [delayMs, setDelayMs] = useState(3000);
   const { toast } = useToast();
-  const tickers = getAllCanonicalTickers();
+  const [tickers, setTickers] = useState<string[]>([]);
+  const [isLoadingTickers, setIsLoadingTickers] = useState(true);
+
+  useEffect(() => {
+    let active = true;
+    (async () => {
+      const { data, error } = await (supabase as any)
+        .from('ticker_universe')
+        .select('symbol')
+        .eq('active', true)
+        .order('priority', { ascending: true })
+        .order('symbol', { ascending: true });
+      if (!active) return;
+      if (error) {
+        console.error('Failed to load tickers:', error);
+        setTickers([]);
+      } else {
+        setTickers((data || []).map((r: any) => String(r.symbol)));
+      }
+      setIsLoadingTickers(false);
+    })();
+    return () => { active = false; };
+  }, []);
 
   const startBulkImport = async () => {
     try {

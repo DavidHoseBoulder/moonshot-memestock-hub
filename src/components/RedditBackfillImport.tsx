@@ -7,7 +7,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { useToast } from "@/hooks/use-toast";
-import { getAllTickers, getAllCanonicalTickers } from "@/data/stockUniverse";
+
 import { supabase } from "@/integrations/supabase/client";
 
 const DEFAULT_SUBS = "stocks,investing,SecurityAnalysis,ValueInvesting,StockMarket,wallstreetbets,pennystocks";
@@ -24,6 +24,22 @@ const RedditBackfillImport = () => {
   const [insertedCount, setInsertedCount] = useState<number | null>(null);
   const [runInfo, setRunInfo] = useState<{ status: string; scanned: number; queued: number; analyzed: number; inserted: number; finished_at: string | null } | null>(null);
   const [recentRuns, setRecentRuns] = useState<any[]>([]);
+  const [trackedSymbols, setTrackedSymbols] = useState<string[]>([]);
+  useEffect(() => {
+    let active = true;
+    (async () => {
+      const { data, error } = await (supabase as any)
+        .from('ticker_universe')
+        .select('symbol')
+        .eq('active', true)
+        .order('priority', { ascending: true })
+        .order('symbol', { ascending: true });
+      if (!active) return;
+      if (!error) setTrackedSymbols((data || []).map((r: any) => String(r.symbol)));
+    })();
+    return () => { active = false; };
+  }, []);
+
   const startBackfill = async () => {
     const urls = urlsText
       .split(/\r?\n/)
@@ -44,7 +60,7 @@ const RedditBackfillImport = () => {
       const runId = (crypto as any)?.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
       setCurrentRunId(runId);
       setInsertedCount(null);
-      const symbols = (typeof getAllCanonicalTickers === 'function' ? getAllCanonicalTickers() : getAllTickers());
+      const symbols = trackedSymbols;
       const subreddits = subs.split(",").map((s) => s.trim()).filter(Boolean);
       let totalQueued = 0;
       let totalEstimatedBatches = 0;
@@ -186,7 +202,7 @@ const RedditBackfillImport = () => {
               type="button"
               variant="secondary"
               onClick={() => {
-                const syms = (typeof getAllCanonicalTickers === 'function' ? getAllCanonicalTickers() : getAllTickers()).join('|');
+                const syms = trackedSymbols.join('|');
                 const blob = new Blob([syms], { type: 'text/plain' });
                 const a = document.createElement('a');
                 a.href = URL.createObjectURL(blob);
@@ -202,7 +218,7 @@ const RedditBackfillImport = () => {
               type="button"
               variant="outline"
               onClick={() => {
-                const symsArray = (typeof getAllCanonicalTickers === 'function' ? getAllCanonicalTickers() : getAllTickers());
+                const symsArray = trackedSymbols;
                 const syms = symsArray
                   .map((t) => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
                   .join('|');
@@ -245,7 +261,7 @@ const RedditBackfillImport = () => {
           </div>
           <div className="space-y-2">
             <Label>Symbols</Label>
-            <p className="text-sm text-muted-foreground">Using {(typeof getAllCanonicalTickers === 'function' ? getAllCanonicalTickers() : getAllTickers()).length} tracked tickers</p>
+            <p className="text-sm text-muted-foreground">Using {trackedSymbols.length} tracked tickers</p>
           </div>
         </div>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
