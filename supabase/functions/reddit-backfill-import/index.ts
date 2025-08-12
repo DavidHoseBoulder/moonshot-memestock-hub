@@ -63,23 +63,35 @@ function chunk<T>(arr: T[], size: number): T[][] {
   return res;
 }
 
-// Unified ticker matching based on refined methodology
-// Source list maintained identically across platforms
-const TICKER_LIST = (
-  'GME|AMC|BBBYQ|BB|NOK|KOSS|EXPR|WISH|CLOV|SNDL|TSLA|AAPL|MSFT|NVDA|AMD|PLTR|META|AMZN|SNAP|INTC|AI|BBAI|SOUN|UPST|SNOW|NET|DDOG|CRWD|PATH|COIN|RIOT|MARA|HOOD|SQ|PYPL|SOFI|LCID|RBLX|MSTR|NIO|XPEV|LI|RIVN|FSR|NKLA|ASTS|SPCE|QS|RUN|NVAX|SAVA|MRNA|BNTX|CYTO|MNMD|IOVA|VSTM|DIS|NFLX|WBD|TTD|ROKU|PARA|FUBO|PINS|BILI|CVNA|CHWY|ETSY|PTON|BYND|WMT|TGT|COST|BURL|NKE|FRCB|WAL|BANC|SCHW|GS|JPM|BAC|C|HBAN|USB|HYMC|MULN|MCOM|TTOO|MEGL|ILAG|ATER|CTRM'
-).split('|');
-const SHORT_TICKERS = TICKER_LIST.filter(t => t.length <= 3);
-const LONG_TICKERS = TICKER_LIST.filter(t => t.length > 3);
-const SHORT_RE = new RegExp(`(^|\\W)\\$(${SHORT_TICKERS.join('|')})(?=\\W|$)`, 'gi');
-const LONG_RE = new RegExp(`(^|\\W)(${LONG_TICKERS.join('|')})(?=\\W|$)`, 'gi');
+// Canonical tickers derived from Supabase ticker_universe (cold start)
+const SUPA_URL_T = Deno.env.get('SUPABASE_URL')!
+const SUPA_KEY_T = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
+const supaTickers = createClient(SUPA_URL_T, SUPA_KEY_T)
+let TICKER_LIST: string[] = []
+try {
+  const { data, error } = await supaTickers
+    .from('ticker_universe')
+    .select('symbol')
+    .eq('active', true)
+    .order('priority', { ascending: true })
+    .order('symbol', { ascending: true })
+  if (!error && data) TICKER_LIST = (data as any[]).map(r => String(r.symbol).toUpperCase())
+} catch (e: any) {
+  console.warn('reddit-backfill-import: failed to load ticker_universe', e?.message || e)
+}
+const SHORT_TICKERS = TICKER_LIST.filter(t => t.length <= 3)
+const LONG_TICKERS = TICKER_LIST.filter(t => t.length > 3)
+const SHORT_RE = TICKER_LIST.length ? new RegExp(`(^|\\W)\\$(${SHORT_TICKERS.join('|')})(?=\\W|$)`, 'gi') : /a^/i
+const LONG_RE = TICKER_LIST.length ? new RegExp(`(^|\\W)(${LONG_TICKERS.join('|')})(?=\\W|$)`, 'gi') : /a^/i
 
 function extractTickers(text: string): string[] {
-  if (!text) return [];
-  const out: string[] = [];
-  let m: RegExpExecArray | null;
-  while ((m = SHORT_RE.exec(text)) !== null) out.push(m[2].toUpperCase());
-  while ((m = LONG_RE.exec(text)) !== null) out.push(m[2].toUpperCase());
-  return out;
+  if (!text) return []
+  const out: string[] = []
+  let m: RegExpExecArray | null
+  while ((m = SHORT_RE.exec(text)) !== null) out.push(m[2].toUpperCase())
+  while ((m = LONG_RE.exec(text)) !== null) out.push(m[2].toUpperCase())
+  SHORT_RE.lastIndex = 0; LONG_RE.lastIndex = 0
+  return out
 }
 
 function passesFilters(post: RedditPost, subreddits?: string[], symbolsFilter?: string[]): boolean {
@@ -386,9 +398,9 @@ async function processPipeline(posts: RedditPost[], batchSize: number, runId?: s
 
     // Count tickers for velocity/coverage from raw content
     for (const p of newBatch) {
-      const text = `${p.title ?? ''} ${p.selftext ?? ''}`;
-      const matches = extractTickers(text);
-      for (const sym of matches) inc(sym, 1);
+      const text = `${p.title ?? ''} ${p.selftext ?? ''}`
+      const matches = extractTickers(text)
+      for (const sym of matches) inc(sym, 1)
     }
 
     const analyzed = await scoreBatch(newBatch);

@@ -37,37 +37,40 @@ function prioritizeSymbolsByCategory(symbols: string[]): string[] {
   });
 }
 
-// Unified ticker set and extraction regex (shared across platforms)
-const CANONICAL_TICKERS = [
-  'GME','AMC','BB','NOK','KOSS','CLOV','SNDL','DWAC','VFS','HKD',
-  'TSLA','AAPL','MSFT','NVDA','AMD','PLTR','META','AMZN','SNAP','INTC',
-  'AI','BBAI','SOUN','C3AI','UPST','SNOW','NET','DDOG','CRWD','PATH',
-  'COIN','RIOT','MARA','HOOD','SQ','PYPL','SOFI','LCID','RBLX','MSTR',
-  'NIO','XPEV','LI','RIVN','CHPT','NKLA','ASTS','SPCE','QS','RUN',
-  'NVAX','SAVA','MRNA','BNTX','CYTO','MNMD','IOVA','VSTM','PFE','GILD',
-  'DIS','NFLX','WBD','TTD','ROKU','PARA','FUBO','PINS','BILI','GOOGL',
-  'CVNA','CHWY','ETSY','PTON','BYND','WMT','TGT','COST','BURL','NKE',
-  'PNC','WAL','BANC','SCHW','GS','JPM','BAC','C','HBAN','USB',
-  'HYMC','MULN','MCOM','TTOO','FFIE','MEGL','ILAG','ATER','CTRM','BBIG'
-] as const;
-const SHORT_TICKERS = CANONICAL_TICKERS.filter(t => t.length <= 3);
-const LONG_TICKERS = CANONICAL_TICKERS.filter(t => t.length > 3);
-const SHORT_REGEX = new RegExp(`(^|\\W)(\\$(?:${SHORT_TICKERS.join('|')}))(\\W|$)`, 'gi');
-const LONG_REGEX = new RegExp(`(^|\\W)(${LONG_TICKERS.join('|')})(\\W|$)`, 'gi');
+// Canonical tickers derived from Supabase ticker_universe (cold start)
+const SUPA_URL_T = Deno.env.get('SUPABASE_URL')!
+const SUPA_KEY_T = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
+const supaTickers = createClient(SUPA_URL_T, SUPA_KEY_T)
+let CANONICAL_TICKERS: string[] = []
+try {
+  const { data, error } = await supaTickers
+    .from('ticker_universe')
+    .select('symbol')
+    .eq('active', true)
+    .order('priority', { ascending: true })
+    .order('symbol', { ascending: true })
+  if (!error && data) CANONICAL_TICKERS = (data as any[]).map(r => String(r.symbol).toUpperCase())
+} catch (e: any) {
+  console.warn('stocktwits-data: failed to load ticker_universe', e?.message || e)
+}
+const SHORT_TICKERS = CANONICAL_TICKERS.filter(t => t.length <= 3)
+const LONG_TICKERS = CANONICAL_TICKERS.filter(t => t.length > 3)
+const SHORT_REGEX = CANONICAL_TICKERS.length ? new RegExp(`(^|\\W)(\\$(?:${SHORT_TICKERS.join('|')}))(\\W|$)`, 'gi') : /a^/i
+const LONG_REGEX = CANONICAL_TICKERS.length ? new RegExp(`(^|\\W)(${LONG_TICKERS.join('|')})(\\W|$)`, 'gi') : /a^/i
 function extractTickers(text: string): string[] {
-  if (!text) return [];
-  const found = new Set<string>();
-  let m: RegExpExecArray | null;
+  if (!text) return []
+  const found = new Set<string>()
+  let m: RegExpExecArray | null
   while ((m = SHORT_REGEX.exec(text)) !== null) {
-    const sym = m[2].replace('$','').toUpperCase();
-    if ((CANONICAL_TICKERS as readonly string[]).includes(sym)) found.add(sym);
+    const sym = m[2].replace('$','').toUpperCase()
+    if (CANONICAL_TICKERS.includes(sym)) found.add(sym)
   }
   while ((m = LONG_REGEX.exec(text)) !== null) {
-    const sym = (m[2] || '').toUpperCase();
-    if ((CANONICAL_TICKERS as readonly string[]).includes(sym)) found.add(sym);
+    const sym = (m[2] || '').toUpperCase()
+    if (CANONICAL_TICKERS.includes(sym)) found.add(sym)
   }
-  SHORT_REGEX.lastIndex = 0; LONG_REGEX.lastIndex = 0;
-  return Array.from(found);
+  SHORT_REGEX.lastIndex = 0; LONG_REGEX.lastIndex = 0
+  return Array.from(found)
 }
 
 // Backoff-aware fetch helper
