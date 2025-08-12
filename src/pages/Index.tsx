@@ -20,9 +20,12 @@ const Index = () => {
               <h1 className="text-3xl font-bold mb-2 bg-gradient-primary bg-clip-text text-transparent">
                 Welcome back, Diamond Hands! 💎🙌
               </h1>
-              <p className="text-muted-foreground">
-                Your meme portfolio is looking fire today. To the moon! 🚀
-              </p>
+              <div className="flex items-center justify-between">
+                <p className="text-muted-foreground">
+                  Your meme portfolio is looking fire today. To the moon! 🚀
+                </p>
+                <a href="/auth" className="text-sm underline">Account</a>
+              </div>
             </div>
             
             <PortfolioOverview />
