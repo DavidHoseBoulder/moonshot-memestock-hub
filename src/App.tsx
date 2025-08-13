@@ -13,6 +13,7 @@ import BulkImport from "./pages/BulkImport";
 import NotFound from "./pages/NotFound";
 import Auth from "./pages/Auth";
 import ExtractionTester from "./pages/ExtractionTester";
+import Backtesting from "./pages/Backtesting";
 
 const queryClient = new QueryClient();
 
@@ -52,6 +53,7 @@ const App: React.FC = () => {
             <Route path="/sentiment" element={<ProtectedRoute><SentimentDashboardPage /></ProtectedRoute>} />
             <Route path="/bulk-import" element={<ProtectedRoute><BulkImport /></ProtectedRoute>} />
             <Route path="/dev/extraction-tester" element={<ProtectedRoute><ExtractionTester /></ProtectedRoute>} />
+            <Route path="/backtesting" element={<ProtectedRoute><Backtesting /></ProtectedRoute>} />
             <Route path="*" element={<NotFound />} />
           </Routes>
         </BrowserRouter>
