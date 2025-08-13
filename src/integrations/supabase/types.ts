@@ -27,6 +27,7 @@ export type Database = {
           sentiment_correlation: number | null
           sentiment_threshold: number | null
           sharpe_ratio: number | null
+          signal_quality: number | null
           start_date: string
           strategy_name: string
           symbol: string
@@ -47,6 +48,7 @@ export type Database = {
           sentiment_correlation?: number | null
           sentiment_threshold?: number | null
           sharpe_ratio?: number | null
+          signal_quality?: number | null
           start_date: string
           strategy_name: string
           symbol: string
@@ -67,6 +69,7 @@ export type Database = {
           sentiment_correlation?: number | null
           sentiment_threshold?: number | null
           sharpe_ratio?: number | null
+          signal_quality?: number | null
           start_date?: string
           strategy_name?: string
           symbol?: string
