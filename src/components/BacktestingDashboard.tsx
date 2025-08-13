@@ -98,9 +98,22 @@ const BacktestingDashboard = () => {
         throw backtestError;
       }
 
+      // Handle function responses that return success: false without throwing
+      if (backtestData && (backtestData.success === false || backtestData.error)) {
+        toast({
+          title: "Backtest unavailable",
+          description: backtestData.error || "No sentiment data available for the selected period.",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      const tradesCount = backtestData?.trades_count ?? backtestData?.backtest_results?.trades_data?.length ?? 0;
+      const marketPoints = backtestData?.market_data_points ?? 0;
+
       toast({
         title: "Backtest completed!",
-        description: `Found ${backtestData.trades_count} trades with ${backtestData.market_data_points} data points`,
+        description: `Found ${tradesCount} trades with ${marketPoints} market data points`,
       });
 
       // Refresh results
