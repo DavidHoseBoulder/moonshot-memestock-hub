@@ -356,6 +356,36 @@ export type Database = {
         }
         Relationships: []
       }
+      ticker_universe: {
+        Row: {
+          active: boolean
+          created_at: string
+          name: string | null
+          priority: number
+          sector: string | null
+          symbol: string
+          updated_at: string
+        }
+        Insert: {
+          active?: boolean
+          created_at?: string
+          name?: string | null
+          priority?: number
+          sector?: string | null
+          symbol: string
+          updated_at?: string
+        }
+        Update: {
+          active?: boolean
+          created_at?: string
+          name?: string | null
+          priority?: number
+          sector?: string | null
+          symbol?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       trading_signals: {
         Row: {
           actual_return: number | null
