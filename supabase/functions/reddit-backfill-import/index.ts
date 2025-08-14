@@ -38,7 +38,7 @@ const supabase = createClient(SUPABASE_URL, SERVICE_ROLE);
 async function processFileChunk(
   url: string,
   startLine: number = 0,
-  maxLines: number = 100
+  maxLines: number = 1000
 ): Promise<{ linesProcessed: number, validPosts: number, sampleData: any[] }> {
   
   console.log(`[reddit-backfill-import] *** PROCESSING START *** url=${url}, startLine=${startLine}, maxLines=${maxLines}`);
@@ -146,8 +146,8 @@ async function processFileChunk(
               const obj = JSON.parse(jsonStr);
               console.log(`[reddit-backfill-import] JSON parsed successfully, keys: ${Object.keys(obj).slice(0, 10).join(',')}`);
               
-              // Save first 5 objects for analysis
-              if (sampleData.length < 5) {
+              // Save all valid posts for sentiment analysis
+              if (obj.title && obj.subreddit) { // Basic validation
                 sampleData.push({
                   objectNumber: objectsFound,
                   keys: Object.keys(obj),
@@ -157,9 +157,13 @@ async function processFileChunk(
                   body: obj.body?.slice(0, 50),
                   created_utc: obj.created_utc,
                   author: obj.author,
-                  fullSample: objectsFound <= 2 ? obj : undefined // Full object for first 2
+                  fullSample: obj // Keep full object for sentiment analysis
                 });
-                console.log(`[reddit-backfill-import] Saved sample ${sampleData.length}:`, sampleData[sampleData.length - 1]);
+                
+                // Log first 5 for debugging
+                if (sampleData.length <= 5) {
+                  console.log(`[reddit-backfill-import] Saved sample ${sampleData.length}:`, sampleData[sampleData.length - 1]);
+                }
               }
               
             } catch (parseError) {
@@ -222,7 +226,7 @@ async function processFullImport(
   }
   
   // Process one chunk with our working JSON extraction
-  const result = await processFileChunk(url, startLine, Math.min(maxItems, 100));
+  const result = await processFileChunk(url, startLine, maxItems);
   
   console.log(`[reddit-backfill-import] Chunk complete: ${result.validPosts} posts found`);
   
