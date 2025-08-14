@@ -142,58 +142,18 @@ function sanitizeChunk(s: string): string {
 }
 
 // Stream parse NDJSON lines (optionally gzip-compressed)
-// JSON object framer that handles multi-line JSON objects
-function jsonObjectFramer() {
-  let buf = "";
-  let depth = 0;
-  let inStr = false;
-  let esc = false;
-
-  return new TransformStream<string, string>({
-    transform(chunk, controller) {
-      for (let i = 0; i < chunk.length; i++) {
-        const ch = chunk[i];
-        buf += ch;
-
-        if (esc) { esc = false; continue; }
-        if (ch === "\\") { esc = true; continue; }
-        if (ch === '"') { inStr = !inStr; continue; }
-        if (inStr) continue;
-
-        if (ch === "{") depth++;
-        else if (ch === "}") depth--;
-
-        // When depth returns to 0, we've completed one object.
-        if (depth === 0) {
-          const t = buf.trim();
-          // ignore separators (commas, blank lines) between objects if any
-          if (t.startsWith("{") && t.endsWith("}")) controller.enqueue(t);
-          buf = "";
-        }
-      }
-    },
-    flush(controller) {
-      const t = buf.trim();
-      if (t) {
-        try { JSON.parse(t); controller.enqueue(t); } catch { /* drop partial */ }
-      }
-    }
-  });
-}
-
 async function* streamNDJSON(url: string): AsyncGenerator<any> {
   const resp = await fetch(url);
   if (!resp.ok || !resp.body) throw new Error(`Failed to fetch ${url}: ${resp.status}`);
 
   console.log(`[reddit-backfill-import] fetch ok url=${url} len=${resp.headers.get("content-length") ?? "unknown"} ce=${resp.headers.get("content-encoding") ?? "none"} ct=${resp.headers.get("content-type") ?? "unknown"}`);
 
-  // Decide whether to gunzip. Only gunzip if the payload isn't already decoded.
+  // Decide whether to gunzip
   const enc = (resp.headers.get("content-encoding") || "").toLowerCase();
   const ctype = (resp.headers.get("content-type") || "").toLowerCase();
   const looksGzip = url.endsWith(".gz") || ctype.includes("application/gzip");
 
   let byteStream: ReadableStream<Uint8Array> = resp.body as ReadableStream<Uint8Array>;
-  // If the server hasn't already decompressed it, do it here.
   if (looksGzip && !enc.includes("gzip")) {
     try {
       // @ts-ignore - DecompressionStream available in Supabase Edge Runtime
@@ -205,40 +165,88 @@ async function* streamNDJSON(url: string): AsyncGenerator<any> {
     }
   }
 
-  // Decode bytes to text FIRST (prevents cutting multibyte UTF-8)
-  const textStream = byteStream.pipeThrough(new TextDecoderStream());
+  const reader = byteStream.getReader();
+  const decoder = new TextDecoder();
+  let carry = "";
+  let linesSeen = 0;
+  let yielded = 0;
+  let badLines = 0;
 
-  // Frame complete JSON objects (works for multi-line & JSONL)
-  const objectTextStream = textStream.pipeThrough(jsonObjectFramer());
-
-  // Now parse object-by-object with small memory footprint
-  let objCount = 0;
-  let bad = 0;
-
-  for await (const objText of (objectTextStream as any)) {
-    objCount++;
-    let obj: any;
-    try {
-      // Ignore stray CR/NULs if present
-      const cleaned = objText.replace(/\r/g, "").replace(/\u0000/g, "");
-      obj = JSON.parse(cleaned);
-    } catch {
-      bad++;
-      if (bad <= 5 || bad % 1000 === 0) {
-        console.error(`[reddit-backfill-import] skipped malformed object #${objCount}`);
-      }
-      continue;
-    }
-
-    if (objCount <= 1) {
-      try { console.log('[reddit-backfill-import] first object preview:', objText.slice(0, 200)); } catch {}
-    }
+  while (true) {
+    const { value, done } = await reader.read();
+    if (done) break;
     
-    yield obj;
+    const chunk = decoder.decode(value, { stream: true });
+    carry += chunk;
+    
+    // Process complete lines
+    let lines = carry.split('\n');
+    carry = lines.pop() || ""; // Keep the last incomplete line
+    
+    for (const line of lines) {
+      linesSeen++;
+      const trimmed = line.trim();
+      if (!trimmed) continue;
+      
+      try {
+        // Clean common issues: remove trailing commas, null chars, carriage returns
+        const cleaned = trimmed
+          .replace(/,\s*$/, '') // trailing comma
+          .replace(/\r/g, '')   // carriage returns
+          .replace(/\u0000/g, '') // null chars
+          .replace(/[\x00-\x1F\x7F]/g, ''); // other control chars
+        
+        if (!cleaned.startsWith('{') || !cleaned.endsWith('}')) {
+          badLines++;
+          if (badLines <= 10 || badLines % 1000 === 0) {
+            console.error(`[reddit-backfill-import] skipped non-object line #${linesSeen}`);
+          }
+          continue;
+        }
+        
+        const obj = JSON.parse(cleaned);
+        yielded++;
+        
+        if (yielded <= 1) {
+          try { console.log('[reddit-backfill-import] first object preview:', cleaned.slice(0, 200)); } catch {}
+        }
+        
+        yield obj;
+        
+        // Yield control periodically to prevent CPU timeout
+        if (yielded % 100 === 0) {
+          await new Promise(resolve => setTimeout(resolve, 0));
+        }
+        
+      } catch (err) {
+        badLines++;
+        if (badLines <= 10 || badLines % 1000 === 0) {
+          console.error(`[reddit-backfill-import] skipped malformed JSON at line ${linesSeen}:`, String(err).slice(0, 100));
+        }
+      }
+    }
   }
 
-  // Optional summary log
-  console.log(`[reddit-backfill-import] parsed=${objCount} bad=${bad}`);
+  // Process any remaining data
+  if (carry.trim()) {
+    try {
+      const cleaned = carry.trim()
+        .replace(/,\s*$/, '')
+        .replace(/\r/g, '')
+        .replace(/\u0000/g, '');
+      
+      if (cleaned.startsWith('{') && cleaned.endsWith('}')) {
+        const obj = JSON.parse(cleaned);
+        yielded++;
+        yield obj;
+      }
+    } catch (_) {
+      badLines++;
+      console.warn('[reddit-backfill-import] trailing chunk not valid JSON, discarded');
+    }
+  }
+
+  console.log(`[reddit-backfill-import] stream complete lines=${linesSeen} yielded=${yielded} bad=${badLines}`);
 }
 
 
