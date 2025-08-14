@@ -236,29 +236,42 @@ async function processFullImport(
       const batch = postsToAnalyze.slice(i, i + batchSize);
       console.log(`[reddit-backfill-import] Processing sentiment batch ${Math.floor(i/batchSize) + 1}/${Math.ceil(postsToAnalyze.length/batchSize)} (${batch.length} posts)`);
       
+      
       try {
-        const { data: sentimentData, error: sentimentError } = await supabase.functions.invoke('ai-sentiment-analysis', {
+        console.log(`[reddit-backfill-import] Invoking ai-sentiment-analysis for batch ${Math.floor(i/batchSize) + 1} with ${batch.length} posts`);
+        
+        const response = await supabase.functions.invoke('ai-sentiment-analysis', {
           body: { posts: batch }
         });
         
-        console.log(`[reddit-backfill-import] Sentiment response for batch ${Math.floor(i/batchSize) + 1}:`, {
-          hasData: !!sentimentData,
-          hasError: !!sentimentError,
-          dataKeys: sentimentData ? Object.keys(sentimentData) : null,
-          analyzedPostsLength: sentimentData?.analyzed_posts?.length,
-          totalAnalyzed: sentimentData?.total_analyzed,
-          errorMessage: sentimentError?.message
+        console.log(`[reddit-backfill-import] Raw response from ai-sentiment-analysis:`, {
+          hasData: !!response.data,
+          hasError: !!response.error,
+          errorMessage: response.error?.message,
+          dataType: typeof response.data,
+          dataPreview: response.data ? JSON.stringify(response.data).slice(0, 200) : null
         });
         
-        if (sentimentError) {
-          console.error(`[reddit-backfill-import] Sentiment analysis error for batch ${Math.floor(i/batchSize) + 1}:`, sentimentError);
-        } else {
-          const batchAnalyzedCount = sentimentData?.analyzed_posts?.length || sentimentData?.total_analyzed || 0;
+        if (response.error) {
+          console.error(`[reddit-backfill-import] Sentiment analysis error for batch ${Math.floor(i/batchSize) + 1}:`, response.error);
+        } else if (response.data) {
+          const batchAnalyzedCount = response.data?.analyzed_posts?.length || response.data?.total_analyzed || 0;
           analyzedCount += batchAnalyzedCount;
           console.log(`[reddit-backfill-import] Batch ${Math.floor(i/batchSize) + 1} complete: ${batchAnalyzedCount} posts analyzed`);
+        } else {
+          console.warn(`[reddit-backfill-import] Batch ${Math.floor(i/batchSize) + 1}: No data or error in response`);
         }
+        
       } catch (error) {
         console.error(`[reddit-backfill-import] Sentiment analysis failed for batch ${Math.floor(i/batchSize) + 1}:`, error);
+        console.error(`[reddit-backfill-import] Error details:`, {
+          name: error?.name,
+          message: error?.message,
+          stack: error?.stack
+        });
+        
+        // Continue processing other batches even if one fails
+        console.log(`[reddit-backfill-import] Continuing with next batch despite error...`);
       }
     }
     
