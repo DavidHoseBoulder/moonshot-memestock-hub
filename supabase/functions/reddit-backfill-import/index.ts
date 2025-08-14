@@ -146,12 +146,14 @@ async function processFileChunk(
   const resp = await fetch(url);
   if (!resp.ok || !resp.body) throw new Error(`Failed to fetch ${url}: ${resp.status}`);
 
-  console.log(`[reddit-backfill-import] processing chunk starting at line ${startLine}, maxLines=${maxLines}`);
+  console.log(`[reddit-backfill-import] fetch successful, content-length: ${resp.headers.get("content-length")}`);
 
   // Decide whether to gunzip
   const enc = (resp.headers.get("content-encoding") || "").toLowerCase();
   const ctype = (resp.headers.get("content-type") || "").toLowerCase();
   const looksGzip = url.endsWith(".gz") || ctype.includes("application/gzip");
+
+  console.log(`[reddit-backfill-import] compression check: enc=${enc}, ctype=${ctype}, looksGzip=${looksGzip}`);
 
   let byteStream: ReadableStream<Uint8Array> = resp.body as ReadableStream<Uint8Array>;
   if (looksGzip && !enc.includes("gzip")) {
@@ -173,16 +175,24 @@ async function processFileChunk(
   let validPosts: RedditPost[] = [];
 
   try {
+    console.log(`[reddit-backfill-import] starting stream read loop`);
     while (linesProcessed < maxLines) {
       const { value, done } = await reader.read();
-      if (done) break;
+      if (done) {
+        console.log(`[reddit-backfill-import] stream finished`);
+        break;
+      }
       
       const chunk = decoder.decode(value, { stream: true });
       carry += chunk;
       
+      console.log(`[reddit-backfill-import] read chunk: ${chunk.length} chars, total carry: ${carry.length}`);
+      
       // Process complete lines
       let lines = carry.split('\n');
       carry = lines.pop() || ""; // Keep the last incomplete line
+      
+      console.log(`[reddit-backfill-import] processing ${lines.length} lines from chunk`);
       
       for (const line of lines) {
         linesSeen++;
