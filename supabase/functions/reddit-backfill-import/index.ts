@@ -306,6 +306,11 @@ async function processFullImport(
   };
 }
 
+// Handle shutdown gracefully
+addEventListener('beforeunload', (ev) => {
+  console.log('[reddit-backfill-import] Function shutdown due to:', ev.detail?.reason);
+});
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -323,22 +328,43 @@ Deno.serve(async (req) => {
     });
 
     if (body.mode === "jsonl_url" && body.jsonl_url) {
+      // Start background processing immediately
+      const backgroundTask = async () => {
+        try {
+          const result = await processFullImport(
+            body.jsonl_url,
+            body.subreddits,
+            body.symbols,
+            body.batch_size ?? 25,
+            body.run_id,
+            body._continue_from_line ?? 0,
+            body.max_items ?? 1000
+          );
+          
+          console.log('[reddit-backfill-import] Background processing complete:', result);
+        } catch (error) {
+          console.error('[reddit-backfill-import] Background processing failed:', error);
+          // Update run status to failed
+          if (body.run_id) {
+            await supabase.from('import_runs').update({
+              status: 'failed',
+              finished_at: new Date().toISOString()
+            }).eq('run_id', body.run_id);
+          }
+        }
+      };
       
-      // Run the full import pipeline now that JSON extraction works
-      const result = await processFullImport(
-        body.jsonl_url,
-        body.subreddits,
-        body.symbols,
-        body.batch_size ?? 25,
-        body.run_id,
-        body._continue_from_line ?? 0,
-        body.max_items ?? 1000
-      );
+      // Start background task
+      EdgeRuntime.waitUntil(backgroundTask());
       
-      console.log('[reddit-backfill-import] Full import result:', result);
-      
+      // Return immediate response
       return new Response(
-        JSON.stringify(result),
+        JSON.stringify({ 
+          message: "Processing started in background",
+          run_id: body.run_id,
+          estimated_posts: "unknown",
+          status: "processing"
+        }),
         {
           status: 200,
           headers: { ...corsHeaders, "Content-Type": "application/json" }
