@@ -323,9 +323,24 @@ Deno.serve(async (req) => {
 
   } catch (error: any) {
     console.error('[reddit-backfill-import] ERROR:', error);
+    console.error('[reddit-backfill-import] ERROR Stack:', error?.stack);
+    console.error('[reddit-backfill-import] ERROR Details:', {
+      name: error?.name,
+      message: error?.message,
+      cause: error?.cause,
+      code: error?.code
+    });
+    
     return new Response(
-      JSON.stringify({ error: error?.message || "Unknown error" }),
-      { status: 500, headers: corsHeaders }
+      JSON.stringify({ 
+        error: error?.message || "Unknown error",
+        details: {
+          name: error?.name,
+          code: error?.code,
+          timestamp: new Date().toISOString()
+        }
+      }),
+      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   }
 });

@@ -82,7 +82,13 @@ const RedditBackfillImport = () => {
             'Content-Type': 'application/json',
           }
         });
-        if (error) throw error;
+        
+        console.log('Reddit backfill invoke response:', { data, error });
+        
+        if (error) {
+          console.error('Reddit backfill error details:', error);
+          throw new Error(`Edge function error: ${error.message || JSON.stringify(error)}`);
+        }
         totalQueued += data?.queued ?? 0;
         totalEstimatedBatches += data?.estimated_batches ?? 0;
         totalInvoked++;
@@ -334,7 +340,28 @@ const RedditBackfillImport = () => {
                     <TableCell className="text-right">{r.started_at ? new Date(r.started_at).toLocaleTimeString() : '-'}</TableCell>
                     <TableCell className="text-right">{r.finished_at ? new Date(r.finished_at).toLocaleTimeString() : '-'}</TableCell>
                     <TableCell className="text-right">
-                      <Button size="sm" variant="outline" onClick={() => resumeRun(r)}>Resume</Button>
+                      <div className="flex gap-1">
+                        <Button size="sm" variant="outline" onClick={() => resumeRun(r)}>Resume</Button>
+                        {r.status === 'processing' && (
+                          <Button 
+                            size="sm" 
+                            variant="destructive" 
+                            onClick={async () => {
+                              const { error } = await supabase
+                                .from('import_runs')
+                                .update({ status: 'cancelled' })
+                                .eq('run_id', r.run_id);
+                              if (error) {
+                                toast({ title: 'Cancel failed', description: error.message, variant: 'destructive' });
+                              } else {
+                                toast({ title: 'Run cancelled', description: `Run ${r.run_id.slice(0,8)}... cancelled` });
+                              }
+                            }}
+                          >
+                            Cancel
+                          </Button>
+                        )}
+                      </div>
                     </TableCell>
                   </TableRow>
                 ))}
