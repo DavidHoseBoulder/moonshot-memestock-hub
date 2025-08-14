@@ -673,8 +673,11 @@ Deno.serve(async (req) => {
     return new Response(null, { headers: corsHeaders });
   }
 
+  console.log('[reddit-backfill-import] Edge function started successfully');
+
   try {
     const body: BackfillRequest = await req.json();
+    console.log('[reddit-backfill-import] Request body parsed:', JSON.stringify(body, null, 2));
 
     // Generate run ID if not provided
     const runId = body.run_id ?? crypto.randomUUID();
