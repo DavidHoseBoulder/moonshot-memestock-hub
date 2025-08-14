@@ -10,7 +10,7 @@ import { useToast } from "@/hooks/use-toast";
 
 import { supabase } from "@/integrations/supabase/client";
 
-const DEFAULT_SUBS = "stocks,investing,SecurityAnalysis,ValueInvesting,StockMarket,wallstreetbets,pennystocks";
+const DEFAULT_SUBS = "";
 
 const RedditBackfillImport = () => {
   const { toast } = useToast();
@@ -60,7 +60,7 @@ const RedditBackfillImport = () => {
       const runId = (crypto as any)?.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
       setCurrentRunId(runId);
       setInsertedCount(null);
-      const symbols = trackedSymbols;
+      const symbols: string[] = [];
       const subreddits = subs.split(",").map((s) => s.trim()).filter(Boolean);
       let totalQueued = 0;
       let totalEstimatedBatches = 0;
@@ -184,7 +184,7 @@ const RedditBackfillImport = () => {
       <CardHeader>
         <CardTitle>Reddit Backfill (JSONL)</CardTitle>
         <CardDescription>
-          Stream a .jsonl or .jsonl.gz file, filter, score, and load into sentiment history.
+          Stream .jsonl/.jsonl.gz. Leave Subreddits blank for all (NSFW excluded). All symbols auto-detected; $ required for short tickers (&lt;=3).
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -245,6 +245,7 @@ const RedditBackfillImport = () => {
         <div className="space-y-2">
           <Label htmlFor="subs">Subreddits (comma-separated)</Label>
           <Textarea id="subs" rows={2} value={subs} onChange={(e) => setSubs(e.target.value)} />
+          <p className="text-sm text-muted-foreground">Leave blank to include all subreddits (NSFW excluded by default).</p>
         </div>
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
           <div className="space-y-2">
@@ -260,8 +261,8 @@ const RedditBackfillImport = () => {
             <Input id="concurrency" type="number" min={1} max={5} value={concurrency} onChange={(e) => setConcurrency(parseInt(e.target.value || '3'))} />
           </div>
           <div className="space-y-2">
-            <Label>Symbols</Label>
-            <p className="text-sm text-muted-foreground">Using {trackedSymbols.length} tracked tickers</p>
+            <Label>Symbol detection</Label>
+            <p className="text-sm text-muted-foreground">All symbols auto-detected; $ required for short tickers (&lt;=3).</p>
           </div>
         </div>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
