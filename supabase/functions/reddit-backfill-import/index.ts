@@ -142,27 +142,62 @@ function sanitizeChunk(s: string): string {
 }
 
 // Stream parse NDJSON lines (optionally gzip-compressed)
+// JSON object framer that handles multi-line JSON objects
+function jsonObjectFramer() {
+  let buf = "";
+  let depth = 0;
+  let inStr = false;
+  let esc = false;
+
+  return new TransformStream<string, string>({
+    transform(chunk, controller) {
+      for (let i = 0; i < chunk.length; i++) {
+        const ch = chunk[i];
+        buf += ch;
+
+        if (esc) { esc = false; continue; }
+        if (ch === "\\") { esc = true; continue; }
+        if (ch === '"') { inStr = !inStr; continue; }
+        if (inStr) continue;
+
+        if (ch === "{") depth++;
+        else if (ch === "}") depth--;
+
+        // When depth returns to 0, we've completed one object.
+        if (depth === 0) {
+          const t = buf.trim();
+          // ignore separators (commas, blank lines) between objects if any
+          if (t.startsWith("{") && t.endsWith("}")) controller.enqueue(t);
+          buf = "";
+        }
+      }
+    },
+    flush(controller) {
+      const t = buf.trim();
+      if (t) {
+        try { JSON.parse(t); controller.enqueue(t); } catch { /* drop partial */ }
+      }
+    }
+  });
+}
+
 async function* streamNDJSON(url: string): AsyncGenerator<any> {
   const resp = await fetch(url);
   if (!resp.ok || !resp.body) throw new Error(`Failed to fetch ${url}: ${resp.status}`);
 
   console.log(`[reddit-backfill-import] fetch ok url=${url} len=${resp.headers.get("content-length") ?? "unknown"} ce=${resp.headers.get("content-encoding") ?? "none"} ct=${resp.headers.get("content-type") ?? "unknown"}`);
 
-  let stream: ReadableStream<Uint8Array> = resp.body as ReadableStream<Uint8Array>;
+  // Decide whether to gunzip. Only gunzip if the payload isn't already decoded.
+  const enc = (resp.headers.get("content-encoding") || "").toLowerCase();
+  const ctype = (resp.headers.get("content-type") || "").toLowerCase();
+  const looksGzip = url.endsWith(".gz") || ctype.includes("application/gzip");
 
-  // Handle gzip if needed
-  const urlPath = (() => { try { return new URL(url).pathname.toLowerCase(); } catch { return url.toLowerCase(); } })();
-  const contentEncoding = (resp.headers.get("content-encoding") || "").toLowerCase();
-  const contentType = (resp.headers.get("content-type") || "").toLowerCase();
-  const isGzip = urlPath.endsWith(".gz") || urlPath.endsWith(".gzip") ||
-    contentEncoding.includes("gzip") ||
-    contentType.includes("gzip") ||
-    contentType === "application/x-gzip" || contentType === "application/gzip";
-  if (isGzip) {
+  let byteStream: ReadableStream<Uint8Array> = resp.body as ReadableStream<Uint8Array>;
+  // If the server hasn't already decompressed it, do it here.
+  if (looksGzip && !enc.includes("gzip")) {
     try {
       // @ts-ignore - DecompressionStream available in Supabase Edge Runtime
-      const ds = new DecompressionStream("gzip");
-      stream = stream.pipeThrough(ds);
+      byteStream = byteStream.pipeThrough(new DecompressionStream("gzip"));
       console.log('[reddit-backfill-import] using gzip decompression');
     } catch (e) {
       console.error('[reddit-backfill-import] gzip not supported in runtime:', e);
@@ -170,51 +205,40 @@ async function* streamNDJSON(url: string): AsyncGenerator<any> {
     }
   }
 
-  const reader = stream.getReader();
-  const decoder = new TextDecoder();
-  let carry = "";
-  let linesSeen = 0;
-  let yielded = 0;
+  // Decode bytes to text FIRST (prevents cutting multibyte UTF-8)
+  const textStream = byteStream.pipeThrough(new TextDecoderStream());
 
-  while (true) {
-    const { value, done } = await reader.read();
-    if (done) break;
-    const chunk = decoder.decode(value, { stream: true });
+  // Frame complete JSON objects (works for multi-line & JSONL)
+  const objectTextStream = textStream.pipeThrough(jsonObjectFramer());
 
-    // Accumulate into carry and split on newlines
-    carry += chunk;
-    let idx: number;
-    while ((idx = carry.indexOf('\n')) !== -1) {
-      const line = carry.slice(0, idx).trim();
-      carry = carry.slice(idx + 1);
-      if (!line) { linesSeen++; continue; }
-      linesSeen++;
-      try {
-        const obj = JSON.parse(line);
-        yielded++;
-        if (yielded <= 1) {
-          try { console.log('[reddit-backfill-import] first line preview:', line.slice(0, 200)); } catch {}
-        }
-        yield obj;
-      } catch (err) {
-        // Skip malformed line but keep streaming
-        if ((linesSeen % 1000) === 0) console.warn('[reddit-backfill-import] skipped malformed line at', linesSeen);
-      }
-    }
-  }
+  // Now parse object-by-object with small memory footprint
+  let objCount = 0;
+  let bad = 0;
 
-  // Flush remaining
-  if (carry.trim()) {
+  for await (const objText of (objectTextStream as any)) {
+    objCount++;
+    let obj: any;
     try {
-      const obj = JSON.parse(carry.trim());
-      yielded++;
-      yield obj;
-    } catch (_) {
-      console.warn('[reddit-backfill-import] trailing chunk not valid JSON, discarded');
+      // Ignore stray CR/NULs if present
+      const cleaned = objText.replace(/\r/g, "").replace(/\u0000/g, "");
+      obj = JSON.parse(cleaned);
+    } catch {
+      bad++;
+      if (bad <= 5 || bad % 1000 === 0) {
+        console.error(`[reddit-backfill-import] skipped malformed object #${objCount}`);
+      }
+      continue;
     }
+
+    if (objCount <= 1) {
+      try { console.log('[reddit-backfill-import] first object preview:', objText.slice(0, 200)); } catch {}
+    }
+    
+    yield obj;
   }
 
-  console.log(`[reddit-backfill-import] stream complete linesSeen=${linesSeen} yielded=${yielded}`);
+  // Optional summary log
+  console.log(`[reddit-backfill-import] parsed=${objCount} bad=${bad}`);
 }
 
 
