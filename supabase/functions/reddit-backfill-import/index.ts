@@ -211,6 +211,16 @@ async function processFullImport(
   
   console.log(`[reddit-backfill-import] Chunk complete: ${result.validPosts} posts found`);
   
+  // Update initial progress after file scanning
+  if (runId) {
+    await supabase.from('import_runs').update({
+      scanned_total: result.linesProcessed,
+      queued_total: result.validPosts,
+      status: 'processing'
+    }).eq('run_id', runId);
+    console.log(`[reddit-backfill-import] Initial progress updated: scanned=${result.linesProcessed}, queued=${result.validPosts}`);
+  }
+  
   // Run sentiment analysis on valid posts in batches
   let analyzedCount = 0;
   // Run sentiment analysis on valid posts in batches
@@ -265,6 +275,17 @@ async function processFullImport(
           const batchAnalyzedCount = response.data?.analyzed_posts?.length || response.data?.total_analyzed || 0;
           analyzedCount += batchAnalyzedCount;
           console.log(`[reddit-backfill-import] Batch ${Math.floor(i/batchSize) + 1} complete: ${batchAnalyzedCount} posts analyzed`);
+          
+          // Update progress in real-time after each batch
+          if (runId) {
+            await supabase.from('import_runs').update({
+              analyzed_total: analyzedCount,
+              queued_total: postsToAnalyze.length,
+              scanned_total: result.linesProcessed,
+              status: 'processing'
+            }).eq('run_id', runId);
+            console.log(`[reddit-backfill-import] Updated progress: ${analyzedCount}/${postsToAnalyze.length} analyzed`);
+          }
         } else {
           console.warn(`[reddit-backfill-import] Batch ${Math.floor(i/batchSize) + 1}: No data or error in response`);
         }
