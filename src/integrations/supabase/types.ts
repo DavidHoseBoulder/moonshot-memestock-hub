@@ -161,6 +161,51 @@ export type Database = {
         }
         Relationships: []
       }
+      import_queue: {
+        Row: {
+          batch_size: number | null
+          concurrency: number | null
+          created_at: string
+          error_message: string | null
+          id: string
+          jsonl_url: string
+          max_items: number | null
+          processed_at: string | null
+          run_id: string
+          status: string | null
+          subreddits: string[] | null
+          symbols: string[] | null
+        }
+        Insert: {
+          batch_size?: number | null
+          concurrency?: number | null
+          created_at?: string
+          error_message?: string | null
+          id?: string
+          jsonl_url: string
+          max_items?: number | null
+          processed_at?: string | null
+          run_id: string
+          status?: string | null
+          subreddits?: string[] | null
+          symbols?: string[] | null
+        }
+        Update: {
+          batch_size?: number | null
+          concurrency?: number | null
+          created_at?: string
+          error_message?: string | null
+          id?: string
+          jsonl_url?: string
+          max_items?: number | null
+          processed_at?: string | null
+          run_id?: string
+          status?: string | null
+          subreddits?: string[] | null
+          symbols?: string[] | null
+        }
+        Relationships: []
+      }
       import_runs: {
         Row: {
           analyzed_total: number | null

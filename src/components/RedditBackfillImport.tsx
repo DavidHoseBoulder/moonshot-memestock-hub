@@ -67,7 +67,7 @@ const RedditBackfillImport = () => {
       let totalInvoked = 0;
 
       for (const singleUrl of urls) {
-        const { data, error } = await supabase.functions.invoke('reddit-backfill-import', {
+        const { data, error } = await supabase.functions.invoke('reddit-queue-import', {
           body: {
             mode: 'jsonl_url',
             jsonl_url: singleUrl,
@@ -80,7 +80,7 @@ const RedditBackfillImport = () => {
           }
         });
         
-        console.log('Reddit backfill invoke response:', { data, error });
+        console.log('Reddit queue invoke response:', { data, error });
         
         if (error) {
           console.error('Reddit backfill error details:', error);
