@@ -353,15 +353,31 @@ async function processQueue() {
 }
 
 Deno.serve(async (req) => {
+  // Handle CORS preflight requests
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }
 
   try {
-    console.log('[reddit-worker] Worker triggered');
+    console.log('[reddit-worker] Worker function started');
+    
+    // Quick health check
+    if (req.url.includes('health')) {
+      return new Response(
+        JSON.stringify({ status: 'healthy', timestamp: new Date().toISOString() }),
+        {
+          status: 200,
+          headers: { ...corsHeaders, "Content-Type": "application/json" }
+        }
+      );
+    }
+    
+    console.log('[reddit-worker] Processing queue...');
     
     // Process one job from the queue
     const result = await processQueue();
+    
+    console.log('[reddit-worker] Queue processing complete:', result);
     
     return new Response(
       JSON.stringify(result),
@@ -373,9 +389,18 @@ Deno.serve(async (req) => {
 
   } catch (error: any) {
     console.error('[reddit-worker] Worker error:', error);
+    const errorResponse = {
+      error: error.message || 'Unknown error',
+      stack: error.stack,
+      timestamp: new Date().toISOString()
+    };
+    
     return new Response(
-      JSON.stringify({ error: error.message }),
-      { status: 500, headers: corsHeaders }
+      JSON.stringify(errorResponse),
+      { 
+        status: 500, 
+        headers: { ...corsHeaders, "Content-Type": "application/json" }
+      }
     );
   }
 });
