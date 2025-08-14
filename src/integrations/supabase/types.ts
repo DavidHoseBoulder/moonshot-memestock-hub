@@ -7,7 +7,7 @@ export type Json =
   | Json[]
 
 export type Database = {
-  // Allows to automatically instanciate createClient with right options
+  // Allows to automatically instantiate createClient with right options
   // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
   __InternalSupabase: {
     PostgrestVersion: "13.0.4"
@@ -359,6 +359,69 @@ export type Database = {
         }
         Relationships: []
       }
+      social_raw: {
+        Row: {
+          author: string | null
+          body: string | null
+          created_at: string
+          id: string
+          link_id: string | null
+          mode: string | null
+          parent_id: string | null
+          permalink: string | null
+          posted_at: string
+          reddit_id: string
+          selftext: string | null
+          source: string
+          source_run_id: string | null
+          subreddit: string
+          symbols_detected: string[] | null
+          title: string | null
+          updated_at: string
+          url: string | null
+        }
+        Insert: {
+          author?: string | null
+          body?: string | null
+          created_at?: string
+          id?: string
+          link_id?: string | null
+          mode?: string | null
+          parent_id?: string | null
+          permalink?: string | null
+          posted_at: string
+          reddit_id: string
+          selftext?: string | null
+          source?: string
+          source_run_id?: string | null
+          subreddit: string
+          symbols_detected?: string[] | null
+          title?: string | null
+          updated_at?: string
+          url?: string | null
+        }
+        Update: {
+          author?: string | null
+          body?: string | null
+          created_at?: string
+          id?: string
+          link_id?: string | null
+          mode?: string | null
+          parent_id?: string | null
+          permalink?: string | null
+          posted_at?: string
+          reddit_id?: string
+          selftext?: string | null
+          source?: string
+          source_run_id?: string | null
+          subreddit?: string
+          symbols_detected?: string[] | null
+          title?: string | null
+          updated_at?: string
+          url?: string | null
+        }
+        Relationships: []
+      }
       ticker_universe: {
         Row: {
           active: boolean
@@ -467,7 +530,7 @@ export type Database = {
     }
     Functions: {
       is_market_data_fresh: {
-        Args: { symbol_param: string; hours_threshold?: number }
+        Args: { hours_threshold?: number; symbol_param: string }
         Returns: boolean
       }
     }
