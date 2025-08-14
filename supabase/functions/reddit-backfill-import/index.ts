@@ -209,38 +209,62 @@ async function processFileChunk(
           const post = normalizeToRedditPost(obj);
           
           // Debug: log first few posts to see what we're getting
-          if (linesProcessed <= 5) {
-            console.log(`[reddit-backfill-import] sample post ${linesProcessed}:`, {
-              subreddit: post?.subreddit,
-              title: post?.title?.slice(0, 100),
-              hasContent: Boolean(post?.title || post?.selftext)
+          if (linesProcessed <= 10) {
+            console.log(`[reddit-backfill-import] RAW POST ${linesProcessed}:`, {
+              rawKeys: Object.keys(obj).slice(0, 10),
+              subreddit: obj.subreddit,
+              title: obj.title?.slice(0, 100),
+              selftext: obj.selftext?.slice(0, 100),
+              body: obj.body?.slice(0, 100),
+              created_utc: obj.created_utc,
+              author: obj.author
             });
+            
+            if (post) {
+              console.log(`[reddit-backfill-import] NORMALIZED POST ${linesProcessed}:`, {
+                subreddit: post.subreddit,
+                title: post.title?.slice(0, 100),
+                selftext: post.selftext?.slice(0, 100),
+                hasContent: Boolean(post.title || post.selftext),
+                created_utc: post.created_utc
+              });
+            } else {
+              console.log(`[reddit-backfill-import] POST ${linesProcessed} FAILED NORMALIZATION`);
+            }
           }
           
           if (post) {
             // Less strict filtering for debugging
             const content = `${post.title ?? ''} ${post.selftext ?? ''}`;
-            const hasTickerMentions = extractTickers(content).length > 0;
+            const tickers = extractTickers(content);
+            const hasTickerMentions = tickers.length > 0;
             const isAllowedSubreddit = !subreddits?.length || subreddits.map(s => s.toLowerCase()).includes(post.subreddit.toLowerCase());
             const notNSFW = !NSFW_SUB_PATTERNS.some(re => re.test(post.subreddit));
             
             // Debug logging for first few posts
             if (linesProcessed <= 10) {
-              console.log(`[reddit-backfill-import] post ${linesProcessed} filters:`, {
+              console.log(`[reddit-backfill-import] POST ${linesProcessed} FILTER ANALYSIS:`, {
                 subreddit: post.subreddit,
                 hasTickerMentions,
+                tickersFound: tickers,
                 isAllowedSubreddit, 
                 notNSFW,
-                tickers: extractTickers(content),
-                contentSnippet: content.slice(0, 200)
+                contentLength: content.length,
+                contentPreview: content.slice(0, 150),
+                subredditFilters: subreddits,
+                symbolFilters: symbolsFilter
               });
             }
             
             // For now, let's be less strict - just require non-NSFW and some content
             if (notNSFW && content.trim()) {
               validPosts.push(post);
-              if (linesProcessed <= 5) {
-                console.log(`[reddit-backfill-import] added valid post from r/${post.subreddit}`);
+              if (validPosts.length <= 5) {
+                console.log(`[reddit-backfill-import] ADDED VALID POST ${validPosts.length} from r/${post.subreddit}: "${post.title?.slice(0, 80)}"`);
+              }
+            } else {
+              if (linesProcessed <= 10) {
+                console.log(`[reddit-backfill-import] POST ${linesProcessed} REJECTED: nsfw=${!notNSFW}, noContent=${!content.trim()}`);
               }
             }
           }
