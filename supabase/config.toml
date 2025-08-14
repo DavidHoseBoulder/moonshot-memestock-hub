@@ -113,3 +113,9 @@ verify_jwt = false
 
 [functions.reddit-backfill-import]
 verify_jwt = false
+
+[functions.reddit-queue-import]
+verify_jwt = false
+
+[functions.reddit-worker]
+verify_jwt = false
