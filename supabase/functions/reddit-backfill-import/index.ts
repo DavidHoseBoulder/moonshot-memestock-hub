@@ -252,18 +252,23 @@ async function processFileChunk(
               }
             }
             
-            if (post) {
-              // TEMPORARY: Accept ALL posts with content to test
-              const content = `${post.title ?? ''} ${post.selftext ?? ''}`;
-              if (content.trim()) {
-                validPosts.push(post);
-                if (validPosts.length <= 5) {
-                  console.log(`[reddit-backfill-import] ADDED VALID POST ${validPosts.length} from r/${post.subreddit}: "${post.title?.slice(0, 80)}"`);
-                }
-              } else {
-                if (linesProcessed <= 10) {
-                  console.log(`[reddit-backfill-import] POST ${linesProcessed} REJECTED: noContent=${!content.trim()}`);
-                }
+            // TEMPORARY: Accept ANY valid JSON object to debug data format
+            if (obj && typeof obj === 'object') {
+              const debugPost: any = {
+                title: obj.title || obj.body || 'NO_TITLE',
+                selftext: obj.selftext || obj.body || obj.content || 'NO_CONTENT', 
+                subreddit: obj.subreddit || obj.subreddit_name_prefixed || 'unknown',
+                author: obj.author || obj.author_fullname || 'unknown',
+                created_utc: obj.created_utc || obj.created || Math.floor(Date.now() / 1000),
+                score: obj.score || obj.ups || 0,
+                num_comments: obj.num_comments || 0,
+                url: obj.url || '',
+                permalink: obj.permalink || obj.full_link || ''
+              };
+              
+              validPosts.push(debugPost);
+              if (validPosts.length <= 10) {
+                console.log(`[reddit-backfill-import] FORCED POST ${validPosts.length}: r/${debugPost.subreddit} - ${debugPost.title?.slice(0, 50)}`);
               }
             }
             
