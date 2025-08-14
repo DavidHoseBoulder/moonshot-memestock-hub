@@ -328,9 +328,22 @@ Deno.serve(async (req) => {
     });
 
     if (body.mode === "jsonl_url" && body.jsonl_url) {
-      // Start background processing immediately
+      // Immediately create/update the run record
+      if (body.run_id) {
+        await supabase.from('import_runs').upsert({
+          run_id: body.run_id,
+          file: body.jsonl_url,
+          batch_size: body.batch_size ?? 25,
+          started_at: new Date().toISOString(),
+          status: 'queued'
+        }, { onConflict: 'run_id' });
+      }
+      
+      // Start ALL processing in background immediately
       const backgroundTask = async () => {
         try {
+          console.log('[reddit-backfill-import] Starting background processing');
+          
           const result = await processFullImport(
             body.jsonl_url,
             body.subreddits,
@@ -354,16 +367,15 @@ Deno.serve(async (req) => {
         }
       };
       
-      // Start background task
+      // Start background task immediately - no waiting
       EdgeRuntime.waitUntil(backgroundTask());
       
-      // Return immediate response
+      // Return immediate response without any processing
       return new Response(
         JSON.stringify({ 
-          message: "Processing started in background",
+          message: "Processing queued in background",
           run_id: body.run_id,
-          estimated_posts: "unknown",
-          status: "processing"
+          status: "queued"
         }),
         {
           status: 200,
