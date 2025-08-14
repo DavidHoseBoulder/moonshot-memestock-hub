@@ -41,12 +41,10 @@ async function processFileChunk(
   maxLines: number = 1000
 ): Promise<{ linesProcessed: number, validPosts: number, sampleData: any[] }> {
   
-  console.log(`[reddit-backfill-import] *** PROCESSING START *** url=${url}, startLine=${startLine}, maxLines=${maxLines}`);
+  console.log(`[reddit-backfill-import] Processing ${maxLines} lines from line ${startLine}`);
   
   try {
-    console.log(`[reddit-backfill-import] Fetching URL...`);
     const resp = await fetch(url);
-    console.log(`[reddit-backfill-import] Fetch completed: status=${resp.status}, ok=${resp.ok}`);
     
     if (!resp.ok || !resp.body) {
       throw new Error(`Failed to fetch ${url}: ${resp.status}`);
@@ -56,13 +54,10 @@ async function processFileChunk(
     const enc = (resp.headers.get("content-encoding") || "").toLowerCase();
     const ctype = (resp.headers.get("content-type") || "").toLowerCase();
     const looksGzip = url.endsWith(".gz") || ctype.includes("application/gzip");
-    console.log(`[reddit-backfill-import] Compression: enc=${enc}, ctype=${ctype}, looksGzip=${looksGzip}`);
-
     let byteStream: ReadableStream<Uint8Array> = resp.body as ReadableStream<Uint8Array>;
     if (looksGzip && !enc.includes("gzip")) {
       // @ts-ignore
       byteStream = byteStream.pipeThrough(new DecompressionStream("gzip"));
-      console.log('[reddit-backfill-import] Using gzip decompression');
     }
 
     const reader = byteStream.getReader();
@@ -72,14 +67,10 @@ async function processFileChunk(
     let linesProcessed = 0;
     const sampleData: any[] = [];
 
-    console.log('[reddit-backfill-import] Starting line processing...');
-
     try {
       let buffer = "";
       let linesProcessed = 0;
       let objectsFound = 0;
-      
-      console.log('[reddit-backfill-import] Starting JSON object detection...');
 
       while (linesProcessed < maxLines) {
         const { value, done } = await reader.read();
@@ -140,11 +131,8 @@ async function processFileChunk(
             linesProcessed++;
             objectsFound++;
             
-            console.log(`[reddit-backfill-import] Found complete JSON object ${objectsFound}: ${jsonStr.slice(0, 100)}...`);
-            
             try {
               const obj = JSON.parse(jsonStr);
-              console.log(`[reddit-backfill-import] JSON parsed successfully, keys: ${Object.keys(obj).slice(0, 10).join(',')}`);
               
               // Save all valid posts for sentiment analysis
               if (obj.title && obj.subreddit) { // Basic validation
@@ -159,15 +147,10 @@ async function processFileChunk(
                   author: obj.author,
                   fullSample: obj // Keep full object for sentiment analysis
                 });
-                
-                // Log first 5 for debugging
-                if (sampleData.length <= 5) {
-                  console.log(`[reddit-backfill-import] Saved sample ${sampleData.length}:`, sampleData[sampleData.length - 1]);
-                }
               }
               
             } catch (parseError) {
-              console.log(`[reddit-backfill-import] JSON parse error object ${objectsFound}:`, parseError);
+              console.warn(`[reddit-backfill-import] JSON parse error for object ${objectsFound}`);
             }
             
             startPos = endPos + 1;
@@ -317,17 +300,6 @@ Deno.serve(async (req) => {
       
       return new Response(
         JSON.stringify(result),
-        {
-          status: 200,
-          headers: { ...corsHeaders, "Content-Type": "application/json" }
-        }
-      );
-      
-      return new Response(
-        JSON.stringify({
-          message: "Processing complete",
-          result: result
-        }),
         {
           status: 200,
           headers: { ...corsHeaders, "Content-Type": "application/json" }
