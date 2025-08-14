@@ -74,7 +74,7 @@ Deno.serve(async (req) => {
             'Content-Type': 'application/json',
           },
           body: JSON.stringify({
-            model: 'gpt-4o-mini',
+            model: 'gpt-4.1-2025-04-14',
             messages: [
               {
                 role: 'system',
@@ -109,12 +109,16 @@ Content: ${post.selftext || 'No additional content'}
 Engagement: ${post.score} upvotes, ${post.num_comments} comments`
               }
             ],
-            temperature: 0.3
+            max_completion_tokens: 500
           }),
         })
 
+        console.log(`OpenAI response status: ${response.status}`)
+        
         if (!response.ok) {
-          console.error('OpenAI API error:', await response.text())
+          const errorText = await response.text()
+          console.error('OpenAI API error:', errorText)
+          console.error('OpenAI API status:', response.status)
           continue
         }
 
