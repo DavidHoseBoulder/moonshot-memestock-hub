@@ -43,10 +43,12 @@ async function processFileChunk(
   maxLines: number = 1000
 ): Promise<{ linesProcessed: number, validPosts: number, sampleData: any[] }> {
   
-  console.log(`[reddit-backfill-import] Processing ${maxLines} lines from line ${startLine}`);
+  console.log(`[reddit-backfill-import] Processing ${maxLines} lines from line ${startLine} - URL: ${url}`);
   
   try {
+    console.log(`[reddit-backfill-import] Starting fetch for URL: ${url}`);
     const resp = await fetch(url);
+    console.log(`[reddit-backfill-import] Fetch response: status=${resp.status}, ok=${resp.ok}, hasBody=${!!resp.body}`);
     
     if (!resp.ok || !resp.body) {
       throw new Error(`Failed to fetch ${url}: ${resp.status}`);
