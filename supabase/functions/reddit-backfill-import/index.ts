@@ -75,73 +75,109 @@ async function processFileChunk(
     console.log('[reddit-backfill-import] Starting line processing...');
 
     try {
+      let buffer = "";
+      let linesProcessed = 0;
+      let objectsFound = 0;
+      
+      console.log('[reddit-backfill-import] Starting JSON object detection...');
+
       while (linesProcessed < maxLines) {
         const { value, done } = await reader.read();
         if (done) {
-          console.log(`[reddit-backfill-import] Stream finished at line ${linesSeen}`);
+          console.log(`[reddit-backfill-import] Stream finished`);
           break;
         }
         
         const chunk = decoder.decode(value, { stream: true });
-        carry += chunk;
+        buffer += chunk;
         
-        let newlineIndex;
-        while ((newlineIndex = carry.indexOf('\n')) !== -1) {
-          const line = carry.slice(0, newlineIndex);
-          carry = carry.slice(newlineIndex + 1);
+        // Look for complete JSON objects (starts with { and ends with })
+        let startPos = 0;
+        while (startPos < buffer.length) {
+          const openBrace = buffer.indexOf('{', startPos);
+          if (openBrace === -1) break;
           
-          linesSeen++;
+          // Find the matching closing brace
+          let braceCount = 0;
+          let endPos = openBrace;
+          let inString = false;
+          let escaped = false;
           
-          // Skip to start position
-          if (linesSeen <= startLine) continue;
-          
-          linesProcessed++;
-          if (linesProcessed > maxLines) break;
-          
-          const trimmed = line.trim();
-          if (!trimmed) continue;
-          
-          // CRITICAL FIX: Only process lines that look like complete JSON objects
-          if (!trimmed.startsWith('{') || !trimmed.endsWith('}')) {
-            console.log(`[reddit-backfill-import] Line ${linesProcessed} skipped - not complete JSON: starts='${trimmed.charAt(0)}', ends='${trimmed.charAt(trimmed.length-1)}', length=${trimmed.length}`);
-            continue;
-          }
-          
-          console.log(`[reddit-backfill-import] Processing complete JSON line ${linesProcessed}: ${trimmed.slice(0, 100)}...`);
-          
-          try {
-            // Clean and parse JSON
-            const cleaned = trimmed
-              .replace(/,\s*$/, '')
-              .replace(/\r/g, '')
-              .replace(/\u0000/g, '');
+          for (let i = openBrace; i < buffer.length; i++) {
+            const char = buffer[i];
             
-            if (!cleaned.startsWith('{') || !cleaned.endsWith('}')) {
-              console.log(`[reddit-backfill-import] Line ${linesProcessed} not JSON format`);
+            if (escaped) {
+              escaped = false;
               continue;
             }
             
-            const obj = JSON.parse(cleaned);
-            console.log(`[reddit-backfill-import] JSON parsed line ${linesProcessed}, keys: ${Object.keys(obj).slice(0, 10).join(',')}`);
-            
-            // Save first 5 objects for analysis
-            if (sampleData.length < 5) {
-              sampleData.push({
-                lineNumber: linesProcessed,
-                keys: Object.keys(obj),
-                subreddit: obj.subreddit,
-                title: obj.title?.slice(0, 50),
-                selftext: obj.selftext?.slice(0, 50),
-                body: obj.body?.slice(0, 50),
-                created_utc: obj.created_utc,
-                author: obj.author,
-                fullObject: obj // Include full object for first few
-              });
+            if (char === '\\') {
+              escaped = true;
+              continue;
             }
             
-          } catch (parseError) {
-            console.log(`[reddit-backfill-import] JSON parse error line ${linesProcessed}:`, parseError);
+            if (char === '"') {
+              inString = !inString;
+              continue;
+            }
+            
+            if (!inString) {
+              if (char === '{') {
+                braceCount++;
+              } else if (char === '}') {
+                braceCount--;
+                if (braceCount === 0) {
+                  endPos = i;
+                  break;
+                }
+              }
+            }
           }
+          
+          // If we found a complete JSON object
+          if (braceCount === 0 && endPos > openBrace) {
+            const jsonStr = buffer.slice(openBrace, endPos + 1);
+            linesProcessed++;
+            objectsFound++;
+            
+            console.log(`[reddit-backfill-import] Found complete JSON object ${objectsFound}: ${jsonStr.slice(0, 100)}...`);
+            
+            try {
+              const obj = JSON.parse(jsonStr);
+              console.log(`[reddit-backfill-import] JSON parsed successfully, keys: ${Object.keys(obj).slice(0, 10).join(',')}`);
+              
+              // Save first 5 objects for analysis
+              if (sampleData.length < 5) {
+                sampleData.push({
+                  objectNumber: objectsFound,
+                  keys: Object.keys(obj),
+                  subreddit: obj.subreddit,
+                  title: obj.title?.slice(0, 50),
+                  selftext: obj.selftext?.slice(0, 50),
+                  body: obj.body?.slice(0, 50),
+                  created_utc: obj.created_utc,
+                  author: obj.author,
+                  fullSample: objectsFound <= 2 ? obj : undefined // Full object for first 2
+                });
+                console.log(`[reddit-backfill-import] Saved sample ${sampleData.length}:`, sampleData[sampleData.length - 1]);
+              }
+              
+            } catch (parseError) {
+              console.log(`[reddit-backfill-import] JSON parse error object ${objectsFound}:`, parseError);
+            }
+            
+            startPos = endPos + 1;
+            
+            if (linesProcessed >= maxLines) break;
+          } else {
+            // Incomplete object, need more data
+            break;
+          }
+        }
+        
+        // Keep the incomplete part in buffer
+        if (startPos > 0) {
+          buffer = buffer.slice(startPos);
         }
       }
     } finally {
