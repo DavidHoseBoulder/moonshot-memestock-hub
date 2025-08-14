@@ -644,30 +644,62 @@ Deno.serve(async (req) => {
       const startLine = body._continue_from_line ?? 0;
       const maxLines = body.max_items && body.max_items > 0 ? Math.min(body.max_items, 1000) : 1000;
       
-      // Start chunked processing and return immediately
-      EdgeRuntime.waitUntil(
-        ingestFromJSONLURLChunked(
-          body.jsonl_url,
-          body.subreddits,
-          body.symbols,
-          maxLines,
-          runId,
-          startLine
-        )
-      );
-
-      return new Response(
-        JSON.stringify({
-          runId,
-          status: "processing",
-          message: `Chunked processing started from line ${startLine}`,
-          maxLines
-        }),
-        {
-          status: 202, // Accepted
-          headers: { ...corsHeaders, "Content-Type": "application/json" }
+      // If this is the initial request (startLine === 0), process first chunk synchronously
+      if (startLine === 0) {
+        try {
+          await ingestFromJSONLURLChunked(
+            body.jsonl_url,
+            body.subreddits,
+            body.symbols,
+            maxLines,
+            runId,
+            startLine
+          );
+          
+          return new Response(
+            JSON.stringify({
+              runId,
+              status: "processing",
+              message: `Initial chunk processed, continuing in background`,
+              maxLines
+            }),
+            {
+              status: 200,
+              headers: { ...corsHeaders, "Content-Type": "application/json" }
+            }
+          );
+        } catch (error: any) {
+          return new Response(
+            JSON.stringify({ error: error?.message || "Processing failed" }),
+            { status: 500, headers: corsHeaders }
+          );
         }
-      );
+      } else {
+        // For continuation chunks, use background processing
+        EdgeRuntime.waitUntil(
+          ingestFromJSONLURLChunked(
+            body.jsonl_url,
+            body.subreddits,
+            body.symbols,
+            maxLines,
+            runId,
+            startLine
+          )
+        );
+
+        return new Response(
+          JSON.stringify({
+            runId,
+            status: "processing",
+            message: `Continuation chunk from line ${startLine}`,
+            maxLines
+          }),
+          {
+            status: 202,
+            headers: { ...corsHeaders, "Content-Type": "application/json" }
+          }
+        );
+      }
     }
 
     return new Response(
