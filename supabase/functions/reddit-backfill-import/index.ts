@@ -143,177 +143,167 @@ async function processFileChunk(
   
   console.log(`[reddit-backfill-import] *** CHUNK START *** line=${startLine}, maxLines=${maxLines}, filters: subreddits=${subreddits?.join(',') || 'none'}, symbols=${symbolsFilter?.join(',') || 'none'}`);
   
-  const resp = await fetch(url);
-  if (!resp.ok || !resp.body) throw new Error(`Failed to fetch ${url}: ${resp.status}`);
-
-  console.log(`[reddit-backfill-import] fetch successful, content-length: ${resp.headers.get("content-length")}`);
-
-  // Decide whether to gunzip
-  const enc = (resp.headers.get("content-encoding") || "").toLowerCase();
-  const ctype = (resp.headers.get("content-type") || "").toLowerCase();
-  const looksGzip = url.endsWith(".gz") || ctype.includes("application/gzip");
-
-  console.log(`[reddit-backfill-import] compression check: enc=${enc}, ctype=${ctype}, looksGzip=${looksGzip}`);
-
-  let byteStream: ReadableStream<Uint8Array> = resp.body as ReadableStream<Uint8Array>;
-  if (looksGzip && !enc.includes("gzip")) {
-    try {
-      // @ts-ignore - DecompressionStream available in Supabase Edge Runtime
-      byteStream = byteStream.pipeThrough(new DecompressionStream("gzip"));
-      console.log('[reddit-backfill-import] using gzip decompression');
-    } catch (e) {
-      console.error('[reddit-backfill-import] gzip not supported in runtime:', e);
-      throw new Error('gzip decompression not supported by runtime');
-    }
-  }
-
-  const reader = byteStream.getReader();
-  const decoder = new TextDecoder();
-  let carry = "";
-  let linesSeen = 0;
-  let linesProcessed = 0;
-  let validPosts: RedditPost[] = [];
-
   try {
-    console.log(`[reddit-backfill-import] starting stream read loop`);
-    while (linesProcessed < maxLines) {
-      const { value, done } = await reader.read();
-      if (done) {
-        console.log(`[reddit-backfill-import] stream finished`);
-        break;
+    console.log(`[reddit-backfill-import] about to fetch: ${url}`);
+    const resp = await fetch(url);
+    console.log(`[reddit-backfill-import] fetch completed with status: ${resp.status}`);
+    
+    if (!resp.ok || !resp.body) {
+      console.log(`[reddit-backfill-import] fetch failed: status=${resp.status}, hasBody=${!!resp.body}`);
+      throw new Error(`Failed to fetch ${url}: ${resp.status}`);
+    }
+
+    console.log(`[reddit-backfill-import] fetch successful, content-length: ${resp.headers.get("content-length")}`);
+
+    // Decide whether to gunzip
+    const enc = (resp.headers.get("content-encoding") || "").toLowerCase();
+    const ctype = (resp.headers.get("content-type") || "").toLowerCase();
+    const looksGzip = url.endsWith(".gz") || ctype.includes("application/gzip");
+
+    console.log(`[reddit-backfill-import] compression check: enc=${enc}, ctype=${ctype}, looksGzip=${looksGzip}`);
+
+    let byteStream: ReadableStream<Uint8Array> = resp.body as ReadableStream<Uint8Array>;
+    if (looksGzip && !enc.includes("gzip")) {
+      try {
+        // @ts-ignore - DecompressionStream available in Supabase Edge Runtime
+        byteStream = byteStream.pipeThrough(new DecompressionStream("gzip"));
+        console.log('[reddit-backfill-import] using gzip decompression');
+      } catch (e) {
+        console.error('[reddit-backfill-import] gzip not supported in runtime:', e);
+        throw new Error('gzip decompression not supported by runtime');
       }
-      
-      const chunk = decoder.decode(value, { stream: true });
-      carry += chunk;
-      
-      console.log(`[reddit-backfill-import] read chunk: ${chunk.length} chars, total carry: ${carry.length}`);
-      
-      // Process complete lines
-      let lines = carry.split('\n');
-      carry = lines.pop() || ""; // Keep the last incomplete line
-      
-      console.log(`[reddit-backfill-import] processing ${lines.length} lines from chunk`);
-      
-      for (const line of lines) {
-        linesSeen++;
+    }
+
+    const reader = byteStream.getReader();
+    const decoder = new TextDecoder();
+    let carry = "";
+    let linesSeen = 0;
+    let linesProcessed = 0;
+    let validPosts: RedditPost[] = [];
+
+    try {
+      console.log(`[reddit-backfill-import] starting stream read loop`);
+      while (linesProcessed < maxLines) {
+        const { value, done } = await reader.read();
+        if (done) {
+          console.log(`[reddit-backfill-import] stream finished`);
+          break;
+        }
         
-        // Skip to start position
-        if (linesSeen <= startLine) continue;
+        const chunk = decoder.decode(value, { stream: true });
+        carry += chunk;
         
-        linesProcessed++;
-        if (linesProcessed > maxLines) break;
+        console.log(`[reddit-backfill-import] read chunk: ${chunk.length} chars, total carry: ${carry.length}`);
         
-        const trimmed = line.trim();
-        if (!trimmed) continue;
+        // Process complete lines
+        let lines = carry.split('\n');
+        carry = lines.pop() || ""; // Keep the last incomplete line
         
-        try {
-          // Clean common issues
-          const cleaned = trimmed
-            .replace(/,\s*$/, '') // trailing comma
-            .replace(/\r/g, '')   // carriage returns
-            .replace(/\u0000/g, ''); // null chars
+        console.log(`[reddit-backfill-import] processing ${lines.length} lines from chunk`);
+        
+        for (const line of lines) {
+          linesSeen++;
           
-          if (!cleaned.startsWith('{') || !cleaned.endsWith('}')) {
-            continue; // Skip silently to save CPU
-          }
+          // Skip to start position
+          if (linesSeen <= startLine) continue;
           
-          const obj = JSON.parse(cleaned);
-          const post = normalizeToRedditPost(obj);
+          linesProcessed++;
+          if (linesProcessed > maxLines) break;
           
-          // Debug: log first few posts to see what we're getting
-          if (linesProcessed <= 10) {
-            console.log(`[reddit-backfill-import] RAW POST ${linesProcessed}:`, {
-              rawKeys: Object.keys(obj).slice(0, 10),
-              subreddit: obj.subreddit,
-              title: obj.title?.slice(0, 100),
-              selftext: obj.selftext?.slice(0, 100),
-              body: obj.body?.slice(0, 100),
-              created_utc: obj.created_utc,
-              author: obj.author
-            });
+          const trimmed = line.trim();
+          if (!trimmed) continue;
+          
+          try {
+            // Clean common issues
+            const cleaned = trimmed
+              .replace(/,\s*$/, '') // trailing comma
+              .replace(/\r/g, '')   // carriage returns
+              .replace(/\u0000/g, ''); // null chars
+            
+            if (!cleaned.startsWith('{') || !cleaned.endsWith('}')) {
+              continue; // Skip silently to save CPU
+            }
+            
+            const obj = JSON.parse(cleaned);
+            const post = normalizeToRedditPost(obj);
+            
+            // Debug: log first few posts to see what we're getting
+            if (linesProcessed <= 10) {
+              console.log(`[reddit-backfill-import] RAW POST ${linesProcessed}:`, {
+                rawKeys: Object.keys(obj).slice(0, 10),
+                subreddit: obj.subreddit,
+                title: obj.title?.slice(0, 100),
+                selftext: obj.selftext?.slice(0, 100),
+                body: obj.body?.slice(0, 100),
+                created_utc: obj.created_utc,
+                author: obj.author
+              });
+              
+              if (post) {
+                console.log(`[reddit-backfill-import] NORMALIZED POST ${linesProcessed}:`, {
+                  subreddit: post.subreddit,
+                  title: post.title?.slice(0, 100),
+                  selftext: post.selftext?.slice(0, 100),
+                  hasContent: Boolean(post.title || post.selftext),
+                  created_utc: post.created_utc
+                });
+              } else {
+                console.log(`[reddit-backfill-import] POST ${linesProcessed} FAILED NORMALIZATION`);
+              }
+            }
             
             if (post) {
-              console.log(`[reddit-backfill-import] NORMALIZED POST ${linesProcessed}:`, {
-                subreddit: post.subreddit,
-                title: post.title?.slice(0, 100),
-                selftext: post.selftext?.slice(0, 100),
-                hasContent: Boolean(post.title || post.selftext),
-                created_utc: post.created_utc
-              });
-            } else {
-              console.log(`[reddit-backfill-import] POST ${linesProcessed} FAILED NORMALIZATION`);
-            }
-          }
-          
-          if (post) {
-            // Less strict filtering for debugging
-            const content = `${post.title ?? ''} ${post.selftext ?? ''}`;
-            const tickers = extractTickers(content);
-            const hasTickerMentions = tickers.length > 0;
-            const isAllowedSubreddit = !subreddits?.length || subreddits.map(s => s.toLowerCase()).includes(post.subreddit.toLowerCase());
-            const notNSFW = !NSFW_SUB_PATTERNS.some(re => re.test(post.subreddit));
-            
-            // Debug logging for first few posts
-            if (linesProcessed <= 10) {
-              console.log(`[reddit-backfill-import] POST ${linesProcessed} FILTER ANALYSIS:`, {
-                subreddit: post.subreddit,
-                hasTickerMentions,
-                tickersFound: tickers,
-                isAllowedSubreddit, 
-                notNSFW,
-                contentLength: content.length,
-                contentPreview: content.slice(0, 150),
-                subredditFilters: subreddits,
-                symbolFilters: symbolsFilter
-              });
-            }
-            
-            // TEMPORARY: Accept ALL posts with content to test
-            if (content.trim()) {
-              validPosts.push(post);
-              if (validPosts.length <= 5) {
-                console.log(`[reddit-backfill-import] ADDED VALID POST ${validPosts.length} from r/${post.subreddit}: "${post.title?.slice(0, 80)}"`);
-              }
-            } else {
-              if (linesProcessed <= 10) {
-                console.log(`[reddit-backfill-import] POST ${linesProcessed} REJECTED: noContent=${!content.trim()}`);
+              // TEMPORARY: Accept ALL posts with content to test
+              const content = `${post.title ?? ''} ${post.selftext ?? ''}`;
+              if (content.trim()) {
+                validPosts.push(post);
+                if (validPosts.length <= 5) {
+                  console.log(`[reddit-backfill-import] ADDED VALID POST ${validPosts.length} from r/${post.subreddit}: "${post.title?.slice(0, 80)}"`);
+                }
+              } else {
+                if (linesProcessed <= 10) {
+                  console.log(`[reddit-backfill-import] POST ${linesProcessed} REJECTED: noContent=${!content.trim()}`);
+                }
               }
             }
+            
+          } catch (err) {
+            // Skip silently to save CPU
+            continue;
           }
           
-        } catch (err) {
-          // Skip silently to save CPU
-          continue;
+          // Yield control very frequently to prevent timeout
+          if (linesProcessed % 100 === 0) {
+            await new Promise(resolve => setTimeout(resolve, 1));
+          }
         }
         
-        // Yield control very frequently to prevent timeout
-        if (linesProcessed % 100 === 0) {
-          await new Promise(resolve => setTimeout(resolve, 1));
-        }
+        // Yield control after each chunk read
+        await new Promise(resolve => setTimeout(resolve, 0));
       }
-      
-      // Yield control after each chunk read
-      await new Promise(resolve => setTimeout(resolve, 0));
+    } finally {
+      reader.releaseLock();
     }
-  } finally {
-    reader.releaseLock();
+
+    // Process the collected posts if any
+    if (validPosts.length > 0) {
+      console.log(`[reddit-backfill-import] processing ${validPosts.length} valid posts from ${linesProcessed} lines`);
+      await processPipeline(validPosts, Math.min(10, validPosts.length), runId, 1);
+    }
+
+    const hasMore = linesProcessed >= maxLines; // If we processed our max lines, there's likely more
+    console.log(`[reddit-backfill-import] chunk complete: linesProcessed=${linesProcessed}, validPosts=${validPosts.length}, nextLine=${linesSeen}, hasMore=${hasMore}`);
+
+    return {
+      linesProcessed,
+      validPosts: validPosts.length,
+      nextStartLine: linesSeen,
+      hasMore
+    };
+  } catch (error: any) {
+    console.error(`[reddit-backfill-import] ERROR in processFileChunk:`, error);
+    throw error;
   }
-
-  // Process the collected posts if any
-  if (validPosts.length > 0) {
-    console.log(`[reddit-backfill-import] processing ${validPosts.length} valid posts from ${linesProcessed} lines`);
-    await processPipeline(validPosts, Math.min(10, validPosts.length), runId, 1);
-  }
-
-  const hasMore = linesProcessed >= maxLines; // If we processed our max lines, there's likely more
-  console.log(`[reddit-backfill-import] chunk complete: linesProcessed=${linesProcessed}, validPosts=${validPosts.length}, nextLine=${linesSeen}, hasMore=${hasMore}`);
-
-  return {
-    linesProcessed,
-    validPosts: validPosts.length,
-    nextStartLine: linesSeen,
-    hasMore
-  };
 }
 
 // Normalize raw pushshift objects to RedditPost shape
