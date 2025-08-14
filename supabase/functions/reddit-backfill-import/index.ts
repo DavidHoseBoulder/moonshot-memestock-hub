@@ -307,7 +307,14 @@ Deno.serve(async (req) => {
   }
 
   try {
+    console.log('[reddit-backfill-import] Request received, parsing body...');
     const body: BackfillRequest = await req.json();
+    console.log('[reddit-backfill-import] Body parsed successfully:', {
+      mode: body.mode,
+      hasUrl: !!body.jsonl_url,
+      batchSize: body.batch_size,
+      maxItems: body.max_items
+    });
 
     if (body.mode === "jsonl_url" && body.jsonl_url) {
       
