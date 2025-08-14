@@ -142,11 +142,11 @@ function sanitizeChunk(s: string): string {
 }
 
 // Stream parse NDJSON lines (optionally gzip-compressed)
-async function* streamNDJSON(url: string): AsyncGenerator<any> {
+async function* streamNDJSON(url: string, yieldEvery: number = 50): AsyncGenerator<any> {
   const resp = await fetch(url);
   if (!resp.ok || !resp.body) throw new Error(`Failed to fetch ${url}: ${resp.status}`);
 
-  console.log(`[reddit-backfill-import] fetch ok url=${url} len=${resp.headers.get("content-length") ?? "unknown"} ce=${resp.headers.get("content-encoding") ?? "none"} ct=${resp.headers.get("content-type") ?? "unknown"}`);
+  console.log(`[reddit-backfill-import] fetch ok url=${url} len=${resp.headers.get("content-length") ?? "unknown"}`);
 
   // Decide whether to gunzip
   const enc = (resp.headers.get("content-encoding") || "").toLowerCase();
@@ -172,78 +172,86 @@ async function* streamNDJSON(url: string): AsyncGenerator<any> {
   let yielded = 0;
   let badLines = 0;
 
-  while (true) {
-    const { value, done } = await reader.read();
-    if (done) break;
-    
-    const chunk = decoder.decode(value, { stream: true });
-    carry += chunk;
-    
-    // Process complete lines
-    let lines = carry.split('\n');
-    carry = lines.pop() || ""; // Keep the last incomplete line
-    
-    for (const line of lines) {
-      linesSeen++;
-      const trimmed = line.trim();
-      if (!trimmed) continue;
+  try {
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) break;
       
-      try {
-        // Clean common issues: remove trailing commas, null chars, carriage returns
-        const cleaned = trimmed
-          .replace(/,\s*$/, '') // trailing comma
-          .replace(/\r/g, '')   // carriage returns
-          .replace(/\u0000/g, '') // null chars
-          .replace(/[\x00-\x1F\x7F]/g, ''); // other control chars
+      const chunk = decoder.decode(value, { stream: true });
+      carry += chunk;
+      
+      // Process complete lines
+      let lines = carry.split('\n');
+      carry = lines.pop() || ""; // Keep the last incomplete line
+      
+      for (const line of lines) {
+        linesSeen++;
+        const trimmed = line.trim();
+        if (!trimmed) continue;
         
-        if (!cleaned.startsWith('{') || !cleaned.endsWith('}')) {
-          badLines++;
-          if (badLines <= 10 || badLines % 1000 === 0) {
-            console.error(`[reddit-backfill-import] skipped non-object line #${linesSeen}`);
+        try {
+          // Clean common issues but be more lenient
+          const cleaned = trimmed
+            .replace(/,\s*$/, '') // trailing comma
+            .replace(/\r/g, '')   // carriage returns
+            .replace(/\u0000/g, ''); // null chars
+          
+          if (!cleaned.startsWith('{') || !cleaned.endsWith('}')) {
+            badLines++;
+            // Reduce logging frequency to save CPU
+            if (badLines <= 3 || badLines % 10000 === 0) {
+              console.error(`[reddit-backfill-import] skipped non-object line #${linesSeen}`);
+            }
+            continue;
           }
-          continue;
-        }
-        
-        const obj = JSON.parse(cleaned);
-        yielded++;
-        
-        if (yielded <= 1) {
-          try { console.log('[reddit-backfill-import] first object preview:', cleaned.slice(0, 200)); } catch {}
-        }
-        
-        yield obj;
-        
-        // Yield control periodically to prevent CPU timeout
-        if (yielded % 100 === 0) {
-          await new Promise(resolve => setTimeout(resolve, 0));
-        }
-        
-      } catch (err) {
-        badLines++;
-        if (badLines <= 10 || badLines % 1000 === 0) {
-          console.error(`[reddit-backfill-import] skipped malformed JSON at line ${linesSeen}:`, String(err).slice(0, 100));
+          
+          const obj = JSON.parse(cleaned);
+          yielded++;
+          
+          if (yielded <= 1) {
+            console.log('[reddit-backfill-import] first object preview:', cleaned.slice(0, 200));
+          }
+          
+          yield obj;
+          
+          // Yield control much more frequently to prevent CPU timeout
+          if (yielded % yieldEvery === 0) {
+            await new Promise(resolve => setTimeout(resolve, 1));
+          }
+          
+        } catch (err) {
+          badLines++;
+          // Reduce error logging frequency to save CPU
+          if (badLines <= 3 || badLines % 10000 === 0) {
+            console.error(`[reddit-backfill-import] JSON parse error at line ${linesSeen}`);
+          }
         }
       }
-    }
-  }
-
-  // Process any remaining data
-  if (carry.trim()) {
-    try {
-      const cleaned = carry.trim()
-        .replace(/,\s*$/, '')
-        .replace(/\r/g, '')
-        .replace(/\u0000/g, '');
       
-      if (cleaned.startsWith('{') && cleaned.endsWith('}')) {
-        const obj = JSON.parse(cleaned);
-        yielded++;
-        yield obj;
-      }
-    } catch (_) {
-      badLines++;
-      console.warn('[reddit-backfill-import] trailing chunk not valid JSON, discarded');
+      // Yield control after processing each chunk
+      await new Promise(resolve => setTimeout(resolve, 0));
     }
+
+    // Process any remaining data
+    if (carry.trim()) {
+      try {
+        const cleaned = carry.trim()
+          .replace(/,\s*$/, '')
+          .replace(/\r/g, '')
+          .replace(/\u0000/g, '');
+        
+        if (cleaned.startsWith('{') && cleaned.endsWith('}')) {
+          const obj = JSON.parse(cleaned);
+          yielded++;
+          yield obj;
+        }
+      } catch (_) {
+        badLines++;
+        console.warn('[reddit-backfill-import] trailing chunk not valid JSON');
+      }
+    }
+  } finally {
+    reader.releaseLock();
   }
 
   console.log(`[reddit-backfill-import] stream complete lines=${linesSeen} yielded=${yielded} bad=${badLines}`);
@@ -590,9 +598,9 @@ const symbols_effective = (mode === "jsonl_url" ? [] as string[] : symbols);
           const collected: RedditPost[] = [];
           let scanned = 0;
           let processedInBatch = 0;
-          const BATCH_PROCESS_SIZE = 1000; // Process in smaller chunks to yield CPU
+          const BATCH_PROCESS_SIZE = 100; // Process in much smaller chunks to yield CPU more frequently
           
-          for await (const raw of streamNDJSON(jsonl_url)) {
+          for await (const raw of streamNDJSON(jsonl_url, 25)) { // Yield every 25 items during parsing
             scanned++;
             processedInBatch++;
             
@@ -603,9 +611,9 @@ const symbols_effective = (mode === "jsonl_url" ? [] as string[] : symbols);
               collected.push(norm);
             }
             
-            // Yield CPU every 1000 items and update progress
+            // Yield CPU every 100 items and update progress
             if (processedInBatch >= BATCH_PROCESS_SIZE) {
-              await new Promise(resolve => setTimeout(resolve, 10)); // Yield CPU
+              await new Promise(resolve => setTimeout(resolve, 20)); // Longer yield
               await updateRun(run_id, { 
                 scanned_total: scanned, 
                 queued_total: collected.length 
@@ -660,6 +668,7 @@ const symbols_effective = (mode === "jsonl_url" ? [] as string[] : symbols);
         }
       })());
 
+      return response;
     }
 
     return new Response(
