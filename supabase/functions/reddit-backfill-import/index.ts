@@ -222,7 +222,12 @@ async function processFullImport(
         author: sample.fullSample.author
       }));
     
-    console.log(`[reddit-backfill-import] Starting sentiment analysis for ${postsToAnalyze.length} posts in batches of 50`);
+  console.log(`[reddit-backfill-import] Starting sentiment analysis for ${postsToAnalyze.length} posts in batches of 50`);
+  console.log(`[reddit-backfill-import] Sample post data:`, {
+    hasTitle: !!postsToAnalyze[0]?.title,
+    hasSubreddit: !!postsToAnalyze[0]?.subreddit,
+    sampleTitle: postsToAnalyze[0]?.title?.slice(0, 30)
+  });
     
     // Process in batches of 50 to avoid timeouts
     const batchSize = 50;
