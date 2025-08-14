@@ -63,47 +63,71 @@ function chunk<T>(arr: T[], size: number): T[][] {
   return res;
 }
 
-// Canonical tickers derived from Supabase ticker_universe (cold start)
+// Canonical tickers and company names derived from Supabase ticker_universe (cold start)
 const SUPA_URL_T = Deno.env.get('SUPABASE_URL')!
 const SUPA_KEY_T = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
 const supaTickers = createClient(SUPA_URL_T, SUPA_KEY_T)
-let TICKER_LIST: string[] = []
+let TICKER_LIST: { symbol: string; name?: string | null }[] = []
 try {
   const { data, error } = await supaTickers
     .from('ticker_universe')
-    .select('symbol')
+    .select('symbol,name')
     .eq('active', true)
     .order('priority', { ascending: true })
     .order('symbol', { ascending: true })
-  if (!error && data) TICKER_LIST = (data as any[]).map(r => String(r.symbol).toUpperCase())
+  if (!error && data) TICKER_LIST = (data as any[]).map(r => ({ symbol: String(r.symbol).toUpperCase(), name: r.name ?? null }))
 } catch (e: any) {
   console.warn('reddit-backfill-import: failed to load ticker_universe', e?.message || e)
 }
-const SHORT_TICKERS = TICKER_LIST.filter(t => t.length <= 3)
-const LONG_TICKERS = TICKER_LIST.filter(t => t.length > 3)
-const SHORT_RE = TICKER_LIST.length ? new RegExp(`(^|\\W)\\$(${SHORT_TICKERS.join('|')})(?=\\W|$)`, 'gi') : /a^/i
-const LONG_RE = TICKER_LIST.length ? new RegExp(`(^|\\W)(${LONG_TICKERS.join('|')})(?=\\W|$)`, 'gi') : /a^/i
+
+const SHORT_TICKERS = TICKER_LIST.map(t => t.symbol).filter(t => t.length <= 3)
+const LONG_TICKERS = TICKER_LIST.map(t => t.symbol).filter(t => t.length > 3)
+const SHORT_RE = SHORT_TICKERS.length ? new RegExp(`(^|\\W)\\$(${SHORT_TICKERS.join('|')})(?=\\W|$)`, 'gi') : /a^/i
+const LONG_RE = LONG_TICKERS.length ? new RegExp(`(^|\\W)(${LONG_TICKERS.join('|')})(?=\\W|$)`, 'gi') : /a^/i
+
+// Compile company name regexes for case-insensitive exact phrase matches
+function escapeRegExp(s: string) { return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') }
+const NAME_REGEXES: { re: RegExp; symbol: string }[] = TICKER_LIST
+  .filter(t => (t.name && String(t.name).length >= 3))
+  .map(t => ({
+    symbol: t.symbol,
+    re: new RegExp(`\\b${escapeRegExp(String(t.name)).replace(/\\\s\+/g, '\\s+').replace(/\s+/g, '\\s+')}\\b`, 'i')
+  }))
+
+// NSFW subreddit exclusion patterns (subset aligned with reddit_stream_filter.sh intent)
+const NSFW_SUB_PATTERNS: RegExp[] = [
+  /nsfw/i, /gonewild/i, /porn/i, /sex\w*/i, /xxx/i, /nude\w*/i
+]
 
 function extractTickers(text: string): string[] {
   if (!text) return []
-  const out: string[] = []
+  const hits = new Set<string>()
   let m: RegExpExecArray | null
-  while ((m = SHORT_RE.exec(text)) !== null) out.push(m[2].toUpperCase())
-  while ((m = LONG_RE.exec(text)) !== null) out.push(m[2].toUpperCase())
+  while ((m = SHORT_RE.exec(text)) !== null) hits.add(m[2].toUpperCase())
+  while ((m = LONG_RE.exec(text)) !== null) hits.add(m[2].toUpperCase())
   SHORT_RE.lastIndex = 0; LONG_RE.lastIndex = 0
-  return out
+  // Company names -> map to symbols
+  for (const { re, symbol } of NAME_REGEXES) {
+    if (re.test(text)) hits.add(symbol.toUpperCase())
+  }
+  return [...hits]
 }
 
 function passesFilters(post: RedditPost, subreddits?: string[], symbolsFilter?: string[]): boolean {
-  const subredditOk = !subreddits?.length || subreddits.map((s) => s.toLowerCase()).includes(post.subreddit?.toLowerCase());
+  const sr = String(post.subreddit || '')
+  // Subreddit gating: allow all unless caller provided an allowlist; always exclude NSFW patterns
+  if (!sr || NSFW_SUB_PATTERNS.some((re) => re.test(sr))) return false;
+  const subredditOk = !subreddits?.length || subreddits.map((s) => s.toLowerCase()).includes(sr.toLowerCase());
+  if (!subredditOk) return false;
+
   const content = `${post.title ?? ''} ${post.selftext ?? ''}`;
   const matches = extractTickers(content);
-  const anyMatch = matches.length > 0;
-  if (!anyMatch) return false;
-  if (!symbolsFilter?.length) return subredditOk;
+  if (matches.length === 0) return false;
+
+  if (!symbolsFilter?.length) return true;
   const filterSet = new Set(symbolsFilter.map(s => s.toUpperCase()));
   const symbolOk = matches.some(m => filterSet.has(m));
-  return subredditOk && symbolOk;
+  return symbolOk;
 }
 
 // Sanitize potentially mis-encoded characters to valid JSON punctuation
@@ -458,15 +482,7 @@ Deno.serve(async (req) => {
       mode = "jsonl_url",
       posts = [],
       jsonl_url,
-      subreddits = [
-        "stocks",
-        "investing",
-        "SecurityAnalysis",
-        "ValueInvesting",
-        "StockMarket",
-        "wallstreetbets",
-        "pennystocks",
-      ],
+      subreddits = [],
       symbols = [],
       batch_size = 25,
       max_items = 25000,
@@ -514,6 +530,9 @@ const basename = urlPath.split('/').pop() ?? 'unknown';
 const maxCap = (!max_items || max_items <= 0) ? Number.POSITIVE_INFINITY : max_items;
 await upsertRun(run_id, { status: 'running', file: jsonl_url, batch_size });
 
+// Effective symbol filter: for jsonl_url, capture ALL symbols (no filter)
+const symbols_effective = (mode === "jsonl_url" ? [] as string[] : symbols);
+
 // Kick off background processing immediately to avoid request-time compute limits
 // @ts-ignore EdgeRuntime is available in Supabase Edge Functions
       EdgeRuntime.waitUntil((async () => {
@@ -525,7 +544,7 @@ await upsertRun(run_id, { status: 'running', file: jsonl_url, batch_size });
             scanned++;
             const norm = normalizeToRedditPost(raw);
             if (!norm) continue;
-            if (passesFilters(norm, subreddits, symbols)) {
+            if (passesFilters(norm, subreddits, symbols_effective)) {
               collected.push(norm);
             }
             if (collected.length >= maxCap) break; // safety cap per invocation
