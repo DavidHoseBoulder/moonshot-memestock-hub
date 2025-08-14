@@ -217,16 +217,18 @@ async function processFullImport(
   let analyzedCount = 0;
   if (result.validPosts > 0 && result.sampleData.length > 0) {
     // Convert sample data to posts format for sentiment analysis
-    const postsToAnalyze = result.sampleData.map(sample => ({
-      title: sample.fullSample?.title || sample.title,
-      selftext: sample.fullSample?.selftext || sample.selftext || '',
-      score: sample.fullSample?.score || 0,
-      num_comments: sample.fullSample?.num_comments || 0,
-      created_utc: sample.created_utc,
-      subreddit: sample.subreddit,
-      id: sample.fullSample?.id || sample.id,
-      author: sample.author
-    })).filter(post => post.title); // Only include posts with titles
+    const postsToAnalyze = result.sampleData
+      .filter(sample => sample.fullSample?.title && sample.fullSample?.subreddit)
+      .map(sample => ({
+        title: sample.fullSample.title,
+        selftext: sample.fullSample.selftext || '',
+        score: sample.fullSample.score || 0,
+        num_comments: sample.fullSample.num_comments || 0,
+        created_utc: sample.fullSample.created_utc,
+        subreddit: sample.fullSample.subreddit,
+        id: sample.fullSample.id,
+        author: sample.fullSample.author
+      }));
     
     console.log(`[reddit-backfill-import] Starting sentiment analysis for ${postsToAnalyze.length} posts`);
     
