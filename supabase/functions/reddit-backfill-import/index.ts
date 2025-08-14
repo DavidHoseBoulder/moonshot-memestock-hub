@@ -219,7 +219,8 @@ async function processFullImport(
         created_utc: sample.fullSample.created_utc,
         subreddit: sample.fullSample.subreddit,
         id: sample.fullSample.id,
-        author: sample.fullSample.author
+        author: sample.fullSample.author || 'unknown',
+        permalink: `/r/${sample.fullSample.subreddit}/comments/${sample.fullSample.id}/` // Add missing permalink
       }));
     
   console.log(`[reddit-backfill-import] Starting sentiment analysis for ${postsToAnalyze.length} posts in batches of 50`);
