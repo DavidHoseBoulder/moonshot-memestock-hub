@@ -207,11 +207,8 @@ async function processFullImport(
   
   console.log(`[reddit-backfill-import] Chunk complete: ${result.validPosts} posts found`);
   
-  // TEMPORARILY SKIP SENTIMENT ANALYSIS TO GET BASIC FUNCTIONALITY WORKING
+  // Run sentiment analysis on valid posts in batches
   let analyzedCount = 0;
-  console.log(`[reddit-backfill-import] Skipping sentiment analysis for now - basic import only`);
-  
-  /*
   // Run sentiment analysis on valid posts in batches
   if (result.validPosts > 0 && result.sampleData.length > 0) {
     // Convert sample data to posts format for sentiment analysis
@@ -283,7 +280,7 @@ async function processFullImport(
     
     console.log(`[reddit-backfill-import] Sentiment analysis complete: ${analyzedCount} total posts analyzed`);
   }
-  */
+  
   // Update run status with proper timestamp
   if (runId) {
     await supabase.from('import_runs').update({
