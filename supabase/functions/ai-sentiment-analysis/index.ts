@@ -161,36 +161,6 @@ Engagement: ${post.score} upvotes, ${post.num_comments} comments`
           console.log(`Stored sentiment analysis for post: ${postId}`)
         }
 
-        // Also store in sentiment_history for each symbol mentioned
-        if (analysis.symbols_mentioned && analysis.symbols_mentioned.length > 0) {
-          for (const symbol of analysis.symbols_mentioned) {
-            const historyRecord = {
-              symbol: symbol,
-              source: 'reddit',
-              sentiment_score: analysis.overall_sentiment,
-              confidence_score: analysis.confidence_score,
-              data_timestamp: new Date(post.created_utc * 1000).toISOString(),
-              source_id: postId,
-              content_snippet: post.title.substring(0, 200),
-              metadata: {
-                subreddit: post.subreddit,
-                score: post.score,
-                num_comments: post.num_comments,
-                themes: analysis.key_themes,
-                signals: analysis.investment_signals
-              }
-            }
-
-            const { error: historyError } = await supabase
-              .from('sentiment_history')
-              .insert(historyRecord)
-
-            if (historyError) {
-              console.error('Error storing sentiment history:', historyError)
-            }
-          }
-        }
-
         analyzedPosts.push({
           ...post,
           sentiment_analysis: analysis
