@@ -62,22 +62,15 @@ async function processFileChunk(
 
     const reader = byteStream.getReader();
     const decoder = new TextDecoder();
-    let carry = "";
-    let linesSeen = 0;
-    let linesProcessed = 0;
+    let objectsProcessed = 0;
     const sampleData: any[] = [];
 
     try {
       let buffer = "";
-      let linesProcessed = 0;
-      let objectsFound = 0;
 
-      while (linesProcessed < maxLines) {
+      while (objectsProcessed < maxLines) {
         const { value, done } = await reader.read();
-        if (done) {
-          console.log(`[reddit-backfill-import] Stream finished`);
-          break;
-        }
+        if (done) break;
         
         const chunk = decoder.decode(value, { stream: true });
         buffer += chunk;
@@ -128,8 +121,7 @@ async function processFileChunk(
           // If we found a complete JSON object
           if (braceCount === 0 && endPos > openBrace) {
             const jsonStr = buffer.slice(openBrace, endPos + 1);
-            linesProcessed++;
-            objectsFound++;
+            objectsProcessed++;
             
             try {
               const obj = JSON.parse(jsonStr);
@@ -137,7 +129,7 @@ async function processFileChunk(
               // Save all valid posts for sentiment analysis
               if (obj.title && obj.subreddit) { // Basic validation
                 sampleData.push({
-                  objectNumber: objectsFound,
+                  objectNumber: objectsProcessed,
                   keys: Object.keys(obj),
                   subreddit: obj.subreddit,
                   title: obj.title?.slice(0, 50),
@@ -150,12 +142,12 @@ async function processFileChunk(
               }
               
             } catch (parseError) {
-              console.warn(`[reddit-backfill-import] JSON parse error for object ${objectsFound}`);
+              console.warn(`[reddit-backfill-import] JSON parse error for object ${objectsProcessed}`);
             }
             
             startPos = endPos + 1;
             
-            if (linesProcessed >= maxLines) break;
+            if (objectsProcessed >= maxLines) break;
           } else {
             // Incomplete object, need more data
             break;
@@ -171,10 +163,10 @@ async function processFileChunk(
       reader.releaseLock();
     }
 
-    console.log(`[reddit-backfill-import] Processing complete: processed=${linesProcessed}, samples=${sampleData.length}`);
+    console.log(`[reddit-backfill-import] Processing complete: processed=${objectsProcessed}, samples=${sampleData.length}`);
     
     return {
-      linesProcessed,
+      linesProcessed: objectsProcessed, // Return objects processed as line count
       validPosts: sampleData.length,
       sampleData
     };
@@ -278,24 +270,14 @@ async function processFullImport(
 }
 
 Deno.serve(async (req) => {
-  console.log('[reddit-backfill-import] *** FUNCTION START ***');
-  
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }
 
   try {
     const body: BackfillRequest = await req.json();
-    console.log('[reddit-backfill-import] Request parsed:', {
-      mode: body.mode,
-      jsonl_url: body.jsonl_url ? 'provided' : 'missing',
-      run_id: body.run_id
-    });
 
     if (body.mode === "jsonl_url" && body.jsonl_url) {
-      console.log('[reddit-backfill-import] *** MODE: JSONL_URL ***');
-      console.log('[reddit-backfill-import] URL:', body.jsonl_url);
-      console.log('[reddit-backfill-import] _continue_from_line:', body._continue_from_line);
       
       // Run the full import pipeline now that JSON extraction works
       const result = await processFullImport(
