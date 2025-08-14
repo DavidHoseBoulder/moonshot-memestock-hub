@@ -309,10 +309,23 @@ async function processFileChunk(
 // Normalize raw pushshift objects to RedditPost shape
 function normalizeToRedditPost(raw: any): RedditPost | null {
   const created_utc = raw?.created_utc ?? raw?.created ?? 0;
-  const subreddit = raw?.subreddit;
+  const subreddit = raw?.subreddit ?? 'unknown';
   const title = raw?.title ?? "";
   const selftext = raw?.selftext ?? raw?.body ?? "";
-  if (!created_utc || !subreddit || (!title && !selftext)) return null;
+  
+  // TEMPORARY DEBUG: Accept more posts to see what we're getting
+  const hasTime = Boolean(created_utc);
+  const hasSubreddit = Boolean(raw?.subreddit);
+  const hasContent = Boolean(title || selftext);
+  
+  // Log why posts are being rejected for first 10
+  if (!hasTime || !hasSubreddit || !hasContent) {
+    // Still log failures but don't return null yet
+    console.log(`[reddit-backfill-import] POST ISSUES: hasTime=${hasTime}, hasSubreddit=${hasSubreddit}, hasContent=${hasContent}`);
+  }
+  
+  // For now, only require some basic data exists
+  if (!raw || typeof raw !== 'object') return null;
   return {
     id: raw?.id ? String(raw.id) : undefined,
     title,
