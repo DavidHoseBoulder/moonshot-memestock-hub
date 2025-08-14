@@ -174,13 +174,20 @@ Deno.serve(async (req) => {
     if (body.mode === "jsonl_url" && body.jsonl_url) {
       console.log('[reddit-backfill-import] *** MODE: JSONL_URL ***');
       console.log('[reddit-backfill-import] URL:', body.jsonl_url);
-      console.log('[reddit-backfill-import] Starting basic test - will return immediately');
+      console.log('[reddit-backfill-import] _continue_from_line:', body._continue_from_line);
+      
+      const result = await processFileChunk(
+        body.jsonl_url,
+        body._continue_from_line ?? 0,
+        20 // Process only 20 lines for testing with detailed logs
+      );
+      
+      console.log('[reddit-backfill-import] Chunk processing result:', result);
       
       return new Response(
         JSON.stringify({
-          message: "Test response - function is working",
-          url: body.jsonl_url,
-          runId: body.run_id
+          message: "Chunk processed",
+          result: result
         }),
         {
           status: 200,
