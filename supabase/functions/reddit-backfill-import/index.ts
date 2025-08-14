@@ -557,15 +557,15 @@ async function ingestFromJSONLURLChunked(
     if (runId) {
       const currentRun = await supabase
         .from('import_runs')
-        .select('scanned, queued, analyzed, inserted')
+        .select('scanned_total, queued_total, analyzed_total, inserted_total')
         .eq('run_id', runId)
         .maybeSingle();
       
-      const current = currentRun.data || { scanned: 0, queued: 0, analyzed: 0, inserted: 0 };
+      const current = currentRun.data || { scanned_total: 0, queued_total: 0, analyzed_total: 0, inserted_total: 0 };
       
       await updateRun(runId, {
-        scanned: result.nextStartLine,
-        queued: current.queued + result.validPosts,
+        scanned_total: result.nextStartLine,
+        queued_total: current.queued_total + result.validPosts,
         status: result.hasMore ? 'processing' : 'completed',
         completed_at: result.hasMore ? undefined : new Date().toISOString(),
       });
