@@ -565,24 +565,83 @@ await upsertRun(run_id, { status: 'running', file: jsonl_url, batch_size });
 // Effective symbol filter: for jsonl_url, capture ALL symbols (no filter)
 const symbols_effective = (mode === "jsonl_url" ? [] as string[] : symbols);
 
-// Kick off background processing immediately to avoid request-time compute limits
-// @ts-ignore EdgeRuntime is available in Supabase Edge Functions
+      // Return immediate 202 Accepted response for background processing
+      const response = new Response(
+        JSON.stringify({
+          status: 'accepted',
+          message: 'Processing started in background',
+          run_id,
+          file: basename,
+          queued: 0,
+          estimated_batches: 0
+        }),
+        { 
+          status: 202, 
+          headers: { ...corsHeaders, "Content-Type": "application/json" } 
+        }
+      );
+
+      // Kick off background processing immediately to avoid request-time compute limits
+      // @ts-ignore EdgeRuntime is available in Supabase Edge Functions
       EdgeRuntime.waitUntil((async () => {
         try {
-          console.log(`[reddit-backfill-import] background start url=${jsonl_url} batch_size=${batch_size} concurrency=${concurrency_safe}`);
+          console.log(`[reddit-backfill-import] background start url=${jsonl_url} batch_size=${batch_size} concurrency=${concurrency_safe} max_items=${maxCap}`);
+          
           const collected: RedditPost[] = [];
           let scanned = 0;
+          let processedInBatch = 0;
+          const BATCH_PROCESS_SIZE = 1000; // Process in smaller chunks to yield CPU
+          
           for await (const raw of streamNDJSON(jsonl_url)) {
             scanned++;
+            processedInBatch++;
+            
             const norm = normalizeToRedditPost(raw);
             if (!norm) continue;
+            
             if (passesFilters(norm, subreddits, symbols_effective)) {
               collected.push(norm);
             }
-            if (collected.length >= maxCap) break; // safety cap per invocation
+            
+            // Yield CPU every 1000 items and update progress
+            if (processedInBatch >= BATCH_PROCESS_SIZE) {
+              await new Promise(resolve => setTimeout(resolve, 10)); // Yield CPU
+              await updateRun(run_id, { 
+                scanned_total: scanned, 
+                queued_total: collected.length 
+              });
+              processedInBatch = 0;
+              
+              // Check for cancellation
+              if (await isRunCancelling(run_id)) {
+                console.warn('[reddit-backfill-import] Cancelling during stream processing');
+                break;
+              }
+            }
+            
+            if (collected.length >= maxCap) {
+              console.log(`[reddit-backfill-import] reached max_items limit: ${maxCap}`);
+              break;
+            }
           }
+          
           console.log(`[reddit-backfill-import] background scanned=${scanned} queued=${collected.length}`);
-          await updateRun(run_id, { scanned_total: scanned, queued_total: collected.length });
+          await updateRun(run_id, { 
+            scanned_total: scanned, 
+            queued_total: collected.length 
+          });
+          
+          if (collected.length === 0) {
+            await updateRun(run_id, {
+              status: 'succeeded',
+              finished_at: new Date().toISOString(),
+              analyzed_total: 0,
+              inserted_total: 0,
+            });
+            console.log('[reddit-backfill-import] No items to process after filtering');
+            return;
+          }
+          
           const result = await processPipeline(collected, batch_size, run_id, concurrency_safe);
           await updateRun(run_id, {
             status: result.cancelled ? 'cancelled' : 'succeeded',
@@ -590,25 +649,17 @@ const symbols_effective = (mode === "jsonl_url" ? [] as string[] : symbols);
             analyzed_total: result.totalAnalyzed,
             inserted_total: result.totalInserted,
           });
+          
+          console.log(`[reddit-backfill-import] background complete: analyzed=${result.totalAnalyzed} inserted=${result.totalInserted}`);
         } catch (err: any) {
           console.error('[reddit-backfill-import] background error:', err);
-          await updateRun(run_id, { status: 'failed', error: String(err?.message ?? err), finished_at: new Date().toISOString() });
+          await updateRun(run_id, {
+            status: 'failed',
+            finished_at: new Date().toISOString(),
+          }).catch(console.error);
         }
       })());
 
-// basename computed above
-      return new Response(
-        JSON.stringify({
-          mode,
-          accepted: true,
-          note: 'Processing started in background',
-          file: jsonl_url,
-          batch_size,
-          concurrency: concurrency_safe,
-          run_id,
-        }),
-        { status: 202, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
     }
 
     return new Response(
