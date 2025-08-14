@@ -359,69 +359,6 @@ export type Database = {
         }
         Relationships: []
       }
-      social_raw: {
-        Row: {
-          author: string | null
-          body: string | null
-          created_at: string
-          id: string
-          link_id: string | null
-          mode: string | null
-          parent_id: string | null
-          permalink: string | null
-          posted_at: string
-          reddit_id: string
-          selftext: string | null
-          source: string
-          source_run_id: string | null
-          subreddit: string
-          symbols_detected: string[] | null
-          title: string | null
-          updated_at: string
-          url: string | null
-        }
-        Insert: {
-          author?: string | null
-          body?: string | null
-          created_at?: string
-          id?: string
-          link_id?: string | null
-          mode?: string | null
-          parent_id?: string | null
-          permalink?: string | null
-          posted_at: string
-          reddit_id: string
-          selftext?: string | null
-          source?: string
-          source_run_id?: string | null
-          subreddit: string
-          symbols_detected?: string[] | null
-          title?: string | null
-          updated_at?: string
-          url?: string | null
-        }
-        Update: {
-          author?: string | null
-          body?: string | null
-          created_at?: string
-          id?: string
-          link_id?: string | null
-          mode?: string | null
-          parent_id?: string | null
-          permalink?: string | null
-          posted_at?: string
-          reddit_id?: string
-          selftext?: string | null
-          source?: string
-          source_run_id?: string | null
-          subreddit?: string
-          symbols_detected?: string[] | null
-          title?: string | null
-          updated_at?: string
-          url?: string | null
-        }
-        Relationships: []
-      }
       ticker_universe: {
         Row: {
           active: boolean

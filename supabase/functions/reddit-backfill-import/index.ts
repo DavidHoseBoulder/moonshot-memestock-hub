@@ -519,115 +519,25 @@ await upsertRun(run_id, { status: 'running', file: jsonl_url, batch_size });
       EdgeRuntime.waitUntil((async () => {
         try {
           console.log(`[reddit-backfill-import] background start url=${jsonl_url} batch_size=${batch_size} concurrency=${concurrency_safe}`);
-          // Stream the file and ingest into raw staging (social_raw)
+          const collected: RedditPost[] = [];
           let scanned = 0;
-          let queued = 0;
-          let inserted = 0;
-
-          // Try to infer mode from filename first
-          let fileMode: 'comments' | 'submissions' | undefined;
-          const lowerName = (basename || '').toLowerCase();
-          if (lowerName.includes('comments-')) fileMode = 'comments';
-          else if (lowerName.includes('submissions-')) fileMode = 'submissions';
-
-          let batch: any[] = [];
-
           for await (const raw of streamNDJSON(jsonl_url)) {
             scanned++;
-
-            // Determine mode from record if not known yet
-            let currentMode = fileMode;
-            if (!currentMode) {
-              if (typeof raw?.body === 'string') currentMode = 'comments';
-              else if (typeof raw?.title === 'string' || typeof raw?.selftext === 'string') currentMode = 'submissions';
+            const norm = normalizeToRedditPost(raw);
+            if (!norm) continue;
+            if (passesFilters(norm, subreddits, symbols)) {
+              collected.push(norm);
             }
-            if (!currentMode) continue;
-
-            const createdISO = raw?.created_utc
-              ? new Date(Number(raw.created_utc) * 1000).toISOString()
-              : new Date().toISOString();
-
-            const text = currentMode === 'comments'
-              ? String(raw?.body ?? '')
-              : `${raw?.title ?? ''}\n\n${raw?.selftext ?? ''}`;
-
-            const symbols = extractTickers(text);
-
-            // subreddit filter only; allow ALL symbols (per request)
-            const subredditOk = !subreddits?.length || subreddits.map((s) => s.toLowerCase()).includes(String(raw?.subreddit ?? '').toLowerCase());
-            if (!subredditOk) continue;
-
-            // require at least one detected symbol
-            if (symbols.length === 0) continue;
-
-            const reddit_id = String(raw?.id ?? '');
-            const subreddit = String(raw?.subreddit ?? '');
-            if (!reddit_id || !subreddit) continue;
-
-            queued++;
-
-            const row = {
-              source: 'reddit',
-              mode: currentMode,
-              reddit_id,
-              subreddit,
-              author: raw?.author ?? null,
-              title: currentMode === 'submissions' ? (raw?.title ?? null) : null,
-              selftext: currentMode === 'submissions' ? (raw?.selftext ?? null) : null,
-              body: currentMode === 'comments' ? (raw?.body ?? null) : null,
-              url: currentMode === 'submissions' ? (raw?.url ?? null) : null,
-              permalink: raw?.permalink ?? null,
-              link_id: currentMode === 'comments' ? (raw?.link_id ?? null) : null,
-              parent_id: currentMode === 'comments' ? (raw?.parent_id ?? null) : null,
-              symbols_detected: symbols,
-              source_run_id: run_id,
-              posted_at: createdISO,
-            };
-
-            batch.push(row);
-
-            if (batch.length >= batch_size) {
-              const { error } = await supabase
-                .from('social_raw')
-                .upsert(batch, { onConflict: 'source,reddit_id', returning: 'minimal' });
-              if (error) {
-                console.error('[reddit-backfill-import] Upsert error:', error);
-              } else {
-                inserted += batch.length;
-                await updateRun(run_id, { scanned_total: scanned, queued_total: queued, inserted_total: inserted });
-              }
-              batch = [];
-
-              // Cancel check between batches
-              if (await isRunCancelling(run_id)) {
-                console.warn('[reddit-backfill-import] Cancelling run on request (during upsert)');
-                break;
-              }
-              if (inserted >= maxCap) break;
-              await new Promise((r) => setTimeout(r, 100));
-            }
-
-            if (queued >= maxCap) break; // safety cap per invocation
+            if (collected.length >= maxCap) break; // safety cap per invocation
           }
-
-          // Flush remainder
-          if (batch.length) {
-            const { error } = await supabase
-              .from('social_raw')
-              .upsert(batch, { onConflict: 'source,reddit_id', returning: 'minimal' });
-            if (error) {
-              console.error('[reddit-backfill-import] Upsert error (final):', error);
-            } else {
-              inserted += batch.length;
-            }
-          }
-
-          console.log(`[reddit-backfill-import] background scanned=${scanned} queued=${queued} inserted=${inserted}`);
-          await updateRun(run_id, { scanned_total: scanned, queued_total: queued, inserted_total: inserted });
-
+          console.log(`[reddit-backfill-import] background scanned=${scanned} queued=${collected.length}`);
+          await updateRun(run_id, { scanned_total: scanned, queued_total: collected.length });
+          const result = await processPipeline(collected, batch_size, run_id, concurrency_safe);
           await updateRun(run_id, {
-            status: (await isRunCancelling(run_id)) ? 'cancelled' : 'succeeded',
+            status: result.cancelled ? 'cancelled' : 'succeeded',
             finished_at: new Date().toISOString(),
+            analyzed_total: result.totalAnalyzed,
+            inserted_total: result.totalInserted,
           });
         } catch (err: any) {
           console.error('[reddit-backfill-import] background error:', err);
