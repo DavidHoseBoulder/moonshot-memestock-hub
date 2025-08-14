@@ -101,7 +101,13 @@ async function processFileChunk(
           const trimmed = line.trim();
           if (!trimmed) continue;
           
-          console.log(`[reddit-backfill-import] Processing line ${linesProcessed}: ${trimmed.slice(0, 100)}...`);
+          // CRITICAL FIX: Only process lines that look like complete JSON objects
+          if (!trimmed.startsWith('{') || !trimmed.endsWith('}')) {
+            console.log(`[reddit-backfill-import] Line ${linesProcessed} skipped - not complete JSON: starts='${trimmed.charAt(0)}', ends='${trimmed.charAt(trimmed.length-1)}', length=${trimmed.length}`);
+            continue;
+          }
+          
+          console.log(`[reddit-backfill-import] Processing complete JSON line ${linesProcessed}: ${trimmed.slice(0, 100)}...`);
           
           try {
             // Clean and parse JSON
