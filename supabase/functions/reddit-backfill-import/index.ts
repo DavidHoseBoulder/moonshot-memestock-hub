@@ -25,6 +25,7 @@ interface BackfillRequest {
   run_id?: string; // optional client-provided run identifier
   max_items?: number; // safety cap; 0 or negative = no limit
   concurrency?: number; // number of batches to process in parallel (1-5)
+  _continue_from_line?: number; // internal parameter for chunked processing
 }
 
 const corsHeaders = {
@@ -130,23 +131,20 @@ function passesFilters(post: RedditPost, subreddits?: string[], symbolsFilter?: 
   return symbolOk;
 }
 
-// Sanitize potentially mis-encoded characters to valid JSON punctuation
-function sanitizeChunk(s: string): string {
-  return s
-    .replaceAll('\u00A8', '{') // ¨ -> {
-    .replaceAll('\u00BC', '}') // ¼ -> }
-    .replaceAll('\u00FF', '[') // ÿ -> [
-    .replaceAll('\u00A6', ']') // ¦ -> ]
-    .replaceAll('\u00A3', '#') // £ -> #
-    .replaceAll('\u00BDn', '\n'); // ½n -> newline
-}
-
-// Stream parse NDJSON lines (optionally gzip-compressed)
-async function* streamNDJSON(url: string, yieldEvery: number = 50): AsyncGenerator<any> {
+// Process NDJSON in chunks with resumption support
+async function processFileChunk(
+  url: string, 
+  startLine: number = 0, 
+  maxItems: number = 500,
+  runId?: string,
+  subreddits?: string[],
+  symbolsFilter?: string[]
+): Promise<{ processed: number, nextStartLine: number, hasMore: boolean }> {
+  
   const resp = await fetch(url);
   if (!resp.ok || !resp.body) throw new Error(`Failed to fetch ${url}: ${resp.status}`);
 
-  console.log(`[reddit-backfill-import] fetch ok url=${url} len=${resp.headers.get("content-length") ?? "unknown"}`);
+  console.log(`[reddit-backfill-import] processing chunk starting at line ${startLine}, maxItems=${maxItems}`);
 
   // Decide whether to gunzip
   const enc = (resp.headers.get("content-encoding") || "").toLowerCase();
@@ -169,11 +167,11 @@ async function* streamNDJSON(url: string, yieldEvery: number = 50): AsyncGenerat
   const decoder = new TextDecoder();
   let carry = "";
   let linesSeen = 0;
-  let yielded = 0;
-  let badLines = 0;
+  let processed = 0;
+  let validPosts: RedditPost[] = [];
 
   try {
-    while (true) {
+    while (processed < maxItems) {
       const { value, done } = await reader.read();
       if (done) break;
       
@@ -186,77 +184,96 @@ async function* streamNDJSON(url: string, yieldEvery: number = 50): AsyncGenerat
       
       for (const line of lines) {
         linesSeen++;
+        
+        // Skip to start position
+        if (linesSeen <= startLine) continue;
+        
         const trimmed = line.trim();
         if (!trimmed) continue;
         
         try {
-          // Clean common issues but be more lenient
+          // Clean common issues
           const cleaned = trimmed
             .replace(/,\s*$/, '') // trailing comma
             .replace(/\r/g, '')   // carriage returns
             .replace(/\u0000/g, ''); // null chars
           
           if (!cleaned.startsWith('{') || !cleaned.endsWith('}')) {
-            badLines++;
-            // Reduce logging frequency to save CPU
-            if (badLines <= 3 || badLines % 10000 === 0) {
-              console.error(`[reddit-backfill-import] skipped non-object line #${linesSeen}`);
-            }
-            continue;
+            continue; // Skip silently to save CPU
           }
           
           const obj = JSON.parse(cleaned);
-          yielded++;
+          const post = normalizeToRedditPost(obj);
           
-          if (yielded <= 1) {
-            console.log('[reddit-backfill-import] first object preview:', cleaned.slice(0, 200));
-          }
-          
-          yield obj;
-          
-          // Yield control much more frequently to prevent CPU timeout
-          if (yielded % yieldEvery === 0) {
-            await new Promise(resolve => setTimeout(resolve, 1));
+          if (post && passesFilters(post, subreddits, symbolsFilter)) {
+            validPosts.push(post);
+            processed++;
+            
+            if (processed >= maxItems) break;
           }
           
         } catch (err) {
-          badLines++;
-          // Reduce error logging frequency to save CPU
-          if (badLines <= 3 || badLines % 10000 === 0) {
-            console.error(`[reddit-backfill-import] JSON parse error at line ${linesSeen}`);
-          }
+          // Skip silently to save CPU
+          continue;
         }
       }
       
-      // Yield control after processing each chunk
+      // Update progress periodically
+      if (runId && linesSeen % 1000 === 0) {
+        await updateRun(runId, { 
+          scanned: linesSeen,
+          queued: validPosts.length,
+          status: 'processing'
+        });
+      }
+      
+      // Yield control to prevent timeout
       await new Promise(resolve => setTimeout(resolve, 0));
     }
 
-    // Process any remaining data
-    if (carry.trim()) {
-      try {
-        const cleaned = carry.trim()
-          .replace(/,\s*$/, '')
-          .replace(/\r/g, '')
-          .replace(/\u0000/g, '');
-        
-        if (cleaned.startsWith('{') && cleaned.endsWith('}')) {
-          const obj = JSON.parse(cleaned);
-          yielded++;
-          yield obj;
+    // Process any remaining data if we haven't hit our limit
+    if (processed < maxItems && carry.trim()) {
+      linesSeen++;
+      if (linesSeen > startLine) {
+        try {
+          const cleaned = carry.trim()
+            .replace(/,\s*$/, '')
+            .replace(/\r/g, '')
+            .replace(/\u0000/g, '');
+          
+          if (cleaned.startsWith('{') && cleaned.endsWith('}')) {
+            const obj = JSON.parse(cleaned);
+            const post = normalizeToRedditPost(obj);
+            
+            if (post && passesFilters(post, subreddits, symbolsFilter)) {
+              validPosts.push(post);
+              processed++;
+            }
+          }
+        } catch (_) {
+          // Skip silently
         }
-      } catch (_) {
-        badLines++;
-        console.warn('[reddit-backfill-import] trailing chunk not valid JSON');
       }
     }
   } finally {
     reader.releaseLock();
   }
 
-  console.log(`[reddit-backfill-import] stream complete lines=${linesSeen} yielded=${yielded} bad=${badLines}`);
-}
+  // Process the collected posts
+  if (validPosts.length > 0) {
+    console.log(`[reddit-backfill-import] processing ${validPosts.length} valid posts`);
+    await processPipeline(validPosts, Math.min(20, validPosts.length), runId, 1);
+  }
 
+  const hasMore = processed >= maxItems; // If we hit our limit, there's likely more
+  console.log(`[reddit-backfill-import] chunk complete: processed=${processed}, nextLine=${linesSeen}, hasMore=${hasMore}`);
+
+  return {
+    processed,
+    nextStartLine: linesSeen,
+    hasMore
+  };
+}
 
 // Normalize raw pushshift objects to RedditPost shape
 function normalizeToRedditPost(raw: any): RedditPost | null {
@@ -507,179 +524,157 @@ async function processPipeline(posts: RedditPost[], batchSize: number, runId?: s
   const cancelled = runId ? await isRunCancelling(runId) : false;
   console.log(`[reddit-backfill-import] Done. analyzed=${totalAnalyzed}, inserted=${totalInserted}, cancelled=${cancelled}`);
   const ticker_counts = Object.fromEntries(tickerCounts.entries());
-  return { totalAnalyzed, totalInserted, cancelled, ticker_counts };
+  return { analyzed: totalAnalyzed, inserted: totalInserted, cancelled, ticker_counts };
+}
+
+// Main chunked ingestion function with continuation support
+async function ingestFromJSONLURLChunked(
+  url: string,
+  subreddits?: string[],
+  symbolsFilter?: string[],
+  maxItems = 500, // Process 500 items per chunk
+  runId?: string,
+  startLine = 0 // Where to resume from
+) {
+  console.log(`[reddit-backfill-import] chunked processing start url=${url} maxItems=${maxItems} startLine=${startLine}`);
+
+  try {
+    // Initialize or update run status
+    await upsertRun(runId || 'unknown', {
+      status: 'processing',
+      file: url,
+      started_at: startLine === 0 ? new Date().toISOString() : undefined,
+    });
+
+    // Process one chunk
+    const result = await processFileChunk(url, startLine, maxItems, runId, subreddits, symbolsFilter);
+    
+    if (runId) {
+      const currentRun = await supabase
+        .from('import_runs')
+        .select('scanned, queued, analyzed, inserted')
+        .eq('run_id', runId)
+        .maybeSingle();
+      
+      const current = currentRun.data || { scanned: 0, queued: 0, analyzed: 0, inserted: 0 };
+      
+      await updateRun(runId, {
+        scanned: current.scanned + result.nextStartLine - startLine,
+        queued: current.queued + result.processed,
+        status: result.hasMore ? 'processing' : 'completed',
+        completed_at: result.hasMore ? undefined : new Date().toISOString(),
+      });
+    }
+
+    // If there's more to process, schedule next chunk
+    if (result.hasMore && runId) {
+      console.log(`[reddit-backfill-import] scheduling next chunk from line ${result.nextStartLine}`);
+      
+      // Trigger next chunk processing in background
+      EdgeRuntime.waitUntil(
+        (async () => {
+          // Small delay to ensure this invocation completes
+          await new Promise(resolve => setTimeout(resolve, 100));
+          
+          try {
+            await supabase.functions.invoke('reddit-backfill-import', {
+              body: {
+                mode: 'jsonl_url',
+                jsonl_url: url,
+                subreddits,
+                symbols: symbolsFilter,
+                run_id: runId,
+                max_items: maxItems,
+                _continue_from_line: result.nextStartLine
+              }
+            });
+          } catch (err) {
+            console.error('[reddit-backfill-import] failed to schedule next chunk:', err);
+            if (runId) {
+              await updateRun(runId, { 
+                status: 'failed', 
+                error: `Failed to continue processing: ${err}` 
+              });
+            }
+          }
+        })()
+      );
+    }
+
+    console.log(`[reddit-backfill-import] chunk completed: processed=${result.processed}, hasMore=${result.hasMore}`);
+    
+  } catch (error: any) {
+    console.error('[reddit-backfill-import] chunk processing error:', error);
+    if (runId) {
+      await updateRun(runId, {
+        status: 'failed',
+        error: error?.message || String(error),
+      });
+    }
+    throw error;
+  }
 }
 
 Deno.serve(async (req) => {
-  // CORS preflight
+  // Handle CORS preflight requests
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }
 
   try {
-    const body = (await req.json()) as BackfillRequest;
-    const {
-      mode = "jsonl_url",
-      posts = [],
-      jsonl_url,
-      subreddits = [],
-      symbols = [],
-      batch_size = 25,
-      max_items = 25000,
-      concurrency = 3,
-    } = body ?? {};
-    const run_id = body?.run_id ?? (crypto?.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`);
-    const concurrency_safe = Math.min(5, Math.max(1, Number(concurrency ?? 3)));
-    if (batch_size < 5 || batch_size > 100) {
-      return new Response(
-        JSON.stringify({ error: "batch_size must be between 5 and 100" }),
-        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
+    const body: BackfillRequest = await req.json();
+
+    // Generate run ID if not provided
+    const runId = body.run_id ?? crypto.randomUUID();
+
+    if (body.mode === "posts" && body.posts?.length) {
+      console.log('[reddit-backfill-import] direct posts mode');
+      const result = await processPipeline(body.posts, body.batch_size ?? 25, runId, body.concurrency ?? 1);
+      return new Response(JSON.stringify(result), { headers: corsHeaders });
     }
 
-    if (mode === "posts") {
-      const filtered = posts.filter((p) => passesFilters(p, subreddits, symbols));
-      const result = await processPipeline(filtered, batch_size, run_id);
-      return new Response(
-        JSON.stringify({ mode, received: posts.length, filtered: filtered.length, ...result }),
-        { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+    if (body.mode === "jsonl_url" && body.jsonl_url) {
+      console.log('[reddit-backfill-import] chunked JSONL processing mode');
+      
+      const startLine = body._continue_from_line ?? 0;
+      const maxItems = body.max_items && body.max_items > 0 ? Math.min(body.max_items, 500) : 500;
+      
+      // Start chunked processing and return immediately
+      EdgeRuntime.waitUntil(
+        ingestFromJSONLURLChunked(
+          body.jsonl_url,
+          body.subreddits,
+          body.symbols,
+          maxItems,
+          runId,
+          startLine
+        )
       );
-    }
 
-    if (mode === "jsonl_url") {
-      if (!jsonl_url) {
-        return new Response(
-          JSON.stringify({ error: "jsonl_url is required for mode=jsonl_url" }),
-          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-        );
-      }
-
-      // Note: .zst dumps are not supported here. Provide pre-decompressed .jsonl or .jsonl.gz
-      if (jsonl_url.endsWith(".zst")) {
-        return new Response(
-          JSON.stringify({
-            error: ".zst is not supported in-edge. Please pre-decompress to .jsonl or .jsonl.gz and retry",
-          }),
-          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-        );
-      }
-
-// Prepare run record and limits
-const urlPath = (() => { try { return new URL(jsonl_url).pathname; } catch { return jsonl_url; } })();
-const basename = urlPath.split('/').pop() ?? 'unknown';
-const maxCap = (!max_items || max_items <= 0) ? Number.POSITIVE_INFINITY : max_items;
-await upsertRun(run_id, { status: 'running', file: jsonl_url, batch_size });
-
-// Effective symbol filter: for jsonl_url, capture ALL symbols (no filter)
-const symbols_effective = (mode === "jsonl_url" ? [] as string[] : symbols);
-
-      // Return immediate 202 Accepted response for background processing
-      const response = new Response(
+      return new Response(
         JSON.stringify({
-          status: 'accepted',
-          message: 'Processing started in background',
-          run_id,
-          file: basename,
-          queued: 0,
-          estimated_batches: 0
+          runId,
+          status: "processing",
+          message: `Chunked processing started from line ${startLine}`,
+          maxItems
         }),
-        { 
-          status: 202, 
-          headers: { ...corsHeaders, "Content-Type": "application/json" } 
+        {
+          status: 202, // Accepted
+          headers: { ...corsHeaders, "Content-Type": "application/json" }
         }
       );
-
-      // Kick off background processing immediately to avoid request-time compute limits
-      // @ts-ignore EdgeRuntime is available in Supabase Edge Functions
-      EdgeRuntime.waitUntil((async () => {
-        try {
-          console.log(`[reddit-backfill-import] background start url=${jsonl_url} batch_size=${batch_size} concurrency=${concurrency_safe} max_items=${maxCap}`);
-          
-          const collected: RedditPost[] = [];
-          let scanned = 0;
-          let processedInBatch = 0;
-          const BATCH_PROCESS_SIZE = 100; // Process in much smaller chunks to yield CPU more frequently
-          
-          for await (const raw of streamNDJSON(jsonl_url, 25)) { // Yield every 25 items during parsing
-            scanned++;
-            processedInBatch++;
-            
-            const norm = normalizeToRedditPost(raw);
-            if (!norm) continue;
-            
-            if (passesFilters(norm, subreddits, symbols_effective)) {
-              collected.push(norm);
-            }
-            
-            // Yield CPU every 100 items and update progress
-            if (processedInBatch >= BATCH_PROCESS_SIZE) {
-              await new Promise(resolve => setTimeout(resolve, 20)); // Longer yield
-              await updateRun(run_id, { 
-                scanned_total: scanned, 
-                queued_total: collected.length 
-              });
-              processedInBatch = 0;
-              
-              // Check for cancellation
-              if (await isRunCancelling(run_id)) {
-                console.warn('[reddit-backfill-import] Cancelling during stream processing');
-                break;
-              }
-            }
-            
-            if (collected.length >= maxCap) {
-              console.log(`[reddit-backfill-import] reached max_items limit: ${maxCap}`);
-              break;
-            }
-          }
-          
-          console.log(`[reddit-backfill-import] background scanned=${scanned} queued=${collected.length}`);
-          await updateRun(run_id, { 
-            scanned_total: scanned, 
-            queued_total: collected.length 
-          });
-          
-          if (collected.length === 0) {
-            await updateRun(run_id, {
-              status: 'succeeded',
-              finished_at: new Date().toISOString(),
-              analyzed_total: 0,
-              inserted_total: 0,
-            });
-            console.log('[reddit-backfill-import] No items to process after filtering');
-            return;
-          }
-          
-          const result = await processPipeline(collected, batch_size, run_id, concurrency_safe);
-          await updateRun(run_id, {
-            status: result.cancelled ? 'cancelled' : 'succeeded',
-            finished_at: new Date().toISOString(),
-            analyzed_total: result.totalAnalyzed,
-            inserted_total: result.totalInserted,
-          });
-          
-          console.log(`[reddit-backfill-import] background complete: analyzed=${result.totalAnalyzed} inserted=${result.totalInserted}`);
-        } catch (err: any) {
-          console.error('[reddit-backfill-import] background error:', err);
-          await updateRun(run_id, {
-            status: 'failed',
-            finished_at: new Date().toISOString(),
-          }).catch(console.error);
-        }
-      })());
-
-      return response;
     }
 
     return new Response(
-      JSON.stringify({ error: `Unsupported mode: ${mode}` }),
-      { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      JSON.stringify({ error: "Invalid mode or missing required fields" }),
+      { status: 400, headers: corsHeaders }
     );
+
   } catch (error: any) {
-    console.error("[reddit-backfill-import] Error:", error);
+    console.error('[reddit-backfill-import] Request error:', error);
     return new Response(
-      JSON.stringify({ error: error?.message ?? "Unexpected error" }),
-      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      JSON.stringify({ error: error?.message || "Internal server error" }),
+      { status: 500, headers: corsHeaders }
     );
   }
 });
