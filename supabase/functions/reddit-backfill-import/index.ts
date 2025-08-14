@@ -208,8 +208,41 @@ async function processFileChunk(
           const obj = JSON.parse(cleaned);
           const post = normalizeToRedditPost(obj);
           
-          if (post && passesFilters(post, subreddits, symbolsFilter)) {
-            validPosts.push(post);
+          // Debug: log first few posts to see what we're getting
+          if (linesProcessed <= 5) {
+            console.log(`[reddit-backfill-import] sample post ${linesProcessed}:`, {
+              subreddit: post?.subreddit,
+              title: post?.title?.slice(0, 100),
+              hasContent: Boolean(post?.title || post?.selftext)
+            });
+          }
+          
+          if (post) {
+            // Less strict filtering for debugging
+            const content = `${post.title ?? ''} ${post.selftext ?? ''}`;
+            const hasTickerMentions = extractTickers(content).length > 0;
+            const isAllowedSubreddit = !subreddits?.length || subreddits.map(s => s.toLowerCase()).includes(post.subreddit.toLowerCase());
+            const notNSFW = !NSFW_SUB_PATTERNS.some(re => re.test(post.subreddit));
+            
+            // Debug logging for first few posts
+            if (linesProcessed <= 10) {
+              console.log(`[reddit-backfill-import] post ${linesProcessed} filters:`, {
+                subreddit: post.subreddit,
+                hasTickerMentions,
+                isAllowedSubreddit, 
+                notNSFW,
+                tickers: extractTickers(content),
+                contentSnippet: content.slice(0, 200)
+              });
+            }
+            
+            // For now, let's be less strict - just require non-NSFW and some content
+            if (notNSFW && content.trim()) {
+              validPosts.push(post);
+              if (linesProcessed <= 5) {
+                console.log(`[reddit-backfill-import] added valid post from r/${post.subreddit}`);
+              }
+            }
           }
           
         } catch (err) {
