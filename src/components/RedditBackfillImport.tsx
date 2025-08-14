@@ -20,6 +20,7 @@ const RedditBackfillImport = () => {
   const [maxItems, setMaxItems] = useState<number>(25000);
   const [concurrency, setConcurrency] = useState<number>(3);
   const [isRunning, setIsRunning] = useState(false);
+  const [isProcessingQueue, setIsProcessingQueue] = useState(false);
   const [currentRunId, setCurrentRunId] = useState<string | null>(null);
   const [insertedCount, setInsertedCount] = useState<number | null>(null);
   const [runInfo, setRunInfo] = useState<{ status: string; scanned: number; queued: number; analyzed: number; inserted: number; finished_at: string | null } | null>(null);
@@ -115,6 +116,47 @@ const RedditBackfillImport = () => {
       toast({ title: 'Cancel failed', description: error.message, variant: 'destructive' });
     } else {
       toast({ title: 'Cancelling…', description: 'The run will stop at the next batch boundary.' });
+    }
+  };
+
+  const processQueue = async () => {
+    setIsProcessingQueue(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('reddit-worker');
+      
+      if (error) {
+        console.error('Queue processing error:', error);
+        throw new Error(`Queue processing error: ${error.message || JSON.stringify(error)}`);
+      }
+      
+      if (data?.processed) {
+        if (data.error) {
+          toast({
+            title: "Queue Processing Error",
+            description: `Run ${data.run_id?.slice(0, 8)}...: ${data.error}`,
+            variant: "destructive"
+          });
+        } else {
+          toast({
+            title: "Queue Job Processed",
+            description: `Successfully processed run ${data.run_id?.slice(0, 8)}...`,
+          });
+        }
+      } else {
+        toast({
+          title: "No Jobs in Queue",
+          description: "No pending jobs found to process",
+        });
+      }
+    } catch (e: any) {
+      console.error(e);
+      toast({ 
+        title: "Queue Processing Failed", 
+        description: e?.message ?? 'Failed to process queue', 
+        variant: "destructive" 
+      });
+    } finally {
+      setIsProcessingQueue(false);
     }
   };
 
@@ -271,9 +313,17 @@ const RedditBackfillImport = () => {
             <p className="text-sm text-muted-foreground">All symbols auto-detected; $ required for short tickers (&lt;=3).</p>
           </div>
         </div>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
           <Button className="w-full" onClick={startBackfill} disabled={isRunning}>
             {isRunning ? 'Starting…' : 'Start Reddit Backfill'}
+          </Button>
+          <Button 
+            className="w-full" 
+            variant="outline" 
+            onClick={processQueue} 
+            disabled={isProcessingQueue}
+          >
+            {isProcessingQueue ? 'Processing…' : 'Process Queue'}
           </Button>
           {currentRunId && (runInfo?.status === 'running' || runInfo?.status === 'queued') && (
             <Button type="button" variant="destructive" className="w-full" onClick={cancelRun}>
