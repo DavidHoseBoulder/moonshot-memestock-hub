@@ -131,20 +131,20 @@ function passesFilters(post: RedditPost, subreddits?: string[], symbolsFilter?: 
   return symbolOk;
 }
 
-// Process NDJSON in chunks with resumption support
+// Process NDJSON in very small chunks to prevent CPU timeout
 async function processFileChunk(
   url: string, 
   startLine: number = 0, 
-  maxItems: number = 500,
+  maxLines: number = 1000, // Process max 1000 lines per chunk
   runId?: string,
   subreddits?: string[],
   symbolsFilter?: string[]
-): Promise<{ processed: number, nextStartLine: number, hasMore: boolean }> {
+): Promise<{ linesProcessed: number, validPosts: number, nextStartLine: number, hasMore: boolean }> {
   
   const resp = await fetch(url);
   if (!resp.ok || !resp.body) throw new Error(`Failed to fetch ${url}: ${resp.status}`);
 
-  console.log(`[reddit-backfill-import] processing chunk starting at line ${startLine}, maxItems=${maxItems}`);
+  console.log(`[reddit-backfill-import] processing chunk starting at line ${startLine}, maxLines=${maxLines}`);
 
   // Decide whether to gunzip
   const enc = (resp.headers.get("content-encoding") || "").toLowerCase();
@@ -167,11 +167,11 @@ async function processFileChunk(
   const decoder = new TextDecoder();
   let carry = "";
   let linesSeen = 0;
-  let processed = 0;
+  let linesProcessed = 0;
   let validPosts: RedditPost[] = [];
 
   try {
-    while (processed < maxItems) {
+    while (linesProcessed < maxLines) {
       const { value, done } = await reader.read();
       if (done) break;
       
@@ -187,6 +187,9 @@ async function processFileChunk(
         
         // Skip to start position
         if (linesSeen <= startLine) continue;
+        
+        linesProcessed++;
+        if (linesProcessed > maxLines) break;
         
         const trimmed = line.trim();
         if (!trimmed) continue;
@@ -207,69 +210,38 @@ async function processFileChunk(
           
           if (post && passesFilters(post, subreddits, symbolsFilter)) {
             validPosts.push(post);
-            processed++;
-            
-            if (processed >= maxItems) break;
           }
           
         } catch (err) {
           // Skip silently to save CPU
           continue;
         }
-      }
-      
-      // Update progress periodically
-      if (runId && linesSeen % 1000 === 0) {
-        await updateRun(runId, { 
-          scanned: linesSeen,
-          queued: validPosts.length,
-          status: 'processing'
-        });
-      }
-      
-      // Yield control to prevent timeout
-      await new Promise(resolve => setTimeout(resolve, 0));
-    }
-
-    // Process any remaining data if we haven't hit our limit
-    if (processed < maxItems && carry.trim()) {
-      linesSeen++;
-      if (linesSeen > startLine) {
-        try {
-          const cleaned = carry.trim()
-            .replace(/,\s*$/, '')
-            .replace(/\r/g, '')
-            .replace(/\u0000/g, '');
-          
-          if (cleaned.startsWith('{') && cleaned.endsWith('}')) {
-            const obj = JSON.parse(cleaned);
-            const post = normalizeToRedditPost(obj);
-            
-            if (post && passesFilters(post, subreddits, symbolsFilter)) {
-              validPosts.push(post);
-              processed++;
-            }
-          }
-        } catch (_) {
-          // Skip silently
+        
+        // Yield control very frequently to prevent timeout
+        if (linesProcessed % 100 === 0) {
+          await new Promise(resolve => setTimeout(resolve, 1));
         }
       }
+      
+      // Yield control after each chunk read
+      await new Promise(resolve => setTimeout(resolve, 0));
     }
   } finally {
     reader.releaseLock();
   }
 
-  // Process the collected posts
+  // Process the collected posts if any
   if (validPosts.length > 0) {
-    console.log(`[reddit-backfill-import] processing ${validPosts.length} valid posts`);
-    await processPipeline(validPosts, Math.min(20, validPosts.length), runId, 1);
+    console.log(`[reddit-backfill-import] processing ${validPosts.length} valid posts from ${linesProcessed} lines`);
+    await processPipeline(validPosts, Math.min(10, validPosts.length), runId, 1);
   }
 
-  const hasMore = processed >= maxItems; // If we hit our limit, there's likely more
-  console.log(`[reddit-backfill-import] chunk complete: processed=${processed}, nextLine=${linesSeen}, hasMore=${hasMore}`);
+  const hasMore = linesProcessed >= maxLines; // If we processed our max lines, there's likely more
+  console.log(`[reddit-backfill-import] chunk complete: linesProcessed=${linesProcessed}, validPosts=${validPosts.length}, nextLine=${linesSeen}, hasMore=${hasMore}`);
 
   return {
-    processed,
+    linesProcessed,
+    validPosts: validPosts.length,
     nextStartLine: linesSeen,
     hasMore
   };
@@ -532,11 +504,11 @@ async function ingestFromJSONLURLChunked(
   url: string,
   subreddits?: string[],
   symbolsFilter?: string[],
-  maxItems = 500, // Process 500 items per chunk
+  maxLines = 1000, // Process max 1000 lines per chunk
   runId?: string,
   startLine = 0 // Where to resume from
 ) {
-  console.log(`[reddit-backfill-import] chunked processing start url=${url} maxItems=${maxItems} startLine=${startLine}`);
+  console.log(`[reddit-backfill-import] chunked processing start url=${url} maxLines=${maxLines} startLine=${startLine}`);
 
   try {
     // Initialize or update run status
@@ -547,7 +519,7 @@ async function ingestFromJSONLURLChunked(
     });
 
     // Process one chunk
-    const result = await processFileChunk(url, startLine, maxItems, runId, subreddits, symbolsFilter);
+    const result = await processFileChunk(url, startLine, maxLines, runId, subreddits, symbolsFilter);
     
     if (runId) {
       const currentRun = await supabase
@@ -559,8 +531,8 @@ async function ingestFromJSONLURLChunked(
       const current = currentRun.data || { scanned: 0, queued: 0, analyzed: 0, inserted: 0 };
       
       await updateRun(runId, {
-        scanned: current.scanned + result.nextStartLine - startLine,
-        queued: current.queued + result.processed,
+        scanned: result.nextStartLine,
+        queued: current.queued + result.validPosts,
         status: result.hasMore ? 'processing' : 'completed',
         completed_at: result.hasMore ? undefined : new Date().toISOString(),
       });
@@ -574,7 +546,7 @@ async function ingestFromJSONLURLChunked(
       EdgeRuntime.waitUntil(
         (async () => {
           // Small delay to ensure this invocation completes
-          await new Promise(resolve => setTimeout(resolve, 100));
+          await new Promise(resolve => setTimeout(resolve, 200));
           
           try {
             await supabase.functions.invoke('reddit-backfill-import', {
@@ -584,7 +556,7 @@ async function ingestFromJSONLURLChunked(
                 subreddits,
                 symbols: symbolsFilter,
                 run_id: runId,
-                max_items: maxItems,
+                max_items: maxLines, // Now this is max lines
                 _continue_from_line: result.nextStartLine
               }
             });
@@ -601,7 +573,7 @@ async function ingestFromJSONLURLChunked(
       );
     }
 
-    console.log(`[reddit-backfill-import] chunk completed: processed=${result.processed}, hasMore=${result.hasMore}`);
+    console.log(`[reddit-backfill-import] chunk completed: linesProcessed=${result.linesProcessed}, validPosts=${result.validPosts}, hasMore=${result.hasMore}`);
     
   } catch (error: any) {
     console.error('[reddit-backfill-import] chunk processing error:', error);
@@ -637,7 +609,7 @@ Deno.serve(async (req) => {
       console.log('[reddit-backfill-import] chunked JSONL processing mode');
       
       const startLine = body._continue_from_line ?? 0;
-      const maxItems = body.max_items && body.max_items > 0 ? Math.min(body.max_items, 500) : 500;
+      const maxLines = body.max_items && body.max_items > 0 ? Math.min(body.max_items, 1000) : 1000;
       
       // Start chunked processing and return immediately
       EdgeRuntime.waitUntil(
@@ -645,7 +617,7 @@ Deno.serve(async (req) => {
           body.jsonl_url,
           body.subreddits,
           body.symbols,
-          maxItems,
+          maxLines,
           runId,
           startLine
         )
@@ -656,7 +628,7 @@ Deno.serve(async (req) => {
           runId,
           status: "processing",
           message: `Chunked processing started from line ${startLine}`,
-          maxItems
+          maxLines
         }),
         {
           status: 202, // Accepted
