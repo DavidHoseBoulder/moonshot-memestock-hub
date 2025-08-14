@@ -179,6 +179,10 @@ async function processFileChunk(
     let carry = "";
     let linesSeen = 0;
     let linesProcessed = 0;
+    const validPosts: RedditPost[] = [];
+    
+    console.log('[reddit-backfill-import] starting stream read loop');
+    let linesProcessed = 0;
     let validPosts: RedditPost[] = [];
 
     try {
