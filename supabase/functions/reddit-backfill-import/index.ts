@@ -309,18 +309,9 @@ Deno.serve(async (req) => {
   }
 
   try {
-    console.log('[reddit-backfill-import] Request received, getting raw text...');
+    console.log('[reddit-backfill-import] Request received, parsing body...');
     
-    // Get the raw text first to see what we're dealing with
-    const rawText = await req.text();
-    console.log('[reddit-backfill-import] Raw request body:', rawText);
-    console.log('[reddit-backfill-import] Raw body length:', rawText.length);
-    console.log('[reddit-backfill-import] First 200 chars:', rawText.slice(0, 200));
-    console.log('[reddit-backfill-import] Last 200 chars:', rawText.slice(-200));
-    
-    // Now try to parse it
-    console.log('[reddit-backfill-import] Attempting to parse JSON...');
-    const body: BackfillRequest = JSON.parse(rawText);
+    const body: BackfillRequest = await req.json();
     console.log('[reddit-backfill-import] Body parsed successfully:', {
       mode: body.mode,
       hasUrl: !!body.jsonl_url,
