@@ -226,11 +226,45 @@ async function processFullImport(
   
   console.log(`[reddit-backfill-import] Chunk complete: ${result.validPosts} posts found`);
   
+  // Run sentiment analysis on valid posts
+  let analyzedCount = 0;
+  if (result.validPosts > 0 && result.sampleData.length > 0) {
+    // Convert sample data to posts format for sentiment analysis
+    const postsToAnalyze = result.sampleData.map(sample => ({
+      title: sample.fullSample?.title || sample.title,
+      selftext: sample.fullSample?.selftext || sample.selftext || '',
+      score: sample.fullSample?.score || 0,
+      num_comments: sample.fullSample?.num_comments || 0,
+      created_utc: sample.created_utc,
+      subreddit: sample.subreddit,
+      id: sample.fullSample?.id || sample.id,
+      author: sample.author
+    })).filter(post => post.title); // Only include posts with titles
+    
+    console.log(`[reddit-backfill-import] Starting sentiment analysis for ${postsToAnalyze.length} posts`);
+    
+    try {
+      const { data: sentimentData, error: sentimentError } = await supabase.functions.invoke('ai-sentiment-analysis', {
+        body: { posts: postsToAnalyze }
+      });
+      
+      if (sentimentError) {
+        console.error('[reddit-backfill-import] Sentiment analysis error:', sentimentError);
+      } else {
+        analyzedCount = sentimentData?.analyzedPosts?.length || 0;
+        console.log(`[reddit-backfill-import] Sentiment analysis complete: ${analyzedCount} posts analyzed`);
+      }
+    } catch (error) {
+      console.error('[reddit-backfill-import] Sentiment analysis failed:', error);
+    }
+  }
+  
   // Update run status with proper timestamp
   if (runId) {
     await supabase.from('import_runs').update({
       scanned_total: result.linesProcessed,
       queued_total: result.validPosts,
+      analyzed_total: analyzedCount,
       status: 'completed',
       finished_at: new Date().toISOString()
     }).eq('run_id', runId);
