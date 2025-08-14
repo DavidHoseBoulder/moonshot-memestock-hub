@@ -243,7 +243,7 @@ async function processFullImport(
         if (sentimentError) {
           console.error(`[reddit-backfill-import] Sentiment analysis error for batch ${Math.floor(i/batchSize) + 1}:`, sentimentError);
         } else {
-          const batchAnalyzedCount = sentimentData?.analyzedPosts?.length || 0;
+          const batchAnalyzedCount = sentimentData?.analyzed_posts?.length || sentimentData?.total_analyzed || 0;
           analyzedCount += batchAnalyzedCount;
           console.log(`[reddit-backfill-import] Batch ${Math.floor(i/batchSize) + 1} complete: ${batchAnalyzedCount} posts analyzed`);
         }
