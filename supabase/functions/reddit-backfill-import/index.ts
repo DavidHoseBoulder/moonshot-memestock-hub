@@ -141,6 +141,8 @@ async function processFileChunk(
   symbolsFilter?: string[]
 ): Promise<{ linesProcessed: number, validPosts: number, nextStartLine: number, hasMore: boolean }> {
   
+  console.log(`[reddit-backfill-import] *** CHUNK START *** line=${startLine}, maxLines=${maxLines}, filters: subreddits=${subreddits?.join(',') || 'none'}, symbols=${symbolsFilter?.join(',') || 'none'}`);
+  
   const resp = await fetch(url);
   if (!resp.ok || !resp.body) throw new Error(`Failed to fetch ${url}: ${resp.status}`);
 
