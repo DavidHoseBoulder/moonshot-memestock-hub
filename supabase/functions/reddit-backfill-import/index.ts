@@ -258,15 +258,15 @@ async function processFileChunk(
               });
             }
             
-            // For now, let's be less strict - just require non-NSFW and some content
-            if (notNSFW && content.trim()) {
+            // TEMPORARY: Accept ALL posts with content to test
+            if (content.trim()) {
               validPosts.push(post);
               if (validPosts.length <= 5) {
                 console.log(`[reddit-backfill-import] ADDED VALID POST ${validPosts.length} from r/${post.subreddit}: "${post.title?.slice(0, 80)}"`);
               }
             } else {
               if (linesProcessed <= 10) {
-                console.log(`[reddit-backfill-import] POST ${linesProcessed} REJECTED: nsfw=${!notNSFW}, noContent=${!content.trim()}`);
+                console.log(`[reddit-backfill-import] POST ${linesProcessed} REJECTED: noContent=${!content.trim()}`);
               }
             }
           }
