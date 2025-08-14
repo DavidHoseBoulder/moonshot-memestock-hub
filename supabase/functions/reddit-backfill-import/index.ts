@@ -226,12 +226,13 @@ async function processFullImport(
   
   console.log(`[reddit-backfill-import] Chunk complete: ${result.validPosts} posts found`);
   
-  // Update run status
+  // Update run status with proper timestamp
   if (runId) {
     await supabase.from('import_runs').update({
       scanned_total: result.linesProcessed,
       queued_total: result.validPosts,
-      status: 'completed'
+      status: 'completed',
+      finished_at: new Date().toISOString()
     }).eq('run_id', runId);
   }
   
