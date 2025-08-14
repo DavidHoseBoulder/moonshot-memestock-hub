@@ -213,7 +213,7 @@ async function processFullImport(
   
   console.log(`[reddit-backfill-import] Chunk complete: ${result.validPosts} posts found`);
   
-  // Run sentiment analysis on valid posts
+  // Run sentiment analysis on valid posts in batches
   let analyzedCount = 0;
   if (result.validPosts > 0 && result.sampleData.length > 0) {
     // Convert sample data to posts format for sentiment analysis
@@ -230,22 +230,32 @@ async function processFullImport(
         author: sample.fullSample.author
       }));
     
-    console.log(`[reddit-backfill-import] Starting sentiment analysis for ${postsToAnalyze.length} posts`);
+    console.log(`[reddit-backfill-import] Starting sentiment analysis for ${postsToAnalyze.length} posts in batches of 50`);
     
-    try {
-      const { data: sentimentData, error: sentimentError } = await supabase.functions.invoke('ai-sentiment-analysis', {
-        body: { posts: postsToAnalyze }
-      });
+    // Process in batches of 50 to avoid timeouts
+    const batchSize = 50;
+    for (let i = 0; i < postsToAnalyze.length; i += batchSize) {
+      const batch = postsToAnalyze.slice(i, i + batchSize);
+      console.log(`[reddit-backfill-import] Processing sentiment batch ${Math.floor(i/batchSize) + 1}/${Math.ceil(postsToAnalyze.length/batchSize)} (${batch.length} posts)`);
       
-      if (sentimentError) {
-        console.error('[reddit-backfill-import] Sentiment analysis error:', sentimentError);
-      } else {
-        analyzedCount = sentimentData?.analyzedPosts?.length || 0;
-        console.log(`[reddit-backfill-import] Sentiment analysis complete: ${analyzedCount} posts analyzed`);
+      try {
+        const { data: sentimentData, error: sentimentError } = await supabase.functions.invoke('ai-sentiment-analysis', {
+          body: { posts: batch }
+        });
+        
+        if (sentimentError) {
+          console.error(`[reddit-backfill-import] Sentiment analysis error for batch ${Math.floor(i/batchSize) + 1}:`, sentimentError);
+        } else {
+          const batchAnalyzedCount = sentimentData?.analyzedPosts?.length || 0;
+          analyzedCount += batchAnalyzedCount;
+          console.log(`[reddit-backfill-import] Batch ${Math.floor(i/batchSize) + 1} complete: ${batchAnalyzedCount} posts analyzed`);
+        }
+      } catch (error) {
+        console.error(`[reddit-backfill-import] Sentiment analysis failed for batch ${Math.floor(i/batchSize) + 1}:`, error);
       }
-    } catch (error) {
-      console.error('[reddit-backfill-import] Sentiment analysis failed:', error);
     }
+    
+    console.log(`[reddit-backfill-import] Sentiment analysis complete: ${analyzedCount} total posts analyzed`);
   }
   
   // Update run status with proper timestamp
