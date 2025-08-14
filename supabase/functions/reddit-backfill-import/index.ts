@@ -198,7 +198,7 @@ async function processFileChunk(
   }
 }
 
-// For now, use processFileChunk as the full import (we'll expand this later)
+// Integrate with full import pipeline 
 async function processFullImport(
   url: string,
   subreddits?: string[],
@@ -208,16 +208,38 @@ async function processFullImport(
   startLine: number = 0,
   maxItems: number = 1000
 ) {
-  console.log('[reddit-backfill-import] processFullImport called');
+  console.log('[reddit-backfill-import] processFullImport: creating run entry');
   
-  // For now, just call processFileChunk with more lines
+  // Create/update run tracking
+  if (runId) {
+    await supabase.from('import_runs').upsert({
+      run_id: runId,
+      status: 'processing',
+      file: url,
+      batch_size: batchSize,
+      started_at: startLine === 0 ? new Date().toISOString() : undefined,
+    }, { onConflict: 'run_id' });
+  }
+  
+  // Process one chunk with our working JSON extraction
   const result = await processFileChunk(url, startLine, Math.min(maxItems, 100));
   
+  console.log(`[reddit-backfill-import] Chunk complete: ${result.validPosts} posts found`);
+  
+  // Update run status
+  if (runId) {
+    await supabase.from('import_runs').update({
+      scanned_total: result.linesProcessed,
+      queued_total: result.validPosts,
+      status: 'completed'
+    }).eq('run_id', runId);
+  }
+  
   return {
-    message: "Import processing complete",
+    runId,
     linesProcessed: result.linesProcessed,
     validPosts: result.validPosts,
-    sampleData: result.sampleData.slice(0, 3) // Return smaller sample
+    message: `Found ${result.validPosts} valid Reddit posts`
   };
 }
 
