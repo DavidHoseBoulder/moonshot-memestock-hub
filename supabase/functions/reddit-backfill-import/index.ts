@@ -328,7 +328,7 @@ Deno.serve(async (req) => {
     });
 
     if (body.mode === "jsonl_url" && body.jsonl_url) {
-      // Immediately create/update the run record
+      // Immediately create/update the run record and return
       if (body.run_id) {
         await supabase.from('import_runs').upsert({
           run_id: body.run_id,
@@ -339,8 +339,8 @@ Deno.serve(async (req) => {
         }, { onConflict: 'run_id' });
       }
       
-      // Start ALL processing in background immediately
-      const backgroundTask = async () => {
+      // Schedule background processing using setTimeout (non-blocking)
+      setTimeout(async () => {
         try {
           console.log('[reddit-backfill-import] Starting background processing');
           
@@ -365,12 +365,9 @@ Deno.serve(async (req) => {
             }).eq('run_id', body.run_id);
           }
         }
-      };
+      }, 100); // Start after 100ms to ensure response is sent
       
-      // Start background task immediately - no waiting
-      EdgeRuntime.waitUntil(backgroundTask());
-      
-      // Return immediate response without any processing
+      // Return immediate response
       return new Response(
         JSON.stringify({ 
           message: "Processing queued in background",
