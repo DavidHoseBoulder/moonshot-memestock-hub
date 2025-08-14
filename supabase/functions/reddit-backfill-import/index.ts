@@ -240,6 +240,15 @@ async function processFullImport(
           body: { posts: batch }
         });
         
+        console.log(`[reddit-backfill-import] Sentiment response for batch ${Math.floor(i/batchSize) + 1}:`, {
+          hasData: !!sentimentData,
+          hasError: !!sentimentError,
+          dataKeys: sentimentData ? Object.keys(sentimentData) : null,
+          analyzedPostsLength: sentimentData?.analyzed_posts?.length,
+          totalAnalyzed: sentimentData?.total_analyzed,
+          errorMessage: sentimentError?.message
+        });
+        
         if (sentimentError) {
           console.error(`[reddit-backfill-import] Sentiment analysis error for batch ${Math.floor(i/batchSize) + 1}:`, sentimentError);
         } else {
