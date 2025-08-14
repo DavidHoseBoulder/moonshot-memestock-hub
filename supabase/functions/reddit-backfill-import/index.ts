@@ -1,6 +1,8 @@
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.7.1";
 
+// FORCE REDEPLOY - Version 2.0 with better error handling
+
 interface RedditPost {
   id?: string;
   title: string;
