@@ -224,7 +224,9 @@ async function processFileChunk(
               continue; // Skip silently to save CPU
             }
             
+            console.log(`[reddit-backfill-import] About to parse JSON for line ${linesProcessed}`);
             const obj = JSON.parse(cleaned);
+            console.log(`[reddit-backfill-import] JSON parse SUCCESS for line ${linesProcessed}, object keys: ${Object.keys(obj).slice(0, 10).join(',')}`);
             const post = normalizeToRedditPost(obj);
             
             // Debug: log first few posts to see what we're getting
