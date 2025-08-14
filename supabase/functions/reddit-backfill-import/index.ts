@@ -182,11 +182,8 @@ async function processFileChunk(
     const validPosts: RedditPost[] = [];
     
     console.log('[reddit-backfill-import] starting stream read loop');
-    let linesProcessed = 0;
-    let validPosts: RedditPost[] = [];
 
     try {
-      console.log(`[reddit-backfill-import] starting stream read loop`);
       while (linesProcessed < maxLines) {
         const { value, done } = await reader.read();
         if (done) {
