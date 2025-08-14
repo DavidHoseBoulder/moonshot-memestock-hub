@@ -77,6 +77,9 @@ const RedditBackfillImport = () => {
             run_id: runId,
             max_items: maxItems,
             concurrency,
+          },
+          headers: {
+            'Content-Type': 'application/json',
           }
         });
         if (error) throw error;
