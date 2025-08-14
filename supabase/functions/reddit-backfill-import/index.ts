@@ -46,9 +46,7 @@ async function processFileChunk(
   console.log(`[reddit-backfill-import] Processing ${maxLines} lines from line ${startLine} - URL: ${url}`);
   
   try {
-    console.log(`[reddit-backfill-import] Starting fetch for URL: ${url}`);
     const resp = await fetch(url);
-    console.log(`[reddit-backfill-import] Fetch response: status=${resp.status}, ok=${resp.ok}, hasBody=${!!resp.body}`);
     
     if (!resp.ok || !resp.body) {
       throw new Error(`Failed to fetch ${url}: ${resp.status}`);
@@ -255,18 +253,8 @@ async function processFullImport(
       
       
       try {
-        console.log(`[reddit-backfill-import] Invoking ai-sentiment-analysis for batch ${Math.floor(i/batchSize) + 1} with ${batch.length} posts`);
-        
         const response = await supabase.functions.invoke('ai-sentiment-analysis', {
           body: { posts: batch }
-        });
-        
-        console.log(`[reddit-backfill-import] Raw response from ai-sentiment-analysis:`, {
-          hasData: !!response.data,
-          hasError: !!response.error,
-          errorMessage: response.error?.message,
-          dataType: typeof response.data,
-          dataPreview: response.data ? JSON.stringify(response.data).slice(0, 200) : null
         });
         
         if (response.error) {
@@ -291,15 +279,8 @@ async function processFullImport(
         }
         
       } catch (error) {
-        console.error(`[reddit-backfill-import] Sentiment analysis failed for batch ${Math.floor(i/batchSize) + 1}:`, error);
-        console.error(`[reddit-backfill-import] Error details:`, {
-          name: error?.name,
-          message: error?.message,
-          stack: error?.stack
-        });
-        
+        console.error(`[reddit-backfill-import] Sentiment batch ${Math.floor(i/batchSize) + 1} failed:`, error?.message);
         // Continue processing other batches even if one fails
-        console.log(`[reddit-backfill-import] Continuing with next batch despite error...`);
       }
     }
     
