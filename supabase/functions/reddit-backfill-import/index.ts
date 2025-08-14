@@ -203,7 +203,9 @@ async function processFullImport(
   }
   
   // Process one chunk with our working JSON extraction
-  const result = await processFileChunk(url, startLine, maxItems);
+  // Convert maxItems=0 to a large number for unlimited processing
+  const actualMaxItems = maxItems === 0 ? 1000000 : maxItems;
+  const result = await processFileChunk(url, startLine, actualMaxItems);
   
   console.log(`[reddit-backfill-import] Chunk complete: ${result.validPosts} posts found`);
   
