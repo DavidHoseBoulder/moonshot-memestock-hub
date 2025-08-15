@@ -166,8 +166,10 @@ async function processFullImport(
     }).eq('run_id', runId);
   }
   
-  // Convert maxItems=0 to a large number for unlimited processing
-  const actualMaxItems = maxItems === 0 ? 1000000 : maxItems;
+  // Limit maxItems to prevent CPU timeouts - max 500 items per execution
+  const actualMaxItems = maxItems === 0 ? 500 : Math.min(maxItems, 500);
+  console.log(`[reddit-worker] Processing max ${actualMaxItems} items to avoid CPU timeout`);
+  
   const result = await processFileChunk(url, startLine, actualMaxItems);
   
   console.log(`[reddit-worker] Chunk complete: ${result.validPosts} posts found`);
