@@ -18,6 +18,25 @@ Deno.serve(async (req) => {
   try {
     console.log('[reddit-queue-processor] Starting queue processing cycle');
     
+    // First, reset any jobs that have been stuck in "processing" for more than 10 minutes
+    const tenMinutesAgo = new Date(Date.now() - 10 * 60 * 1000).toISOString();
+    const { data: stuckJobs, error: resetError } = await supabase
+      .from('import_queue')
+      .update({ 
+        status: 'pending', 
+        processed_at: null, 
+        error_message: 'Reset from stuck processing state' 
+      })
+      .eq('status', 'processing')
+      .lt('processed_at', tenMinutesAgo)
+      .select();
+    
+    if (resetError) {
+      console.error('[reddit-queue-processor] Error resetting stuck jobs:', resetError);
+    } else if (stuckJobs && stuckJobs.length > 0) {
+      console.log(`[reddit-queue-processor] Reset ${stuckJobs.length} stuck jobs back to pending`);
+    }
+    
     // Process up to 5 jobs per cycle to avoid overwhelming the system
     const results = [];
     for (let i = 0; i < 5; i++) {
