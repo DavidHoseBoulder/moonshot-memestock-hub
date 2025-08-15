@@ -87,10 +87,10 @@ export const DEFAULT_STACKING_CONFIG: StackingConfig = {
 export class SentimentStackingEngine {
   private config: StackingConfig;
   
-  // Coverage gate thresholds
-  private static readonly MIN_SENTIMENT_SCORE = 0.1;      // ensures sentiment data is present and positive
-  private static readonly MIN_TECHNICAL_SCORE = 0.5;      // ensures technical confirmation
-  private static readonly MIN_CONFIDENCE = 55.0;          // overall system confidence floor
+  // Coverage gate thresholds - Made more flexible for better signal generation
+  private static readonly MIN_SENTIMENT_SCORE = 0.05;     // Lower sentiment requirement
+  private static readonly MIN_TECHNICAL_SCORE = 0.3;      // Lower technical requirement  
+  private static readonly MIN_CONFIDENCE = 45.0;          // Lower confidence floor
 
   constructor(config: StackingConfig = DEFAULT_STACKING_CONFIG) {
     this.config = config;
@@ -108,17 +108,19 @@ export class SentimentStackingEngine {
     const hasTechnical = result.technicalScore >= SentimentStackingEngine.MIN_TECHNICAL_SCORE;
     const meetsConfidence = result.confidence >= SentimentStackingEngine.MIN_CONFIDENCE;
 
-    if (!hasSentiment) {
-      return { passed: false, reason: 'No meaningful sentiment data available' };
+    // More flexible approach - require EITHER good sentiment OR good technical + confidence
+    if (meetsConfidence && (hasSentiment || hasTechnical)) {
+      return { passed: true, reason: 'Passed coverage gate with adequate data quality' };
     }
-    if (!hasTechnical) {
-      return { passed: false, reason: 'Insufficient technical confirmation' };
-    }
+
     if (!meetsConfidence) {
       return { passed: false, reason: 'Below minimum confidence threshold' };
     }
+    if (!hasSentiment && !hasTechnical) {
+      return { passed: false, reason: 'No meaningful sentiment or technical data available' };
+    }
 
-    return { passed: true };
+    return { passed: true, reason: 'Passed with minimal data quality' };
   }
 
   // Evaluate a single data source against its threshold
