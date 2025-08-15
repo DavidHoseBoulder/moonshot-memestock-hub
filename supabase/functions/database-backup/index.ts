@@ -21,83 +21,123 @@ Deno.serve(async (req) => {
     // Initialize Supabase client
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    console.log('Creating SQL backup via Supabase client...');
+    console.log('Creating schema backup via Supabase client...');
 
     // Create timestamp for filename
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-    const filename = `database-backup-${timestamp}.sql`;
+    const filename = `database-schema-${timestamp}.sql`;
 
-    // Since pg_dump isn't available in edge functions, we'll export table data manually
-    const tables = [
-      'backtesting_results',
-      'enhanced_market_data', 
-      'enhanced_sentiment_data',
-      'import_queue',
-      'import_runs',
-      'market_data',
-      'sentiment_analysis',
-      'sentiment_history',
-      'ticker_universe',
-      'trading_signals'
-    ];
-
-    let sqlContent = `-- Database backup generated on ${new Date().toISOString()}\n`;
+    let sqlContent = `-- Database schema backup generated on ${new Date().toISOString()}\n`;
     sqlContent += `-- Generated from Supabase project: ${supabaseUrl}\n\n`;
+    sqlContent += `-- This backup contains only the database structure (DDL), no data\n\n`;
 
-    // Export data from each table
-    for (const table of tables) {
-      try {
-        console.log(`Backing up table: ${table}`);
+    try {
+      // Get table information from information_schema
+      console.log('Fetching table schema information...');
+      
+      const { data: tables, error: tablesError } = await supabase
+        .rpc('get_table_schema_info');
+
+      if (tablesError) {
+        console.log('RPC not available, using direct schema queries...');
         
-        const { data, error } = await supabase
-          .from(table)
-          .select('*');
+        // Fallback: Get basic table structure
+        const publicTables = [
+          'backtesting_results',
+          'enhanced_market_data', 
+          'enhanced_sentiment_data',
+          'import_queue',
+          'import_runs',
+          'market_data',
+          'sentiment_analysis',
+          'sentiment_history',
+          'ticker_universe',
+          'trading_signals'
+        ];
 
-        if (error) {
-          console.warn(`Error backing up table ${table}:`, error.message);
-          sqlContent += `-- Error backing up table ${table}: ${error.message}\n\n`;
-          continue;
+        sqlContent += `-- PUBLIC SCHEMA TABLES\n\n`;
+
+        for (const tableName of publicTables) {
+          try {
+            // Get sample record to infer structure
+            const { data: sampleData, error: sampleError } = await supabase
+              .from(tableName)
+              .select('*')
+              .limit(1);
+
+            if (!sampleError && sampleData && sampleData.length > 0) {
+              const columns = Object.keys(sampleData[0]);
+              
+              sqlContent += `-- Table: ${tableName}\n`;
+              sqlContent += `CREATE TABLE public.${tableName} (\n`;
+              
+              columns.forEach((col, index) => {
+                const value = sampleData[0][col];
+                let sqlType = 'TEXT';
+                
+                if (col === 'id') sqlType = 'UUID PRIMARY KEY DEFAULT gen_random_uuid()';
+                else if (col.includes('_at')) sqlType = 'TIMESTAMP WITH TIME ZONE';
+                else if (col.includes('date')) sqlType = 'DATE';
+                else if (typeof value === 'number') {
+                  if (Number.isInteger(value)) sqlType = 'INTEGER';
+                  else sqlType = 'NUMERIC';
+                }
+                else if (typeof value === 'boolean') sqlType = 'BOOLEAN';
+                else if (Array.isArray(value)) sqlType = 'TEXT[]';
+                else if (typeof value === 'object' && value !== null) sqlType = 'JSONB';
+                
+                const comma = index < columns.length - 1 ? ',' : '';
+                sqlContent += `  ${col} ${sqlType}${comma}\n`;
+              });
+              
+              sqlContent += `);\n\n`;
+              
+              // Add basic RLS enable statement
+              sqlContent += `ALTER TABLE public.${tableName} ENABLE ROW LEVEL SECURITY;\n\n`;
+            }
+          } catch (tableError) {
+            console.warn(`Could not process table ${tableName}:`, tableError);
+            sqlContent += `-- Could not process table ${tableName}\n\n`;
+          }
         }
 
-        if (!data || data.length === 0) {
-          sqlContent += `-- Table ${table} is empty\n\n`;
-          continue;
+        // Add commonly used functions
+        sqlContent += `-- COMMON FUNCTIONS\n\n`;
+        sqlContent += `CREATE OR REPLACE FUNCTION public.update_updated_at_column()
+RETURNS TRIGGER AS $$
+BEGIN
+  NEW.updated_at = NOW();
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;\n\n`;
+
+        // Add triggers for updated_at columns
+        for (const tableName of publicTables) {
+          sqlContent += `CREATE TRIGGER update_${tableName}_updated_at
+  BEFORE UPDATE ON public.${tableName}
+  FOR EACH ROW
+  EXECUTE FUNCTION public.update_updated_at_column();\n\n`;
         }
 
-        sqlContent += `-- Table: ${table}\n`;
-        sqlContent += `-- Records: ${data.length}\n`;
-        
-        // Create JSON export for the table data
-        sqlContent += `-- JSON Data for ${table}:\n`;
-        sqlContent += `/*\n${JSON.stringify(data, null, 2)}\n*/\n\n`;
-
-        // Create INSERT statements
-        for (const row of data) {
-          const columns = Object.keys(row);
-          const values = columns.map(col => {
-            const val = row[col];
-            if (val === null) return 'NULL';
-            if (typeof val === 'string') return `'${val.replace(/'/g, "''")}'`;
-            if (typeof val === 'object') return `'${JSON.stringify(val).replace(/'/g, "''")}'`;
-            return val;
-          });
-
-          sqlContent += `INSERT INTO public.${table} (${columns.join(', ')}) VALUES (${values.join(', ')});\n`;
-        }
-        
-        sqlContent += `\n`;
-        
-      } catch (tableError) {
-        console.error(`Error processing table ${table}:`, tableError);
-        sqlContent += `-- Error processing table ${table}: ${tableError.message}\n\n`;
+      } else {
+        // If RPC worked, use the returned schema information
+        sqlContent += JSON.stringify(tables, null, 2);
       }
+
+    } catch (schemaError) {
+      console.error('Error fetching schema:', schemaError);
+      sqlContent += `-- Error fetching schema: ${schemaError.message}\n`;
+      sqlContent += `-- Manual schema reconstruction required\n\n`;
     }
 
+    sqlContent += `-- End of schema backup\n`;
+    sqlContent += `-- Generated on: ${new Date().toISOString()}\n`;
+
     const backupData = new TextEncoder().encode(sqlContent);
-    console.log(`Backup SQL generated. Size: ${backupData.length} bytes`);
+    console.log(`Schema backup generated. Size: ${backupData.length} bytes`);
 
     // Upload to Supabase Storage
-    console.log(`Uploading backup to storage as: ${filename}`);
+    console.log(`Uploading schema backup to storage as: ${filename}`);
     const { data: uploadData, error: uploadError } = await supabase.storage
       .from('moonshot-storage')
       .upload(filename, backupData, {
@@ -110,7 +150,7 @@ Deno.serve(async (req) => {
       throw new Error(`Failed to upload backup: ${uploadError.message}`);
     }
 
-    console.log('Backup uploaded successfully:', uploadData);
+    console.log('Schema backup uploaded successfully:', uploadData);
 
     // Get the signed URL for download (valid for 1 hour)
     const { data: signedUrlData, error: urlError } = await supabase.storage
@@ -119,16 +159,16 @@ Deno.serve(async (req) => {
 
     const response = {
       success: true,
-      message: 'Database backup completed successfully',
+      message: 'Database schema backup completed successfully',
       filename: filename,
       uploadPath: uploadData.path,
       downloadUrl: signedUrlData?.signedUrl,
       size: backupData.length,
       timestamp: new Date().toISOString(),
-      tablesBackedUp: tables.length
+      type: 'schema_only'
     };
 
-    console.log('Backup process completed:', response);
+    console.log('Schema backup process completed:', response);
 
     return new Response(
       JSON.stringify(response),
