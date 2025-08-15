@@ -935,8 +935,8 @@ const DailyTradingPipeline = () => {
         stackingResults.push(stackingResult);
         addDebugInfo(`STACKING_${ticker}`, stackingResult);
         
-        // More flexible signal generation - show signals with decent confidence
-        if (stackingResult.confidenceScore >= 0.4 || (stackingResult.recommendAction && stackingResult.passedCoverageGate)) {
+        // Generate signal only for quality recommendations that pass coverage gate
+        if (stackingResult.recommendAction && stackingResult.passedCoverageGate && stackingResult.confidenceScore >= 0.5) {
           // Enhanced category classification to fix "UNKNOWN" issues
           let category = 'UNKNOWN';
           const stockByCategory = CATEGORIES.find(cat => 
