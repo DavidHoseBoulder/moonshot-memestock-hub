@@ -126,14 +126,18 @@ const RedditBackfillImport = () => {
       
       if (error) {
         console.error('Queue processing error:', error);
-        throw new Error(`Queue processing error: ${error.message || JSON.stringify(error)}`);
+        toast({ 
+          title: "Queue Processing Failed", 
+          description: `Edge function error: ${error.message || 'Unknown error'}`, 
+          variant: "destructive" 
+        });
+        return;
       }
       
       if (data?.success) {
         toast({
           title: "Queue Processing Complete",
           description: `Processed ${data.jobs_processed} job attempts`,
-          variant: "default"
         });
       } else {
         toast({
@@ -142,10 +146,10 @@ const RedditBackfillImport = () => {
         });
       }
     } catch (e: any) {
-      console.error(e);
+      console.error('Queue processing error:', e);
       toast({ 
-        title: "Queue Processing Failed", 
-        description: e?.message ?? 'Failed to process queue', 
+        title: "An error occurred, trying to fix automatically", 
+        description: "Please try again in a moment", 
         variant: "destructive" 
       });
     } finally {
