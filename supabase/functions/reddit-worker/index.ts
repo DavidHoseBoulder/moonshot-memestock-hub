@@ -156,21 +156,22 @@ async function processFullImport(
   maxItems: number = 1000
 ) {
   
-  console.log(`[reddit-worker] Starting full import for run ${runId}`);
+  console.log(`[reddit-worker] Starting chunk for run ${runId}, startLine: ${startLine}, maxItems: ${maxItems}`);
   
   // Update run status to processing
-  if (runId) {
+  if (runId && startLine === 0) {
     await supabase.from('import_runs').update({
       status: 'processing',
-      started_at: startLine === 0 ? new Date().toISOString() : undefined,
+      started_at: new Date().toISOString(),
     }).eq('run_id', runId);
   }
   
-  // Limit maxItems to prevent CPU timeouts - max 500 items per execution
-  const actualMaxItems = maxItems === 0 ? 500 : Math.min(maxItems, 500);
-  console.log(`[reddit-worker] Processing max ${actualMaxItems} items to avoid CPU timeout`);
+  // Process 500 items per chunk to avoid CPU timeouts
+  const chunkSize = 500;
+  const actualChunkSize = maxItems === 0 ? chunkSize : Math.min(maxItems, chunkSize);
+  console.log(`[reddit-worker] Processing chunk of ${actualChunkSize} items from line ${startLine}`);
   
-  const result = await processFileChunk(url, startLine, actualMaxItems);
+  const result = await processFileChunk(url, startLine, actualChunkSize);
   
   console.log(`[reddit-worker] Chunk complete: ${result.validPosts} posts found`);
   
@@ -244,23 +245,46 @@ async function processFullImport(
     console.log(`[reddit-worker] Sentiment analysis complete: ${analyzedCount} total posts analyzed`);
   }
   
-  // Update run status with proper timestamp
-  if (runId) {
-    await supabase.from('import_runs').update({
-      status: 'completed',
-      finished_at: new Date().toISOString(),
-      analyzed_total: analyzedCount,
-      inserted_total: analyzedCount // Assuming analyzed = inserted for now
-    }).eq('run_id', runId);
+  // Check if we need to continue processing more items
+  const totalProcessedSoFar = startLine + result.linesProcessed;
+  const remainingItems = maxItems === 0 ? Infinity : maxItems - totalProcessedSoFar;
+  
+  if (remainingItems > 0 && result.linesProcessed === actualChunkSize) {
+    // More items to process - queue another chunk
+    console.log(`[reddit-worker] Queuing continuation: processed ${totalProcessedSoFar}, remaining ${remainingItems > 0 ? remainingItems : 'unlimited'}`);
     
-    console.log(`[reddit-worker] Run ${runId} completed successfully`);
+    await supabase.from('import_queue').insert({
+      run_id: runId,
+      jsonl_url: url,
+      subreddits,
+      symbols,
+      batch_size: batchSize,
+      max_items: remainingItems === Infinity ? 0 : remainingItems,
+      start_line: totalProcessedSoFar,
+      status: 'pending'
+    });
+    
+    console.log(`[reddit-worker] Continuation queued for line ${totalProcessedSoFar}`);
+  } else {
+    // This was the final chunk - mark run as completed
+    if (runId) {
+      await supabase.from('import_runs').update({
+        status: 'completed',
+        finished_at: new Date().toISOString(),
+        analyzed_total: analyzedCount,
+        inserted_total: analyzedCount
+      }).eq('run_id', runId);
+      
+      console.log(`[reddit-worker] Run ${runId} completed successfully`);
+    }
   }
 
   return {
     linesProcessed: result.linesProcessed,
     validPosts: result.validPosts,
     analyzedPosts: analyzedCount,
-    insertedPosts: analyzedCount
+    insertedPosts: analyzedCount,
+    continuationQueued: remainingItems > 0 && result.linesProcessed === actualChunkSize
   };
 }
 
@@ -306,7 +330,7 @@ async function processQueue() {
       queueItem.symbols,
       queueItem.batch_size,
       queueItem.run_id,
-      0,
+      queueItem.start_line || 0,
       queueItem.max_items
     );
     
