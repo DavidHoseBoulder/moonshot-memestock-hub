@@ -134,7 +134,7 @@ Engagement: ${post.score} upvotes, ${post.num_comments} comments`
         }
 
         // Store sentiment analysis in database
-        const postId = `${post.subreddit}_${post.permalink.split('/').slice(-2)[0]}`
+        const postId = `${post.subreddit}_${post.permalink?.split('/').slice(-2)[0] || post.id || Math.random().toString(36).slice(2)}`
         const sentimentRecord = {
           post_id: postId,
           subreddit: post.subreddit,
