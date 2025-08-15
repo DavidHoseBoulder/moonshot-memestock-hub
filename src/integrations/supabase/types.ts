@@ -172,6 +172,7 @@ export type Database = {
           max_items: number | null
           processed_at: string | null
           run_id: string
+          start_line: number
           status: string | null
           subreddits: string[] | null
           symbols: string[] | null
@@ -186,6 +187,7 @@ export type Database = {
           max_items?: number | null
           processed_at?: string | null
           run_id: string
+          start_line?: number
           status?: string | null
           subreddits?: string[] | null
           symbols?: string[] | null
@@ -200,6 +202,7 @@ export type Database = {
           max_items?: number | null
           processed_at?: string | null
           run_id?: string
+          start_line?: number
           status?: string | null
           subreddits?: string[] | null
           symbols?: string[] | null

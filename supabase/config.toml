@@ -119,3 +119,6 @@ verify_jwt = false
 
 [functions.reddit-worker]
 verify_jwt = false
+
+[functions.reddit-queue-processor]
+verify_jwt = false

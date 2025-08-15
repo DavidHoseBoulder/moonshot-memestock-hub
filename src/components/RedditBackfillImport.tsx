@@ -122,29 +122,22 @@ const RedditBackfillImport = () => {
   const processQueue = async () => {
     setIsProcessingQueue(true);
     try {
-      const { data, error } = await supabase.functions.invoke('reddit-worker');
+      const { data, error } = await supabase.functions.invoke('reddit-queue-processor');
       
       if (error) {
         console.error('Queue processing error:', error);
         throw new Error(`Queue processing error: ${error.message || JSON.stringify(error)}`);
       }
       
-      if (data?.processed) {
-        if (data.error) {
-          toast({
-            title: "Queue Processing Error",
-            description: `Run ${data.run_id?.slice(0, 8)}...: ${data.error}`,
-            variant: "destructive"
-          });
-        } else {
-          toast({
-            title: "Queue Job Processed",
-            description: `Successfully processed run ${data.run_id?.slice(0, 8)}...`,
-          });
-        }
+      if (data?.success) {
+        toast({
+          title: "Queue Processing Complete",
+          description: `Processed ${data.jobs_processed} job attempts`,
+          variant: "default"
+        });
       } else {
         toast({
-          title: "No Jobs in Queue",
+          title: "No Jobs in Queue", 
           description: "No pending jobs found to process",
         });
       }
