@@ -218,11 +218,19 @@ const RedditBackfillImport = () => {
         .limit(20);
       if (!active) return;
       setRecentRuns(data ?? []);
+      
+      // Auto-select currently processing run if none is selected
+      if (!currentRunId && data) {
+        const processingRun = data.find(run => ['running', 'processing'].includes(run.status));
+        if (processingRun) {
+          setCurrentRunId(processingRun.run_id);
+        }
+      }
     };
     load();
     const id = setInterval(load, 5000);
     return () => { active = false; clearInterval(id); };
-  }, []);
+  }, [currentRunId]);
 
   return (
     <Card className="w-full">
