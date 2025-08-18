@@ -407,6 +407,105 @@ export type Database = {
         }
         Relationships: []
       }
+      staging_reddit_comments: {
+        Row: {
+          author: string | null
+          body: string | null
+          comment_id: string
+          created_at: string
+          link_id: string | null
+          parent_id: string | null
+          score: number | null
+          subreddit: string
+        }
+        Insert: {
+          author?: string | null
+          body?: string | null
+          comment_id: string
+          created_at: string
+          link_id?: string | null
+          parent_id?: string | null
+          score?: number | null
+          subreddit: string
+        }
+        Update: {
+          author?: string | null
+          body?: string | null
+          comment_id?: string
+          created_at?: string
+          link_id?: string | null
+          parent_id?: string | null
+          score?: number | null
+          subreddit?: string
+        }
+        Relationships: []
+      }
+      staging_reddit_submissions: {
+        Row: {
+          author: string | null
+          created_at: string
+          num_comments: number | null
+          post_id: string
+          score: number | null
+          selftext: string | null
+          subreddit: string
+          title: string
+        }
+        Insert: {
+          author?: string | null
+          created_at: string
+          num_comments?: number | null
+          post_id: string
+          score?: number | null
+          selftext?: string | null
+          subreddit: string
+          title: string
+        }
+        Update: {
+          author?: string | null
+          created_at?: string
+          num_comments?: number | null
+          post_id?: string
+          score?: number | null
+          selftext?: string | null
+          subreddit?: string
+          title?: string
+        }
+        Relationships: []
+      }
+      staging_reddit_submissions_buf: {
+        Row: {
+          author: string | null
+          created_at: string
+          num_comments: number | null
+          post_id: string
+          score: number | null
+          selftext: string | null
+          subreddit: string
+          title: string
+        }
+        Insert: {
+          author?: string | null
+          created_at: string
+          num_comments?: number | null
+          post_id: string
+          score?: number | null
+          selftext?: string | null
+          subreddit: string
+          title: string
+        }
+        Update: {
+          author?: string | null
+          created_at?: string
+          num_comments?: number | null
+          post_id?: string
+          score?: number | null
+          selftext?: string | null
+          subreddit?: string
+          title?: string
+        }
+        Relationships: []
+      }
       ticker_universe: {
         Row: {
           active: boolean
@@ -514,6 +613,10 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      extract_symbols_from_text: {
+        Args: { s: string }
+        Returns: string[]
+      }
       is_market_data_fresh: {
         Args: { hours_threshold?: number; symbol_param: string }
         Returns: boolean
