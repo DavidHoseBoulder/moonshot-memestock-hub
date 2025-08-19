@@ -5,6 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { RefreshCw, CheckCircle, XCircle, AlertTriangle, Clock } from "lucide-react";
+import { DEFAULT_CONFIGS } from "@/data/subredditUniverse";
 
 interface SourceStatus {
   name: string;
@@ -109,7 +110,7 @@ const DataSourceStatus = () => {
       {
         name: 'Reddit',
         function: 'reddit-auth',
-        payload: { subreddit: 'stocks', action: 'hot', limit: 5 }
+        payload: { subreddit: DEFAULT_CONFIGS.core[0], action: 'hot', limit: 5 }
       },
       {
         name: 'Financial News',

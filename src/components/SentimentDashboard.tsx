@@ -6,6 +6,7 @@ import { useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import DataSourceIndicator from "@/components/DataSourceIndicator";
+import { DEFAULT_CONFIGS } from "@/data/subredditUniverse";
 
 interface SentimentData {
   symbol: string;
@@ -169,7 +170,7 @@ const SentimentDashboard = () => {
     }));
   };
 
-  const fetchRedditData = async (subreddit = 'stocks') => {
+  const fetchRedditData = async (subreddit = DEFAULT_CONFIGS.core[0]) => {
     setIsLoading(true);
     
     // Reset data source status

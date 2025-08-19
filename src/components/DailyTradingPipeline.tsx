@@ -10,6 +10,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { AlertTriangle, TrendingUp, Activity, Volume2, Target, Scan, Play, RefreshCw, Zap, Layers } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { CATEGORIES, getStocksByCategory } from "@/data/stockUniverse";
+import { DEFAULT_CONFIGS } from "@/data/subredditUniverse";
 import { supabase } from "@/integrations/supabase/client";
 import { calculateRSI, estimateRSIFromMomentum } from "@/utils/technicalIndicators";
 import { aggregateSentiment, getSentimentLabel } from "@/utils/sentimentAggregator";
@@ -138,7 +139,7 @@ const DailyTradingPipeline = () => {
       try {
         const redditResponse = await supabase.functions.invoke('reddit-auth', {
           body: { 
-            subreddit: 'stocks,investing,SecurityAnalysis,ValueInvesting,StockMarket,wallstreetbets,pennystocks',
+            subreddit: DEFAULT_CONFIGS.core.join(','),
             action: 'hot',
             limit: 150
           }
