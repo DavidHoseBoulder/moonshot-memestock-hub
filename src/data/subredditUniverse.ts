@@ -181,3 +181,94 @@ export const DEFAULT_CONFIGS = {
   // Legacy configuration matching current hardcoded values
   legacy: ['stocks', 'investing', 'SecurityAnalysis', 'ValueInvesting', 'StockMarket', 'wallstreetbets', 'pennystocks']
 };
+
+// Database utility functions
+import { supabase } from "@/integrations/supabase/client";
+
+export interface SubredditFromDB {
+  name: string;
+  category: string;
+  priority: number;
+  active: boolean;
+  description?: string;
+}
+
+export const fetchSubredditsFromDB = async (): Promise<SubredditFromDB[]> => {
+  const { data, error } = await supabase
+    .from('subreddit_universe')
+    .select('name, category, priority, active, description')
+    .order('priority');
+  
+  if (error) {
+    console.error('Error fetching subreddits from database:', error);
+    return [];
+  }
+  
+  return data || [];
+};
+
+export const fetchActiveSubredditsFromDB = async (maxPriority?: number): Promise<string[]> => {
+  let query = supabase
+    .from('subreddit_universe')
+    .select('name')
+    .eq('active', true)
+    .order('priority');
+  
+  if (maxPriority) {
+    query = query.lte('priority', maxPriority);
+  }
+  
+  const { data, error } = await query;
+  
+  if (error) {
+    console.error('Error fetching active subreddits from database:', error);
+    // Fallback to hardcoded values
+    return DEFAULT_CONFIGS.core;
+  }
+  
+  return data?.map(item => item.name) || [];
+};
+
+export const fetchSubredditsByCategoryFromDB = async (category: string): Promise<string[]> => {
+  const { data, error } = await supabase
+    .from('subreddit_universe')
+    .select('name')
+    .eq('category', category)
+    .eq('active', true)
+    .order('priority');
+  
+  if (error) {
+    console.error('Error fetching subreddits by category from database:', error);
+    return [];
+  }
+  
+  return data?.map(item => item.name) || [];
+};
+
+// Hybrid function that tries database first, falls back to hardcoded
+export const getSubredditsHybrid = async (options: {
+  maxPriority?: number;
+  category?: string;
+  activeOnly?: boolean;
+} = {}): Promise<string[]> => {
+  try {
+    if (options.category) {
+      return await fetchSubredditsByCategoryFromDB(options.category);
+    }
+    
+    return await fetchActiveSubredditsFromDB(options.maxPriority);
+  } catch (error) {
+    console.warn('Database unavailable, using hardcoded subreddits:', error);
+    
+    // Fallback to hardcoded values
+    if (options.category) {
+      return getSubredditsByCategory(options.category)
+        .filter(s => options.activeOnly ? s.active : true)
+        .map(s => s.name);
+    }
+    
+    return options.maxPriority 
+      ? getHighPrioritySubreddits(options.maxPriority)
+      : getSubredditNames(options.activeOnly);
+  }
+};

@@ -605,6 +605,39 @@ export type Database = {
         }
         Relationships: []
       }
+      subreddit_universe: {
+        Row: {
+          active: boolean
+          category: string
+          created_at: string
+          description: string | null
+          id: string
+          name: string
+          priority: number
+          updated_at: string
+        }
+        Insert: {
+          active?: boolean
+          category: string
+          created_at?: string
+          description?: string | null
+          id?: string
+          name: string
+          priority?: number
+          updated_at?: string
+        }
+        Update: {
+          active?: boolean
+          category?: string
+          created_at?: string
+          description?: string | null
+          id?: string
+          name?: string
+          priority?: number
+          updated_at?: string
+        }
+        Relationships: []
+      }
       ticker_universe: {
         Row: {
           active: boolean
@@ -804,6 +837,14 @@ export type Database = {
       extract_symbols_from_text: {
         Args: { s: string }
         Returns: string[]
+      }
+      get_active_subreddits_by_priority: {
+        Args: { max_priority?: number }
+        Returns: {
+          category: string
+          name: string
+          priority: number
+        }[]
       }
       is_market_data_fresh: {
         Args: { hours_threshold?: number; symbol_param: string }
