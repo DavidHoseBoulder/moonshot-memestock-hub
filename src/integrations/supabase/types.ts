@@ -296,6 +296,72 @@ export type Database = {
         }
         Relationships: []
       }
+      reddit_finance_keep: {
+        Row: {
+          author: string | null
+          created_at: string | null
+          num_comments: number | null
+          post_id: string | null
+          score: number | null
+          selftext: string | null
+          subreddit: string | null
+          title: string | null
+        }
+        Insert: {
+          author?: string | null
+          created_at?: string | null
+          num_comments?: number | null
+          post_id?: string | null
+          score?: number | null
+          selftext?: string | null
+          subreddit?: string | null
+          title?: string | null
+        }
+        Update: {
+          author?: string | null
+          created_at?: string | null
+          num_comments?: number | null
+          post_id?: string | null
+          score?: number | null
+          selftext?: string | null
+          subreddit?: string | null
+          title?: string | null
+        }
+        Relationships: []
+      }
+      reddit_finance_keep_norm: {
+        Row: {
+          created_utc: string | null
+          id: string | null
+          num_comments: number | null
+          permalink: string | null
+          score: number | null
+          selftext: string | null
+          subreddit: string | null
+          title: string | null
+        }
+        Insert: {
+          created_utc?: string | null
+          id?: string | null
+          num_comments?: number | null
+          permalink?: string | null
+          score?: number | null
+          selftext?: string | null
+          subreddit?: string | null
+          title?: string | null
+        }
+        Update: {
+          created_utc?: string | null
+          id?: string | null
+          num_comments?: number | null
+          permalink?: string | null
+          score?: number | null
+          selftext?: string | null
+          subreddit?: string | null
+          title?: string | null
+        }
+        Relationships: []
+      }
       sentiment_analysis: {
         Row: {
           author: string | null
@@ -506,6 +572,39 @@ export type Database = {
         }
         Relationships: []
       }
+      staging_reddit_submissions_slim: {
+        Row: {
+          author: string | null
+          created_at: string | null
+          num_comments: number | null
+          post_id: string | null
+          score: number | null
+          selftext: string | null
+          subreddit: string | null
+          title: string | null
+        }
+        Insert: {
+          author?: string | null
+          created_at?: string | null
+          num_comments?: number | null
+          post_id?: string | null
+          score?: number | null
+          selftext?: string | null
+          subreddit?: string | null
+          title?: string | null
+        }
+        Update: {
+          author?: string | null
+          created_at?: string | null
+          num_comments?: number | null
+          post_id?: string | null
+          score?: number | null
+          selftext?: string | null
+          subreddit?: string | null
+          title?: string | null
+        }
+        Relationships: []
+      }
       ticker_universe: {
         Row: {
           active: boolean
@@ -533,6 +632,63 @@ export type Database = {
           sector?: string | null
           symbol?: string
           updated_at?: string
+        }
+        Relationships: []
+      }
+      tmp_june_posts: {
+        Row: {
+          created_utc: string | null
+          id: string | null
+          num_comments: number | null
+          permalink: string | null
+          score: number | null
+          selftext: string | null
+          subreddit: string | null
+          title: string | null
+        }
+        Insert: {
+          created_utc?: string | null
+          id?: string | null
+          num_comments?: number | null
+          permalink?: string | null
+          score?: number | null
+          selftext?: string | null
+          subreddit?: string | null
+          title?: string | null
+        }
+        Update: {
+          created_utc?: string | null
+          id?: string | null
+          num_comments?: number | null
+          permalink?: string | null
+          score?: number | null
+          selftext?: string | null
+          subreddit?: string | null
+          title?: string | null
+        }
+        Relationships: []
+      }
+      tmp_symbol_stoplist: {
+        Row: {
+          symbol: string
+        }
+        Insert: {
+          symbol: string
+        }
+        Update: {
+          symbol?: string
+        }
+        Relationships: []
+      }
+      tmp_universe_snapshot: {
+        Row: {
+          symbol: string | null
+        }
+        Insert: {
+          symbol?: string | null
+        }
+        Update: {
+          symbol?: string | null
         }
         Relationships: []
       }
@@ -610,7 +766,39 @@ export type Database = {
       }
     }
     Views: {
-      [_ in never]: never
+      tmp_stage_alias: {
+        Row: {
+          created_utc: string | null
+          id: string | null
+          num_comments: number | null
+          permalink: string | null
+          score: number | null
+          selftext: string | null
+          subreddit: string | null
+          title: string | null
+        }
+        Insert: {
+          created_utc?: string | null
+          id?: string | null
+          num_comments?: number | null
+          permalink?: never
+          score?: number | null
+          selftext?: never
+          subreddit?: string | null
+          title?: string | null
+        }
+        Update: {
+          created_utc?: string | null
+          id?: string | null
+          num_comments?: number | null
+          permalink?: never
+          score?: number | null
+          selftext?: never
+          subreddit?: string | null
+          title?: string | null
+        }
+        Relationships: []
+      }
     }
     Functions: {
       extract_symbols_from_text: {
