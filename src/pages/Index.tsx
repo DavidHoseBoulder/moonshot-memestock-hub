@@ -5,7 +5,6 @@ import PortfolioOverview from "@/components/PortfolioOverview";
 import TrendingSection from "@/components/TrendingSection";
 import SentimentDashboard from "@/components/SentimentDashboard";
 import BacktestingDashboard from "@/components/BacktestingDashboard";
-import { DatabaseBackupTrigger } from "@/components/DatabaseBackupTrigger";
 
 const Index = () => {
   return (
@@ -29,7 +28,6 @@ const Index = () => {
               </div>
             </div>
             
-            <DatabaseBackupTrigger />
             <PortfolioOverview />
             <SentimentDashboard />
             <BacktestingDashboard />

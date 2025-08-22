@@ -8,8 +8,8 @@ const PortfolioOverview = () => {
         <div className="flex items-center justify-between">
           <div>
             <p className="text-sm text-muted-foreground">Total Value</p>
-            <p className="text-2xl font-bold text-success">$69,420.69</p>
-            <p className="text-xs text-success">+$4,206.90 (6.45%) today</p>
+            <p className="text-2xl font-bold text-muted-foreground">N/A</p>
+            <p className="text-xs text-muted-foreground">No data available</p>
           </div>
           <div className="w-12 h-12 bg-success/20 rounded-lg flex items-center justify-center">
             <DollarSign className="w-6 h-6 text-success" />
@@ -21,8 +21,8 @@ const PortfolioOverview = () => {
         <div className="flex items-center justify-between">
           <div>
             <p className="text-sm text-muted-foreground">Day's Change</p>
-            <p className="text-2xl font-bold text-success">+$1,337.42</p>
-            <p className="text-xs text-success">+2.08% since yesterday</p>
+            <p className="text-2xl font-bold text-muted-foreground">N/A</p>
+            <p className="text-xs text-muted-foreground">No data available</p>
           </div>
           <div className="w-12 h-12 bg-success/20 rounded-lg flex items-center justify-center">
             <TrendingUp className="w-6 h-6 text-success" />
@@ -34,8 +34,8 @@ const PortfolioOverview = () => {
         <div className="flex items-center justify-between">
           <div>
             <p className="text-sm text-muted-foreground">Holdings</p>
-            <p className="text-2xl font-bold text-foreground">12 Assets</p>
-            <p className="text-xs text-muted-foreground">8 stocks, 4 crypto</p>
+            <p className="text-2xl font-bold text-muted-foreground">N/A</p>
+            <p className="text-xs text-muted-foreground">No data available</p>
           </div>
           <div className="w-12 h-12 bg-primary/20 rounded-lg flex items-center justify-center">
             <PieChart className="w-6 h-6 text-primary" />
@@ -47,8 +47,8 @@ const PortfolioOverview = () => {
         <div className="flex items-center justify-between">
           <div>
             <p className="text-sm text-muted-foreground">Best Performer</p>
-            <p className="text-2xl font-bold text-success">DOGE</p>
-            <p className="text-xs text-success">+420% this month</p>
+            <p className="text-2xl font-bold text-muted-foreground">N/A</p>
+            <p className="text-xs text-muted-foreground">No data available</p>
           </div>
           <div className="w-12 h-12 bg-accent/20 rounded-lg flex items-center justify-center">
             <Target className="w-6 h-6 text-accent" />
