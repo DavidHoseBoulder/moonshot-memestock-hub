@@ -49,7 +49,7 @@ Deno.serve(async (req) => {
 
     // Fetch market data for the symbol and time period
     const { data: marketData, error: marketError } = await supabase
-      .from('market_data')
+      .from('enhanced_market_data')
       .select('*')
       .eq('symbol', params.symbol.toUpperCase())
       .gte('timestamp', params.start_date)

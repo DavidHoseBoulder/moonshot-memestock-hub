@@ -89,10 +89,22 @@ Deno.serve(async (req) => {
 
     // Store market data in database
     if (marketData.length > 0) {
+      // Transform data for enhanced_market_data table structure
+      const enhancedData = marketData.map(item => ({
+        symbol: item.symbol,
+        price: item.price,
+        volume: item.volume,
+        timestamp: item.timestamp,
+        data_date: new Date(item.timestamp).toISOString().split('T')[0],
+        technical_indicators: {}, // Empty object for basic data
+        price_change_1d: null,
+        price_change_5d: null
+      }))
+
       const { error: dbError } = await supabase
-        .from('market_data')
-        .upsert(marketData, { 
-          onConflict: 'symbol,timestamp',
+        .from('enhanced_market_data')
+        .upsert(enhancedData, { 
+          onConflict: 'symbol,data_date',
           ignoreDuplicates: true 
         })
 
