@@ -14,6 +14,7 @@ import NotFound from "./pages/NotFound";
 import Auth from "./pages/Auth";
 import ExtractionTester from "./pages/ExtractionTester";
 import Backtesting from "./pages/Backtesting";
+import Reports from "./pages/Reports";
 
 const queryClient = new QueryClient();
 
@@ -54,6 +55,7 @@ const App: React.FC = () => {
             <Route path="/bulk-import" element={<ProtectedRoute><BulkImport /></ProtectedRoute>} />
             <Route path="/dev/extraction-tester" element={<ProtectedRoute><ExtractionTester /></ProtectedRoute>} />
             <Route path="/backtesting" element={<ProtectedRoute><Backtesting /></ProtectedRoute>} />
+            <Route path="/reports" element={<ProtectedRoute><Reports /></ProtectedRoute>} />
             <Route path="*" element={<NotFound />} />
           </Routes>
         </BrowserRouter>

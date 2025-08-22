@@ -31,7 +31,6 @@ const navItems = [
   { path: "/trading-pipeline", icon: Target, label: "Daily Pipeline" },
   { path: "/sentiment", icon: MessageSquare, label: "Sentiment Analysis" },
   { path: "/backtesting", icon: BarChart3, label: "Strategy Testing" },
-  { path: "/parameter-optimization", icon: Settings, label: "Optimization" },
   { path: "/reports", icon: FileText, label: "AI Reports" },
   { path: "/bulk-import", icon: Database, label: "Bulk Import" },
 ];
