@@ -184,7 +184,7 @@ const CandidateCard = ({ candidate, existingTrade, onNewTrade }: {
           {existingTrade ? (
             <div className="flex items-center justify-between">
               <div className="text-sm">
-                {existingTrade.status === 'open' ? (
+                {(existingTrade.status === 'open' || existingTrade.status === 'OPEN') ? (
                   <>
                     <div className="font-medium text-green-600 dark:text-green-400">✓ Trade Active</div>
                     <div className="text-muted-foreground">
@@ -375,7 +375,7 @@ const SentimentDashboard = () => {
             .from('trades' as any)
             .select('trade_id, symbol, side, horizon, mode, status, trade_date, entry_price, exit_price')
             .in('symbol', triggeredSymbols)
-            .in('status', ['open', 'closed'])
+            .in('status', ['OPEN', 'open', 'CLOSED', 'closed'])
             .order('created_at', { ascending: false });
 
           if (tradesData) {
@@ -383,7 +383,7 @@ const SentimentDashboard = () => {
             tradesData.forEach((trade: any) => {
               const key = `${trade.symbol}-${trade.horizon}`;
               // Prioritize open trades over closed ones
-              if (!tradesMap[key] || (tradesMap[key].status === 'closed' && trade.status === 'open')) {
+              if (!tradesMap[key] || ((tradesMap[key].status === 'closed' || tradesMap[key].status === 'CLOSED') && (trade.status === 'open' || trade.status === 'OPEN'))) {
                 tradesMap[key] = trade;
               }
             });
