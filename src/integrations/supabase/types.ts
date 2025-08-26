@@ -76,34 +76,58 @@ export type Database = {
       }
       backtest_sweep_results: {
         Row: {
-          avg_next_ret: number | null
-          hit_rate: number | null
-          median_next_ret: number | null
-          min_mentions: number | null
-          pos_thresh: number | null
-          symbol: string | null
-          trades: number | null
-          use_weighted: boolean | null
+          avg_ret: number | null
+          created_at: string
+          end_date: string | null
+          horizon: string
+          median_ret: number | null
+          min_mentions: number
+          model_version: string
+          pos_thresh: number
+          sharpe: number | null
+          side: string
+          start_date: string | null
+          stdev_ret: number | null
+          symbol: string
+          trades: number
+          use_weighted: boolean
+          win_rate: number | null
         }
         Insert: {
-          avg_next_ret?: number | null
-          hit_rate?: number | null
-          median_next_ret?: number | null
-          min_mentions?: number | null
-          pos_thresh?: number | null
-          symbol?: string | null
-          trades?: number | null
-          use_weighted?: boolean | null
+          avg_ret?: number | null
+          created_at?: string
+          end_date?: string | null
+          horizon: string
+          median_ret?: number | null
+          min_mentions: number
+          model_version: string
+          pos_thresh: number
+          sharpe?: number | null
+          side: string
+          start_date?: string | null
+          stdev_ret?: number | null
+          symbol: string
+          trades: number
+          use_weighted: boolean
+          win_rate?: number | null
         }
         Update: {
-          avg_next_ret?: number | null
-          hit_rate?: number | null
-          median_next_ret?: number | null
-          min_mentions?: number | null
-          pos_thresh?: number | null
-          symbol?: string | null
-          trades?: number | null
-          use_weighted?: boolean | null
+          avg_ret?: number | null
+          created_at?: string
+          end_date?: string | null
+          horizon?: string
+          median_ret?: number | null
+          min_mentions?: number
+          model_version?: string
+          pos_thresh?: number
+          sharpe?: number | null
+          side?: string
+          start_date?: string | null
+          stdev_ret?: number | null
+          symbol?: string
+          trades?: number
+          use_weighted?: boolean
+          win_rate?: number | null
         }
         Relationships: []
       }
@@ -355,34 +379,64 @@ export type Database = {
       }
       live_sentiment_entry_rules: {
         Row: {
+          avg_ret: number | null
           created_at: string
+          end_date: string | null
           horizon: string
-          is_active: boolean
+          is_enabled: boolean
+          median_ret: number | null
           min_mentions: number
+          model_version: string
           notes: string | null
           pos_thresh: number
+          priority: number
+          sharpe: number | null
+          side: string
+          start_date: string | null
           symbol: string
+          trades: number | null
           use_weighted: boolean
+          win_rate: number | null
         }
         Insert: {
+          avg_ret?: number | null
           created_at?: string
+          end_date?: string | null
           horizon: string
-          is_active?: boolean
+          is_enabled?: boolean
+          median_ret?: number | null
           min_mentions: number
+          model_version: string
           notes?: string | null
           pos_thresh: number
+          priority?: number
+          sharpe?: number | null
+          side?: string
+          start_date?: string | null
           symbol: string
+          trades?: number | null
           use_weighted: boolean
+          win_rate?: number | null
         }
         Update: {
+          avg_ret?: number | null
           created_at?: string
+          end_date?: string | null
           horizon?: string
-          is_active?: boolean
+          is_enabled?: boolean
+          median_ret?: number | null
           min_mentions?: number
+          model_version?: string
           notes?: string | null
           pos_thresh?: number
+          priority?: number
+          sharpe?: number | null
+          side?: string
+          start_date?: string | null
           symbol?: string
+          trades?: number | null
           use_weighted?: boolean
+          win_rate?: number | null
         }
         Relationships: []
       }
@@ -425,6 +479,7 @@ export type Database = {
           id: string | null
           num_comments: number | null
           permalink: string | null
+          post_id: string | null
           score: number | null
           selftext: string | null
           subreddit: string | null
@@ -435,6 +490,7 @@ export type Database = {
           id?: string | null
           num_comments?: number | null
           permalink?: string | null
+          post_id?: string | null
           score?: number | null
           selftext?: string | null
           subreddit?: string | null
@@ -445,6 +501,7 @@ export type Database = {
           id?: string | null
           num_comments?: number | null
           permalink?: string | null
+          post_id?: string | null
           score?: number | null
           selftext?: string | null
           subreddit?: string | null
@@ -495,22 +552,32 @@ export type Database = {
             referencedRelation: "reddit_posts"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "reddit_mentions_post_id_fkey"
+            columns: ["post_id"]
+            isOneToOne: false
+            referencedRelation: "v_post_attrs"
+            referencedColumns: ["post_id"]
+          },
         ]
       }
       reddit_raw_aug: {
         Row: {
           doc: Json
           loaded_at: string
+          src_file: string | null
           src_sub: string | null
         }
         Insert: {
           doc: Json
           loaded_at?: string
+          src_file?: string | null
           src_sub?: string | null
         }
         Update: {
           doc?: Json
           loaded_at?: string
+          src_file?: string | null
           src_sub?: string | null
         }
         Relationships: []
@@ -552,6 +619,20 @@ export type Database = {
             columns: ["mention_id"]
             isOneToOne: false
             referencedRelation: "reddit_mentions"
+            referencedColumns: ["mention_id"]
+          },
+          {
+            foreignKeyName: "reddit_sentiment_mention_id_fkey"
+            columns: ["mention_id"]
+            isOneToOne: false
+            referencedRelation: "v_reddit_mentions_all"
+            referencedColumns: ["mention_id"]
+          },
+          {
+            foreignKeyName: "reddit_sentiment_mention_id_fkey"
+            columns: ["mention_id"]
+            isOneToOne: false
+            referencedRelation: "v_reddit_mentions_aug"
             referencedColumns: ["mention_id"]
           },
           {
@@ -927,186 +1008,6 @@ export type Database = {
         }
         Relationships: []
       }
-      tmp_finance_subs: {
-        Row: {
-          subreddit: string
-        }
-        Insert: {
-          subreddit: string
-        }
-        Update: {
-          subreddit?: string
-        }
-        Relationships: []
-      }
-      tmp_june_posts: {
-        Row: {
-          created_utc: string | null
-          id: string | null
-          num_comments: number | null
-          permalink: string | null
-          score: number | null
-          selftext: string | null
-          subreddit: string | null
-          title: string | null
-        }
-        Insert: {
-          created_utc?: string | null
-          id?: string | null
-          num_comments?: number | null
-          permalink?: string | null
-          score?: number | null
-          selftext?: string | null
-          subreddit?: string | null
-          title?: string | null
-        }
-        Update: {
-          created_utc?: string | null
-          id?: string | null
-          num_comments?: number | null
-          permalink?: string | null
-          score?: number | null
-          selftext?: string | null
-          subreddit?: string | null
-          title?: string | null
-        }
-        Relationships: []
-      }
-      tmp_keep_jun01_enriched: {
-        Row: {
-          content_len_norm: number | null
-          created_utc: string | null
-          id: string | null
-          matched_symbols: string[] | null
-          subreddit: string | null
-          symbol_count: number | null
-          title: string | null
-        }
-        Insert: {
-          content_len_norm?: number | null
-          created_utc?: string | null
-          id?: string | null
-          matched_symbols?: string[] | null
-          subreddit?: string | null
-          symbol_count?: number | null
-          title?: string | null
-        }
-        Update: {
-          content_len_norm?: number | null
-          created_utc?: string | null
-          id?: string | null
-          matched_symbols?: string[] | null
-          subreddit?: string | null
-          symbol_count?: number | null
-          title?: string | null
-        }
-        Relationships: []
-      }
-      tmp_keep_jun01_v1: {
-        Row: {
-          created_utc: string | null
-          id: string | null
-          matched_symbols: string[] | null
-          subreddit: string | null
-          symbol_count: number | null
-          title: string | null
-        }
-        Insert: {
-          created_utc?: string | null
-          id?: string | null
-          matched_symbols?: string[] | null
-          subreddit?: string | null
-          symbol_count?: number | null
-          title?: string | null
-        }
-        Update: {
-          created_utc?: string | null
-          id?: string | null
-          matched_symbols?: string[] | null
-          subreddit?: string | null
-          symbol_count?: number | null
-          title?: string | null
-        }
-        Relationships: []
-      }
-      tmp_subreddit_snapshot: {
-        Row: {
-          category: string | null
-          priority: number | null
-          subreddit: string | null
-        }
-        Insert: {
-          category?: string | null
-          priority?: number | null
-          subreddit?: string | null
-        }
-        Update: {
-          category?: string | null
-          priority?: number | null
-          subreddit?: string | null
-        }
-        Relationships: []
-      }
-      tmp_symbol_disambig: {
-        Row: {
-          exclude_keywords: string[] | null
-          keywords: string[] | null
-          symbol: string
-        }
-        Insert: {
-          exclude_keywords?: string[] | null
-          keywords?: string[] | null
-          symbol: string
-        }
-        Update: {
-          exclude_keywords?: string[] | null
-          keywords?: string[] | null
-          symbol?: string
-        }
-        Relationships: []
-      }
-      tmp_symbol_disambig_bak: {
-        Row: {
-          exclude_keywords: string[] | null
-          keywords: string[] | null
-          symbol: string | null
-        }
-        Insert: {
-          exclude_keywords?: string[] | null
-          keywords?: string[] | null
-          symbol?: string | null
-        }
-        Update: {
-          exclude_keywords?: string[] | null
-          keywords?: string[] | null
-          symbol?: string | null
-        }
-        Relationships: []
-      }
-      tmp_symbol_stoplist: {
-        Row: {
-          symbol: string
-        }
-        Insert: {
-          symbol: string
-        }
-        Update: {
-          symbol?: string
-        }
-        Relationships: []
-      }
-      tmp_universe_snapshot: {
-        Row: {
-          symbol: string | null
-        }
-        Insert: {
-          symbol?: string | null
-        }
-        Update: {
-          symbol?: string | null
-        }
-        Relationships: []
-      }
       trading_signals: {
         Row: {
           actual_return: number | null
@@ -1184,19 +1085,45 @@ export type Database = {
       daily_sentiment_candidates: {
         Row: {
           avg_score: number | null
-          avg_score_w: number | null
-          created_at: string | null
-          entry_date: string | null
-          mentions: number | null
+          d: string | null
+          horizon: string | null
+          min_mentions: number | null
           model_version: string | null
-          ret_1d: number | null
-          ret_3d: number | null
-          ret_5d: number | null
-          sent_date: string | null
-          signal_score: number | null
+          n_mentions: number | null
+          pos_thresh: number | null
+          side: string | null
+          sig_score: number | null
           symbol: string | null
-          window_d0: string | null
-          window_d1: string | null
+          triggered: boolean | null
+          use_weighted: boolean | null
+          wt_score: number | null
+        }
+        Relationships: []
+      }
+      live_sentiment_candidates: {
+        Row: {
+          avg_score: number | null
+          d: string | null
+          horizon: string | null
+          min_mentions: number | null
+          model_version: string | null
+          n_mentions: number | null
+          pos_thresh: number | null
+          side: string | null
+          sig_score: number | null
+          symbol: string | null
+          triggered: boolean | null
+          use_weighted: boolean | null
+          wt_score: number | null
+        }
+        Relationships: []
+      }
+      prices_daily: {
+        Row: {
+          close: number | null
+          d: string | null
+          symbol: string | null
+          volume: number | null
         }
         Relationships: []
       }
@@ -1233,9 +1160,124 @@ export type Database = {
         }
         Relationships: []
       }
-      v_reddit_mentions_july: {
+      tmp_symbol_disambig: {
         Row: {
+          exclude_keywords: string[] | null
+          keywords: string[] | null
+          symbol: string | null
+        }
+        Relationships: []
+      }
+      v_live_sentiment_rules: {
+        Row: {
+          avg_ret: number | null
+          end_date: string | null
+          horizon: string | null
+          median_ret: number | null
+          min_mentions: number | null
+          model_version: string | null
+          pos_thresh: number | null
+          sharpe: number | null
+          side: string | null
+          start_date: string | null
+          symbol: string | null
+          trades: number | null
+          use_weighted: boolean | null
+          win_rate: number | null
+        }
+        Relationships: []
+      }
+      v_live_sentiment_signals: {
+        Row: {
+          avg_score: number | null
+          d: string | null
+          horizon: string | null
+          min_mentions: number | null
+          model_version: string | null
+          n_mentions: number | null
+          pos_thresh: number | null
+          side: string | null
+          sig_score: number | null
+          symbol: string | null
+          triggered: boolean | null
+          use_weighted: boolean | null
+          wt_score: number | null
+        }
+        Relationships: []
+      }
+      v_post_attrs: {
+        Row: {
+          permalink: string | null
+          post_id: string | null
+          selftext: string | null
+          subreddit: string | null
+          title: string | null
+        }
+        Insert: {
+          permalink?: string | null
+          post_id?: string | null
+          selftext?: string | null
+          subreddit?: string | null
+          title?: string | null
+        }
+        Update: {
+          permalink?: string | null
+          post_id?: string | null
+          selftext?: string | null
+          subreddit?: string | null
+          title?: string | null
+        }
+        Relationships: []
+      }
+      v_reddit_backtest_lookup: {
+        Row: {
+          avg_ret: number | null
+          composite_score: number | null
+          hit_rate: number | null
+          horizon: string | null
+          median_ret: number | null
+          min_mentions: number | null
+          pos_thresh: number | null
+          sharpe: number | null
+          side: string | null
+          symbol: string | null
+          trades: number | null
+          use_weighted: boolean | null
+        }
+        Relationships: []
+      }
+      v_reddit_candidates_today: {
+        Row: {
+          avg_score: number | null
+          horizon: string | null
+          min_mentions: number | null
+          n_mentions: number | null
+          pos_thresh: number | null
+          side: string | null
+          symbol: string | null
+          trade_date: string | null
+          triggered: boolean | null
+          use_weighted: boolean | null
+          used_score: number | null
+        }
+        Relationships: []
+      }
+      v_reddit_daily_signals: {
+        Row: {
+          avg_score: number | null
+          n_mentions: number | null
+          symbol: string | null
+          trade_date: string | null
+          used_score: number | null
+        }
+        Relationships: []
+      }
+      v_reddit_mentions_all: {
+        Row: {
+          content_len: number | null
           created_utc: string | null
+          disambig_rule: string | null
+          match_source: string | null
           mention_id: number | null
           permalink: string | null
           post_id: string | null
@@ -1258,12 +1300,98 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "reddit_posts"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "reddit_mentions_post_id_fkey"
+            columns: ["post_id"]
+            isOneToOne: false
+            referencedRelation: "v_post_attrs"
+            referencedColumns: ["post_id"]
+          },
+        ]
+      }
+      v_reddit_mentions_aug: {
+        Row: {
+          content_len: number | null
+          created_utc: string | null
+          disambig_rule: string | null
+          match_source: string | null
+          mention_id: number | null
+          permalink: string | null
+          post_id: string | null
+          selftext: string | null
+          subreddit: string | null
+          symbol: string | null
+          title: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "reddit_mentions_post_id_fkey"
+            columns: ["post_id"]
+            isOneToOne: false
+            referencedRelation: "reddit_finance_keep_norm"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "reddit_mentions_post_id_fkey"
+            columns: ["post_id"]
+            isOneToOne: false
+            referencedRelation: "reddit_posts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "reddit_mentions_post_id_fkey"
+            columns: ["post_id"]
+            isOneToOne: false
+            referencedRelation: "v_post_attrs"
+            referencedColumns: ["post_id"]
+          },
+        ]
+      }
+      v_reddit_mentions_july: {
+        Row: {
+          content_len: number | null
+          created_utc: string | null
+          disambig_rule: string | null
+          match_source: string | null
+          mention_id: number | null
+          permalink: string | null
+          post_id: string | null
+          selftext: string | null
+          subreddit: string | null
+          symbol: string | null
+          title: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "reddit_mentions_post_id_fkey"
+            columns: ["post_id"]
+            isOneToOne: false
+            referencedRelation: "reddit_finance_keep_norm"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "reddit_mentions_post_id_fkey"
+            columns: ["post_id"]
+            isOneToOne: false
+            referencedRelation: "reddit_posts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "reddit_mentions_post_id_fkey"
+            columns: ["post_id"]
+            isOneToOne: false
+            referencedRelation: "v_post_attrs"
+            referencedColumns: ["post_id"]
           },
         ]
       }
       v_reddit_mentions_june: {
         Row: {
+          content_len: number | null
           created_utc: string | null
+          disambig_rule: string | null
+          match_source: string | null
           mention_id: number | null
           permalink: string | null
           post_id: string | null
@@ -1287,7 +1415,59 @@ export type Database = {
             referencedRelation: "reddit_posts"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "reddit_mentions_post_id_fkey"
+            columns: ["post_id"]
+            isOneToOne: false
+            referencedRelation: "v_post_attrs"
+            referencedColumns: ["post_id"]
+          },
         ]
+      }
+      v_scoring_posts: {
+        Row: {
+          created_utc: string | null
+          permalink: string | null
+          post_id: string | null
+          selftext: string | null
+          subreddit: string | null
+          title: string | null
+        }
+        Relationships: []
+      }
+      v_scoring_posts_union_src: {
+        Row: {
+          created_utc: string | null
+          permalink: string | null
+          post_id: string | null
+          selftext: string | null
+          subreddit: string | null
+          title: string | null
+        }
+        Relationships: []
+      }
+      v_today_live_entries: {
+        Row: {
+          avg_score: number | null
+          d: string | null
+          horizon: string | null
+          is_boundary: boolean | null
+          mention_gap: number | null
+          min_mentions: number | null
+          model_version: string | null
+          n_mentions: number | null
+          pos_thresh: number | null
+          priority: number | null
+          score_gap: number | null
+          sharpe: number | null
+          side: string | null
+          symbol: string | null
+          triggered: boolean | null
+          use_weighted: boolean | null
+          used_score: number | null
+          wt_score: number | null
+        }
+        Relationships: []
       }
     }
     Functions: {
@@ -1298,6 +1478,10 @@ export type Database = {
       backfill_reddit_mentions: {
         Args: { p_end: string; p_start: string }
         Returns: undefined
+      }
+      build_keywords_from_name: {
+        Args: { p_name: string; p_symbol: string }
+        Returns: string[]
       }
       extract_symbols_from_text: {
         Args: { s: string }
@@ -1315,6 +1499,10 @@ export type Database = {
           symbol: string
           title: string
         }[]
+      }
+      from_epochish: {
+        Args: { txt: string }
+        Returns: string
       }
       get_active_subreddits_by_priority: {
         Args: { max_priority?: number }
