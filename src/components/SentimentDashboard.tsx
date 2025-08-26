@@ -7,7 +7,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 
 interface RedditDailySignal {
-  data_date: string;
+  trade_date: string;
   symbol: string;
   n_mentions: number;
   avg_score: number;
@@ -20,39 +20,15 @@ interface RedditCandidate {
   horizon: string;
   min_mentions: number;
   pos_thresh: number;
-  used_score: number;
+  used_score: number | null;
   n_mentions: number;
   triggered: boolean;
   use_weighted?: boolean;
   side?: string;
-  reference_date?: string;
-}
-
-interface FallbackSignal extends RedditDailySignal {
-  reference_date?: string;
-}
-
-interface BacktestResult {
-  symbol: string;
-  horizon: string;
-  avg_ret: number;
-  median_ret: number;
+  avg_ret?: number;
   win_rate?: number;
-  hit_rate?: number;
-  sharpe: number;
-  trades: number;
-  composite_score?: number;
-}
-
-interface LiveEntry {
-  symbol: string;
-  horizon: string;
-  d: string;
-  triggered: boolean;
-  n_mentions: number;
-  used_score: number;
-  pos_thresh: number;
-  min_mentions: number;
+  trades?: number;
+  sharpe?: number;
 }
 
 const RedditSignalCard = ({ signal }: { signal: RedditDailySignal }) => {
@@ -102,13 +78,16 @@ const RedditSignalCard = ({ signal }: { signal: RedditDailySignal }) => {
   );
 };
 
-const CandidateCard = ({ candidate, backtest }: { candidate: RedditCandidate; backtest?: BacktestResult }) => {
+const CandidateCard = ({ candidate }: { candidate: RedditCandidate }) => {
+  const side = candidate.side || 'LONG';
+  
   return (
     <Card className={`p-4 hover:shadow-lg transition-shadow border ${candidate.triggered ? 'border-green-500 bg-green-50 dark:bg-green-950/20' : 'bg-card'}`}>
       <div className="flex justify-between items-start mb-3">
         <div>
-          <h3 className="text-lg font-bold text-foreground">{candidate.symbol}</h3>
-          <p className="text-sm text-muted-foreground">{candidate.horizon} • {candidate.side}</p>
+          <h3 className="text-lg font-bold text-foreground">
+            {candidate.symbol} • {candidate.horizon} • <Badge variant="outline">{side}</Badge>
+          </h3>
         </div>
         <div className="flex gap-2">
           <Badge variant={candidate.triggered ? "default" : "outline"}>
@@ -125,26 +104,34 @@ const CandidateCard = ({ candidate, backtest }: { candidate: RedditCandidate; ba
         </div>
         <div>
           <div className="text-sm text-muted-foreground">Score</div>
-          <div className="text-base font-semibold">{candidate.used_score.toFixed(2)} / {candidate.pos_thresh.toFixed(2)}</div>
+          <div className="text-base font-semibold">
+            {candidate.used_score !== null ? candidate.used_score.toFixed(2) : 'N/A'} / {candidate.pos_thresh.toFixed(2)}
+          </div>
         </div>
       </div>
 
-      {backtest && (
+      {(candidate.avg_ret !== undefined || candidate.win_rate !== undefined || candidate.trades !== undefined) && (
         <div className="mt-3 pt-3 border-t border-border">
           <div className="text-sm text-muted-foreground mb-2">Historical Performance</div>
           <div className="grid grid-cols-3 gap-2 text-xs">
-            <div>
-              <div className="font-medium">{(backtest.avg_ret * 100).toFixed(1)}%</div>
-              <div className="text-muted-foreground">Avg Return</div>
-            </div>
-            <div>
-              <div className="font-medium">{((backtest.win_rate || backtest.hit_rate || 0) * 100).toFixed(0)}%</div>
-              <div className="text-muted-foreground">Win Rate</div>
-            </div>
-            <div>
-              <div className="font-medium">{backtest.trades}</div>
-              <div className="text-muted-foreground">Trades</div>
-            </div>
+            {candidate.avg_ret !== undefined && (
+              <div>
+                <div className="font-medium">{(candidate.avg_ret * 100).toFixed(1)}%</div>
+                <div className="text-muted-foreground">Avg Return</div>
+              </div>
+            )}
+            {candidate.win_rate !== undefined && (
+              <div>
+                <div className="font-medium">{(candidate.win_rate * 100).toFixed(0)}%</div>
+                <div className="text-muted-foreground">Win Rate</div>
+              </div>
+            )}
+            {candidate.trades !== undefined && (
+              <div>
+                <div className="font-medium">{candidate.trades}</div>
+                <div className="text-muted-foreground">Trades</div>
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -155,12 +142,9 @@ const CandidateCard = ({ candidate, backtest }: { candidate: RedditCandidate; ba
 const SentimentDashboard = () => {
   const [redditSignals, setRedditSignals] = useState<RedditDailySignal[]>([]);
   const [candidates, setCandidates] = useState<RedditCandidate[]>([]);
-  const [backtests, setBacktests] = useState<BacktestResult[]>([]);
-  const [liveEntries, setLiveEntries] = useState<LiveEntry[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [lastUpdate, setLastUpdate] = useState<Date | null>(null);
   const [usingFallback, setUsingFallback] = useState(false);
-  const [fallbackDate, setFallbackDate] = useState<string | null>(null);
   
   const { toast } = useToast();
 
@@ -168,90 +152,58 @@ const SentimentDashboard = () => {
     setIsLoading(true);
     
     try {
-      // 1. Try to fetch today's v_reddit_daily_signals first
-      const { data: todaySignals, error: todaySignalsError } = await supabase
+      let isUsingFallback = false;
+
+      // 1. Try today's signals first, fallback if empty
+      let { data: signalsData } = await supabase
         .from('v_reddit_daily_signals')
         .select('*')
         .order('trade_date', { ascending: false })
         .limit(20);
 
-      let signalsData = todaySignals;
-      let isUsingFallback = false;
-      let referenceDate = null;
-
-      // If no data for today, try fallback
-      if (!todaySignals || todaySignals.length === 0) {
-        const { data: fallbackSignals, error: fallbackSignalsError } = await supabase
+      if (!signalsData || signalsData.length === 0) {
+        const { data: fallbackSignals } = await supabase
           .from('v_reddit_daily_signals_last_trading_day')
           .select('*')
           .limit(20);
 
-        if (!fallbackSignalsError && fallbackSignals && fallbackSignals.length > 0) {
+        if (fallbackSignals && fallbackSignals.length > 0) {
           signalsData = fallbackSignals;
           isUsingFallback = true;
-          referenceDate = fallbackSignals[0]?.reference_date;
         }
       }
 
-      if (signalsData) {
-        const signals = signalsData.map(item => ({
-          data_date: item.trade_date,
-          symbol: item.symbol,
-          n_mentions: item.n_mentions || 0,
-          avg_score: item.avg_score || 0,
-          used_score: item.used_score || 0
-        }));
-        setRedditSignals(signals);
-      }
+      setRedditSignals(signalsData || []);
 
-      setUsingFallback(isUsingFallback);
-      setFallbackDate(referenceDate);
-
-      // 2. Try to fetch today's candidates, fallback if needed
-      let { data: candidatesData, error: candidatesError } = await supabase
+      // 2. Try today's candidates first, fallback if empty
+      let { data: candidatesData } = await supabase
         .from('v_reddit_candidates_today')
         .select('*')
-        .order('triggered', { ascending: false });
+        .order('sharpe', { ascending: false, nullsFirst: false })
+        .order('symbol', { ascending: true })
+        .order('horizon', { ascending: true });
 
-      // If no candidates for today and we're using fallback, get last trading day candidates
-      if ((!candidatesData || candidatesData.length === 0) && isUsingFallback) {
-        const { data: fallbackCandidates, error: fallbackCandidatesError } = await supabase
+      if (!candidatesData || candidatesData.length === 0) {
+        const { data: fallbackCandidates } = await supabase
           .from('v_reddit_candidates_last_trading_day')
           .select('*')
-          .order('triggered', { ascending: false });
+          .order('sharpe', { ascending: false, nullsFirst: false })
+          .order('symbol', { ascending: true })
+          .order('horizon', { ascending: true });
 
-        if (!fallbackCandidatesError) {
+        if (fallbackCandidates && fallbackCandidates.length > 0) {
           candidatesData = fallbackCandidates;
+          isUsingFallback = true;
         }
       }
 
       setCandidates(candidatesData || []);
-
-      // 3. Fetch v_reddit_backtest_lookup (unchanged)
-      const { data: backtestData, error: backtestError } = await supabase
-        .from('v_reddit_backtest_lookup')
-        .select('*')
-        .order('sharpe', { ascending: false })
-        .limit(100);
-
-      if (!backtestError) {
-        setBacktests(backtestData || []);
-      }
-
-      // 4. Fetch v_today_live_entries (unchanged)
-      const { data: liveData, error: liveError } = await supabase
-        .from('v_today_live_entries')
-        .select('*')
-        .order('triggered', { ascending: false });
-
-      if (!liveError) {
-        setLiveEntries(liveData || []);
-      }
-
+      setUsingFallback(isUsingFallback);
       setLastUpdate(new Date());
+      
       toast({
         title: "Reddit Data Updated",
-        description: `Loaded ${signalsData?.length || 0} signals, ${candidatesData?.length || 0} candidates${isUsingFallback ? ' (using last trading day)' : ''}`,
+        description: `Loaded ${signalsData?.length || 0} signals, ${candidatesData?.length || 0} candidates${isUsingFallback ? ' (last trading day)' : ''}`,
       });
 
     } catch (error) {
@@ -269,14 +221,6 @@ const SentimentDashboard = () => {
   useEffect(() => {
     fetchRedditData();
   }, []);
-
-  // Helper to find backtest data for a candidate
-  const getBacktestForCandidate = (candidate: RedditCandidate): BacktestResult | undefined => {
-    return backtests.find(bt => 
-      bt.symbol === candidate.symbol &&
-      bt.horizon === candidate.horizon
-    );
-  };
 
   return (
     <div className="space-y-6">
@@ -317,8 +261,7 @@ const SentimentDashboard = () => {
           <div className="flex items-center gap-2">
             <div className="w-2 h-2 bg-amber-500 rounded-full"></div>
             <p className="text-sm text-amber-800 dark:text-amber-200">
-              <strong>Market closed</strong> — Live Reddit signals paused. Showing last trading day data 
-              {fallbackDate && ` (${new Date(fallbackDate).toLocaleDateString()})`}. 
+              <strong>Market closed</strong> — Live Reddit signals paused. Showing last trading day data. 
               Mentions will be 0 until next session.
             </p>
           </div>
@@ -340,20 +283,20 @@ const SentimentDashboard = () => {
       <div className="space-y-4">
         <h3 className="text-lg font-semibold flex items-center">
           🎯 Today's Triggered Candidates
+          {usingFallback && <span className="text-sm text-muted-foreground ml-2 font-normal">As of last trading day</span>}
         </h3>
         {candidates.filter(c => c.triggered).length > 0 ? (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {candidates.filter(c => c.triggered).map((candidate, index) => (
               <CandidateCard 
-                key={index} 
-                candidate={candidate} 
-                backtest={getBacktestForCandidate(candidate)}
+                key={`triggered-${candidate.symbol}-${candidate.horizon}-${index}`} 
+                candidate={candidate}
               />
             ))}
           </div>
         ) : (
           <div className="text-center py-8 text-muted-foreground">
-            No triggered candidates today
+            No triggered candidates
           </div>
         )}
       </div>
@@ -362,14 +305,14 @@ const SentimentDashboard = () => {
       <div className="space-y-4">
         <h3 className="text-lg font-semibold flex items-center">
           👀 Monitoring
+          {usingFallback && <span className="text-sm text-muted-foreground ml-2 font-normal">As of last trading day</span>}
         </h3>
         {candidates.filter(c => !c.triggered).length > 0 ? (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {candidates.filter(c => !c.triggered).slice(0, 6).map((candidate, index) => (
               <CandidateCard 
-                key={index} 
-                candidate={candidate} 
-                backtest={getBacktestForCandidate(candidate)}
+                key={`monitoring-${candidate.symbol}-${candidate.horizon}-${index}`} 
+                candidate={candidate}
               />
             ))}
           </div>
@@ -384,17 +327,18 @@ const SentimentDashboard = () => {
       <div className="space-y-4">
         <h3 className="text-lg font-semibold flex items-center">
           📊 Today's Reddit Signals
+          {usingFallback && <span className="text-sm text-muted-foreground ml-2 font-normal">As of last trading day</span>}
         </h3>
         {redditSignals.length > 0 ? (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
             {redditSignals.map((signal, index) => (
-              <RedditSignalCard key={index} signal={signal} />
+              <RedditSignalCard key={`signal-${signal.symbol}-${index}`} signal={signal} />
             ))}
           </div>
         ) : (
           <div className="text-center py-8">
             <p className="text-muted-foreground">
-              {isLoading ? 'Loading Reddit signals...' : 'No Reddit signals available for today'}
+              {isLoading ? 'Loading Reddit signals...' : 'No Reddit signals available'}
             </p>
           </div>
         )}
