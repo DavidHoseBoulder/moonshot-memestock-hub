@@ -24,7 +24,7 @@ interface Trade {
   side: 'LONG' | 'SHORT';
   horizon: string;
   mode: 'paper' | 'live';
-  status: 'open' | 'closed';
+  status: 'OPEN' | 'CLOSED';
   source: string;
   trade_date: string;
   entry_date: string;
@@ -118,13 +118,13 @@ const TradesOverview = () => {
 
   // Calculate PnL for a trade
   const calculatePnL = (trade: Trade, currentPrice?: number) => {
-    if (trade.status === 'closed' && trade.exit_price) {
+    if (trade.status.toLowerCase() === 'closed' && trade.exit_price) {
       const pnl = trade.side === 'LONG' 
         ? trade.exit_price - trade.entry_price
         : trade.entry_price - trade.exit_price;
       const returnPct = (pnl / trade.entry_price) * 100;
       return { realized_pnl: pnl, return_pct: returnPct };
-    } else if (trade.status === 'open' && currentPrice) {
+    } else if (trade.status.toLowerCase() === 'open' && currentPrice) {
       const pnl = trade.side === 'LONG'
         ? currentPrice - trade.entry_price
         : trade.entry_price - currentPrice;
@@ -251,7 +251,7 @@ const TradesOverview = () => {
           fees_bps: formData.fees_bps ? parseFloat(formData.fees_bps) : 0,
           slippage_bps: formData.slippage_bps ? parseFloat(formData.slippage_bps) : 0,
           source: 'manual',
-          status: 'open',
+          status: 'OPEN',
         });
 
       if (error) throw error;
@@ -395,8 +395,8 @@ const TradesOverview = () => {
     return true;
   });
 
-  const openTrades = filteredTrades.filter(t => t.status === 'open');
-  const closedTrades = filteredTrades.filter(t => t.status === 'closed');
+  const openTrades = filteredTrades.filter(t => t.status.toLowerCase() === 'open');
+  const closedTrades = filteredTrades.filter(t => t.status.toLowerCase() === 'closed');
 
   // Calculate summaries
   const summary = {
@@ -421,7 +421,7 @@ const TradesOverview = () => {
   };
 
   const TradeCard = ({ trade }: { trade: TradeWithPnL }) => {
-    const isOpen = trade.status === 'open';
+    const isOpen = trade.status.toLowerCase() === 'open';
     const isPaper = trade.mode === 'paper';
     const pnl = isOpen ? trade.unrealized_pnl : trade.realized_pnl;
     const isProfit = (pnl || 0) > 0;
@@ -931,7 +931,7 @@ const TradesOverview = () => {
                     <div>
                       <div className="text-sm text-muted-foreground">Status</div>
                       <div className="font-medium">
-                        <Badge variant={selectedTrade.status === 'open' ? "default" : "secondary"}>
+                        <Badge variant={selectedTrade.status.toLowerCase() === 'open' ? "default" : "secondary"}>
                           {selectedTrade.status.toUpperCase()}
                         </Badge>
                       </div>
@@ -1073,7 +1073,7 @@ const TradesOverview = () => {
                           <div className={`font-medium ${
                             (selectedTrade.unrealized_pnl || 0) >= 0 ? 'text-green-600' : 'text-red-600'
                           }`}>
-                            {selectedTrade.status === 'open' && typeof selectedTrade.unrealized_pnl === 'number'
+                            {selectedTrade.status.toLowerCase() === 'open' && typeof selectedTrade.unrealized_pnl === 'number'
                               ? `$${selectedTrade.unrealized_pnl.toFixed(2)}`
                               : 'N/A'
                             }
