@@ -117,8 +117,8 @@ Deno.serve(async (req) => {
             return null
           }
           
-          if (data.results.length < 10) {
-            console.log(`Insufficient Polygon data for ${symbol}: only ${data.results.length} bars, need at least 10 (lowered requirement)`)
+          if (data.results.length < 1) {
+            console.log(`No Polygon data for ${symbol}: ${data.results.length} bars`)
             return null
           }
 
@@ -131,8 +131,8 @@ Deno.serve(async (req) => {
           const validPrices = prices.filter((p: number) => p > 0)
           const validVolumes = volumes.filter((v: number) => v > 0)
 
-          if (validPrices.length < 10) {
-            console.log(`Insufficient valid price data for ${symbol}: only ${validPrices.length} valid prices, need at least 10`)
+          if (validPrices.length < 1) {
+            console.log(`No valid price data for ${symbol}: only ${validPrices.length} valid prices`)
             return null
           }
 
