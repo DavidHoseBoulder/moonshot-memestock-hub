@@ -183,10 +183,21 @@ const CandidateCard = ({ candidate, existingTrade, onNewTrade }: {
           {existingTrade ? (
             <div className="flex items-center justify-between">
               <div className="text-sm">
-                <div className="font-medium text-green-600 dark:text-green-400">✓ Trade Active</div>
-                <div className="text-muted-foreground">
-                  {existingTrade.mode} • {existingTrade.entry_price ? `$${existingTrade.entry_price.toFixed(2)}` : 'Pending'}
-                </div>
+                {existingTrade.status === 'open' ? (
+                  <>
+                    <div className="font-medium text-green-600 dark:text-green-400">✓ Trade Active</div>
+                    <div className="text-muted-foreground">
+                      {existingTrade.mode} • {existingTrade.entry_price ? `$${existingTrade.entry_price.toFixed(2)}` : 'Pending'}
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <div className="font-medium text-gray-600 dark:text-gray-400">✓ Trade Closed</div>
+                    <div className="text-muted-foreground">
+                      {existingTrade.mode} • Entry: ${existingTrade.entry_price?.toFixed(2) || 'N/A'} • Exit: ${existingTrade.exit_price?.toFixed(2) || 'N/A'}
+                    </div>
+                  </>
+                )}
               </div>
               <Button asChild variant="outline" size="sm">
                 <Link to="/trades">
@@ -352,7 +363,7 @@ const SentimentDashboard = () => {
 
       setCandidates(candidatesData || []);
 
-      // 3. Fetch existing trades for triggered candidates
+      // 3. Fetch existing trades for triggered candidates (both open and closed)
       if (candidatesData && candidatesData.length > 0) {
         const triggeredSymbols = candidatesData
           .filter(c => c.triggered)
@@ -363,14 +374,15 @@ const SentimentDashboard = () => {
             .from('trades' as any)
             .select('trade_id, symbol, side, horizon, mode, status, trade_date, entry_price, exit_price')
             .in('symbol', triggeredSymbols)
-            .eq('status', 'open')
+            .in('status', ['open', 'closed'])
             .order('created_at', { ascending: false });
 
           if (tradesData) {
             const tradesMap: Record<string, ExistingTrade> = {};
             tradesData.forEach((trade: any) => {
               const key = `${trade.symbol}-${trade.horizon}`;
-              if (!tradesMap[key]) {
+              // Prioritize open trades over closed ones
+              if (!tradesMap[key] || (tradesMap[key].status === 'closed' && trade.status === 'open')) {
                 tradesMap[key] = trade;
               }
             });
