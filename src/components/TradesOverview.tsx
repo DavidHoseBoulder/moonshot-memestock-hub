@@ -27,10 +27,10 @@ interface Trade {
   status: 'OPEN' | 'CLOSED';
   source: string;
   trade_date: string;
-  entry_date: string;
+  entry_ts: string;
   entry_price: number;
   entry_price_source: string;
-  exit_date?: string;
+  exit_ts?: string;
   exit_price?: number;
   exit_price_source?: string;
   notes?: string;
@@ -244,7 +244,7 @@ const TradesOverview = () => {
           horizon: formData.horizon,
           mode: formData.mode,
           trade_date: formData.trade_date,
-          entry_date: new Date().toISOString(),
+          entry_ts: new Date().toISOString(),
           entry_price: formData.entry_price ? parseFloat(formData.entry_price) : null,
           qty: parseFloat(formData.qty),
           notes: formData.notes || null,
@@ -344,7 +344,7 @@ const TradesOverview = () => {
       }));
 
       // 3. Fetch price history since entry (last ~20 marks)
-      const entryTimestamp = new Date(trade.entry_date).toISOString();
+      const entryTimestamp = new Date(trade.entry_ts).toISOString();
       const { data: priceData } = await supabase
         .from('enhanced_market_data')
         .select('symbol, price, timestamp, data_date')
@@ -481,7 +481,7 @@ const TradesOverview = () => {
             <div className="font-semibold">
               {typeof trade.entry_price === 'number' ? `$${trade.entry_price.toFixed(2)}` : 'N/A'}
               <div className="text-xs text-muted-foreground">
-                {trade.entry_date ? new Date(trade.entry_date).toLocaleDateString() : 'N/A'}
+                {trade.entry_ts ? new Date(trade.entry_ts).toLocaleDateString() : 'N/A'}
               </div>
             </div>
           </div>
@@ -496,9 +496,9 @@ const TradesOverview = () => {
                     : "Loading...")
                 : (typeof trade.exit_price === 'number' ? `$${trade.exit_price.toFixed(2)}` : 'N/A')
               }
-              {!isOpen && trade.exit_date && (
+              {!isOpen && trade.exit_ts && (
                 <div className="text-xs text-muted-foreground">
-                  {new Date(trade.exit_date).toLocaleDateString()}
+                  {new Date(trade.exit_ts).toLocaleDateString()}
                 </div>
               )}
             </div>
@@ -908,7 +908,7 @@ const TradesOverview = () => {
                     <div>
                       <div className="text-sm text-muted-foreground">Entry Date</div>
                       <div className="font-medium">
-                        {selectedTrade.entry_date ? new Date(selectedTrade.entry_date).toLocaleString() : 'N/A'}
+                        {selectedTrade.entry_ts ? new Date(selectedTrade.entry_ts).toLocaleString() : 'N/A'}
                       </div>
                     </div>
                     <div>
