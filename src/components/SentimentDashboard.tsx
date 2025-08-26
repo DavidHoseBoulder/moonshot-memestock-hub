@@ -179,7 +179,7 @@ const SentimentDashboard = () => {
       let { data: candidatesData } = await supabase
         .from('v_reddit_candidates_today')
         .select('*')
-        .order('sharpe', { ascending: false, nullsFirst: false })
+        .order('used_score', { ascending: false, nullsFirst: false })
         .order('symbol', { ascending: true })
         .order('horizon', { ascending: true });
 
@@ -187,7 +187,7 @@ const SentimentDashboard = () => {
         const { data: fallbackCandidates } = await supabase
           .from('v_reddit_candidates_last_trading_day')
           .select('*')
-          .order('sharpe', { ascending: false, nullsFirst: false })
+          .order('used_score', { ascending: false, nullsFirst: false })
           .order('symbol', { ascending: true })
           .order('horizon', { ascending: true });
 
@@ -269,18 +269,6 @@ const SentimentDashboard = () => {
           </div>
         </div>
       )}
-
-      {!usingFallback && redditSignals.length === 0 && candidates.length === 0 && (
-        <div className="bg-blue-50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4">
-          <div className="flex items-center gap-2">
-            <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse"></div>
-            <p className="text-sm text-blue-800 dark:text-blue-200">
-              <strong>Still warming up</strong> — Reddit sentiment pipeline is processing today's data.
-            </p>
-          </div>
-        </div>
-      )}
-
       {/* Today's Triggered Candidates */}
       <div className="space-y-4">
         <h3 className="text-lg font-semibold flex items-center">
