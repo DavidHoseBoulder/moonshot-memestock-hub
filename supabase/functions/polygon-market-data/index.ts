@@ -218,13 +218,55 @@ Deno.serve(async (req) => {
       }
     }
 
+    // Store the enhanced data in the database
+    if (enhancedData.length > 0) {
+      console.log(`Storing ${enhancedData.length} Polygon records to enhanced_market_data table`)
+      
+      const dbRecords = enhancedData.map(item => ({
+        symbol: item.symbol,
+        data_date: new Date(item.timestamp).toISOString().split('T')[0],
+        open_price: item.price, // Using current price as proxy since we don't have OHLC from this function
+        close_price: item.price,
+        high_price: item.price,
+        low_price: item.price,
+        volume: item.volume,
+        adj_close_price: item.price,
+        rsi_14: item.technical_indicators.rsi,
+        sma_20: item.technical_indicators.sma_20,
+        sma_50: item.technical_indicators.sma_50,
+        volume_sma_20: item.volume, // Using current volume as proxy
+        price_change_1d: item.price_change_1d,
+        price_change_5d: item.price_change_5d,
+        volatility: item.technical_indicators.volatility,
+        momentum_score: item.technical_indicators.momentum,
+        volume_ratio: item.technical_indicators.volume_ratio,
+        data_source: 'polygon',
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      }))
+
+      const { error: insertError } = await supabase
+        .from('enhanced_market_data')
+        .upsert(dbRecords, { 
+          onConflict: 'symbol,data_date',
+          ignoreDuplicates: false 
+        })
+
+      if (insertError) {
+        console.error('Error storing Polygon data to database:', insertError)
+      } else {
+        console.log(`✅ Successfully stored ${dbRecords.length} Polygon records to database`)
+      }
+    }
+
     return new Response(
       JSON.stringify({ 
         success: true, 
         enhanced_data: enhancedData,
         total_processed: enhancedData.length,
         symbols_requested: symbols.length,
-        source: 'polygon'
+        source: 'polygon',
+        stored_to_db: enhancedData.length
       }),
       { 
         status: 200, 
