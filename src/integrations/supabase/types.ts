@@ -1271,9 +1271,24 @@ export type Database = {
         }
         Relationships: []
       }
+      v_reddit_candidates_last_trading_day: {
+        Row: {
+          horizon: string | null
+          min_mentions: number | null
+          n_mentions: number | null
+          pos_thresh: number | null
+          reference_date: string | null
+          side: string | null
+          symbol: string | null
+          trade_date: string | null
+          triggered: boolean | null
+          use_weighted: boolean | null
+          used_score: number | null
+        }
+        Relationships: []
+      }
       v_reddit_candidates_today: {
         Row: {
-          avg_score: number | null
           horizon: string | null
           min_mentions: number | null
           n_mentions: number | null
@@ -1291,6 +1306,17 @@ export type Database = {
         Row: {
           avg_score: number | null
           n_mentions: number | null
+          symbol: string | null
+          trade_date: string | null
+          used_score: number | null
+        }
+        Relationships: []
+      }
+      v_reddit_daily_signals_last_trading_day: {
+        Row: {
+          avg_score: number | null
+          n_mentions: number | null
+          reference_date: string | null
           symbol: string | null
           trade_date: string | null
           used_score: number | null
@@ -1471,57 +1497,14 @@ export type Database = {
         }
         Relationships: []
       }
-      v_today_candidates: {
-        Row: {
-          horizon: string | null
-          min_mentions: number | null
-          n_mentions: number | null
-          pos_thresh: number | null
-          priority: number | null
-          side: string | null
-          symbol: string | null
-          trade_date: string | null
-          triggered: boolean | null
-          use_weighted: boolean | null
-          used_score: number | null
-        }
-        Relationships: []
-      }
       v_today_live_entries: {
         Row: {
-          avg_score: number | null
           d: string | null
           horizon: string | null
-          is_boundary: boolean | null
-          mention_gap: number | null
           min_mentions: number | null
-          model_version: string | null
           n_mentions: number | null
           pos_thresh: number | null
-          priority: number | null
-          score_gap: number | null
-          sharpe: number | null
-          side: string | null
           symbol: string | null
-          triggered: boolean | null
-          use_weighted: boolean | null
-          used_score: number | null
-          wt_score: number | null
-        }
-        Relationships: []
-      }
-      v_today_recommendations: {
-        Row: {
-          backtest_key: string | null
-          composite_score: number | null
-          horizon: string | null
-          n_mentions: number | null
-          pos_thresh: number | null
-          priority: number | null
-          sharpe: number | null
-          side: string | null
-          symbol: string | null
-          trade_date: string | null
           triggered: boolean | null
           used_score: number | null
         }

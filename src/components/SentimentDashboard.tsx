@@ -25,6 +25,11 @@ interface RedditCandidate {
   triggered: boolean;
   use_weighted?: boolean;
   side?: string;
+  reference_date?: string;
+}
+
+interface FallbackSignal extends RedditDailySignal {
+  reference_date?: string;
 }
 
 interface BacktestResult {
@@ -120,7 +125,7 @@ const CandidateCard = ({ candidate, backtest }: { candidate: RedditCandidate; ba
         </div>
         <div>
           <div className="text-sm text-muted-foreground">Score</div>
-          <div className="text-base font-semibold">{candidate.used_score?.toFixed(2) || 'N/A'} / {candidate.pos_thresh?.toFixed(2) || 'N/A'}</div>
+          <div className="text-base font-semibold">{candidate.used_score.toFixed(2)} / {candidate.pos_thresh.toFixed(2)}</div>
         </div>
       </div>
 
@@ -154,6 +159,8 @@ const SentimentDashboard = () => {
   const [liveEntries, setLiveEntries] = useState<LiveEntry[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [lastUpdate, setLastUpdate] = useState<Date | null>(null);
+  const [usingFallback, setUsingFallback] = useState(false);
+  const [fallbackDate, setFallbackDate] = useState<string | null>(null);
   
   const { toast } = useToast();
 
@@ -161,67 +168,90 @@ const SentimentDashboard = () => {
     setIsLoading(true);
     
     try {
-      // 1. Fetch v_reddit_daily_signals
-      const { data: dailySignals, error: signalsError } = await supabase
+      // 1. Try to fetch today's v_reddit_daily_signals first
+      const { data: todaySignals, error: todaySignalsError } = await supabase
         .from('v_reddit_daily_signals')
         .select('*')
         .order('trade_date', { ascending: false })
         .limit(20);
 
-      if (signalsError) {
-        console.error('Error fetching daily signals:', signalsError);
-      } else {
-        const signals = (dailySignals || []).map(item => ({
+      let signalsData = todaySignals;
+      let isUsingFallback = false;
+      let referenceDate = null;
+
+      // If no data for today, try fallback
+      if (!todaySignals || todaySignals.length === 0) {
+        const { data: fallbackSignals, error: fallbackSignalsError } = await supabase
+          .from('v_reddit_daily_signals_last_trading_day')
+          .select('*')
+          .limit(20);
+
+        if (!fallbackSignalsError && fallbackSignals && fallbackSignals.length > 0) {
+          signalsData = fallbackSignals;
+          isUsingFallback = true;
+          referenceDate = fallbackSignals[0]?.reference_date;
+        }
+      }
+
+      if (signalsData) {
+        const signals = signalsData.map(item => ({
           data_date: item.trade_date,
           symbol: item.symbol,
-          n_mentions: item.n_mentions,
-          avg_score: item.avg_score,
-          used_score: item.used_score
+          n_mentions: item.n_mentions || 0,
+          avg_score: item.avg_score || 0,
+          used_score: item.used_score || 0
         }));
         setRedditSignals(signals);
       }
 
-      // 2. Fetch v_reddit_candidates_today
-      const { data: candidatesData, error: candidatesError } = await supabase
+      setUsingFallback(isUsingFallback);
+      setFallbackDate(referenceDate);
+
+      // 2. Try to fetch today's candidates, fallback if needed
+      let { data: candidatesData, error: candidatesError } = await supabase
         .from('v_reddit_candidates_today')
         .select('*')
         .order('triggered', { ascending: false });
 
-      if (candidatesError) {
-        console.error('Error fetching candidates:', candidatesError);
-      } else {
-        setCandidates(candidatesData || []);
+      // If no candidates for today and we're using fallback, get last trading day candidates
+      if ((!candidatesData || candidatesData.length === 0) && isUsingFallback) {
+        const { data: fallbackCandidates, error: fallbackCandidatesError } = await supabase
+          .from('v_reddit_candidates_last_trading_day')
+          .select('*')
+          .order('triggered', { ascending: false });
+
+        if (!fallbackCandidatesError) {
+          candidatesData = fallbackCandidates;
+        }
       }
 
-      // 3. Fetch v_reddit_backtest_lookup
+      setCandidates(candidatesData || []);
+
+      // 3. Fetch v_reddit_backtest_lookup (unchanged)
       const { data: backtestData, error: backtestError } = await supabase
         .from('v_reddit_backtest_lookup')
         .select('*')
         .order('sharpe', { ascending: false })
         .limit(100);
 
-      if (backtestError) {
-        console.error('Error fetching backtest data:', backtestError);
-      } else {
+      if (!backtestError) {
         setBacktests(backtestData || []);
       }
 
-      // 4. Fetch v_today_live_entries
+      // 4. Fetch v_today_live_entries (unchanged)
       const { data: liveData, error: liveError } = await supabase
         .from('v_today_live_entries')
         .select('*')
         .order('triggered', { ascending: false });
 
-      if (liveError) {
-        console.error('Error fetching live entries:', liveError);
-      } else {
+      if (!liveError) {
         setLiveEntries(liveData || []);
       }
 
       setLastUpdate(new Date());
       toast({
         title: "Reddit Data Updated",
-        description: `Loaded ${dailySignals?.length || 0} signals, ${candidatesData?.length || 0} candidates`,
+        description: `Loaded ${signalsData?.length || 0} signals, ${candidatesData?.length || 0} candidates${isUsingFallback ? ' (using last trading day)' : ''}`,
       });
 
     } catch (error) {
@@ -280,6 +310,31 @@ const SentimentDashboard = () => {
           </Badge>
         </div>
       </div>
+
+      {/* Market State Banner */}
+      {usingFallback && (
+        <div className="bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800 rounded-lg p-4">
+          <div className="flex items-center gap-2">
+            <div className="w-2 h-2 bg-amber-500 rounded-full"></div>
+            <p className="text-sm text-amber-800 dark:text-amber-200">
+              <strong>Market closed</strong> — Live Reddit signals paused. Showing last trading day data 
+              {fallbackDate && ` (${new Date(fallbackDate).toLocaleDateString()})`}. 
+              Mentions will be 0 until next session.
+            </p>
+          </div>
+        </div>
+      )}
+
+      {!usingFallback && redditSignals.length === 0 && candidates.length === 0 && (
+        <div className="bg-blue-50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4">
+          <div className="flex items-center gap-2">
+            <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse"></div>
+            <p className="text-sm text-blue-800 dark:text-blue-200">
+              <strong>Still warming up</strong> — Reddit sentiment pipeline is processing today's data.
+            </p>
+          </div>
+        </div>
+      )}
 
       {/* Today's Triggered Candidates */}
       <div className="space-y-4">
