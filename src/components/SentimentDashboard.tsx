@@ -33,9 +33,9 @@ interface RedditCandidate {
 
 const RedditSignalCard = ({ signal }: { signal: RedditDailySignal }) => {
   const getSentimentColor = (score: number) => {
-    if (score > 0.1) return 'text-green-500';
-    if (score < -0.1) return 'text-red-500';
-    return 'text-yellow-500';
+    if (score > 0.1) return 'text-green-600 dark:text-green-400';
+    if (score < -0.1) return 'text-red-600 dark:text-red-400';
+    return 'text-yellow-600 dark:text-yellow-400';
   };
 
   const getSentimentLabel = (score: number) => {
@@ -85,26 +85,26 @@ const CandidateCard = ({ candidate }: { candidate: RedditCandidate }) => {
     <Card className={`p-4 hover:shadow-lg transition-shadow border ${candidate.triggered ? 'border-green-500 bg-green-50 dark:bg-green-950/20' : 'bg-card'}`}>
       <div className="flex justify-between items-start mb-3">
         <div>
-          <h3 className="text-lg font-bold text-foreground">
-            {candidate.symbol} • {candidate.horizon} • <Badge variant="outline">{side}</Badge>
+          <h3 className="text-lg font-bold text-foreground flex items-center gap-2">
+            {candidate.symbol} • {candidate.horizon} • <Badge variant="outline" className="text-foreground">{side}</Badge>
           </h3>
         </div>
         <div className="flex gap-2">
-          <Badge variant={candidate.triggered ? "default" : "outline"}>
+          <Badge variant={candidate.triggered ? "default" : "outline"} className="text-foreground">
             {candidate.triggered ? "🎯 TRIGGERED" : "Monitoring"}
           </Badge>
-          {candidate.triggered && <Target className="w-4 h-4 text-green-500" />}
+          {candidate.triggered && <Target className="w-4 h-4 text-green-600 dark:text-green-400" />}
         </div>
       </div>
 
       <div className="grid grid-cols-2 gap-3 mb-3">
         <div>
           <div className="text-sm text-muted-foreground">Mentions</div>
-          <div className="text-base font-semibold">{candidate.n_mentions} / {candidate.min_mentions}</div>
+          <div className="text-base font-semibold text-foreground">{candidate.n_mentions} / {candidate.min_mentions}</div>
         </div>
         <div>
           <div className="text-sm text-muted-foreground">Score</div>
-          <div className="text-base font-semibold">
+          <div className="text-base font-semibold text-foreground">
             {candidate.used_score !== null ? candidate.used_score.toFixed(2) : 'N/A'} / {candidate.pos_thresh.toFixed(2)}
           </div>
         </div>
@@ -116,19 +116,19 @@ const CandidateCard = ({ candidate }: { candidate: RedditCandidate }) => {
           <div className="grid grid-cols-3 gap-2 text-xs">
             {candidate.avg_ret !== undefined && (
               <div>
-                <div className="font-medium">{(candidate.avg_ret * 100).toFixed(1)}%</div>
+                <div className="font-medium text-foreground">{(candidate.avg_ret * 100).toFixed(1)}%</div>
                 <div className="text-muted-foreground">Avg Return</div>
               </div>
             )}
             {candidate.win_rate !== undefined && (
               <div>
-                <div className="font-medium">{(candidate.win_rate * 100).toFixed(0)}%</div>
+                <div className="font-medium text-foreground">{(candidate.win_rate * 100).toFixed(0)}%</div>
                 <div className="text-muted-foreground">Win Rate</div>
               </div>
             )}
             {candidate.trades !== undefined && (
               <div>
-                <div className="font-medium">{candidate.trades}</div>
+                <div className="font-medium text-foreground">{candidate.trades}</div>
                 <div className="text-muted-foreground">Trades</div>
               </div>
             )}
@@ -228,7 +228,7 @@ const SentimentDashboard = () => {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-2xl font-bold flex items-center">
+          <h2 className="text-2xl font-bold flex items-center text-foreground">
             🧠 Reddit Sentiment Dashboard
             <Zap className="w-6 h-6 ml-3 text-accent" />
           </h2>
@@ -269,9 +269,10 @@ const SentimentDashboard = () => {
           </div>
         </div>
       )}
+      
       {/* Today's Triggered Candidates */}
       <div className="space-y-4">
-        <h3 className="text-lg font-semibold flex items-center">
+        <h3 className="text-lg font-semibold flex items-center text-foreground">
           🎯 Today's Triggered Candidates
           {usingFallback && <span className="text-sm text-muted-foreground ml-2 font-normal">As of last trading day</span>}
         </h3>
@@ -293,7 +294,7 @@ const SentimentDashboard = () => {
 
       {/* Monitoring Candidates */}
       <div className="space-y-4">
-        <h3 className="text-lg font-semibold flex items-center">
+        <h3 className="text-lg font-semibold flex items-center text-foreground">
           👀 Monitoring
           {usingFallback && <span className="text-sm text-muted-foreground ml-2 font-normal">As of last trading day</span>}
         </h3>
@@ -315,7 +316,7 @@ const SentimentDashboard = () => {
 
       {/* Daily Signals */}
       <div className="space-y-4">
-        <h3 className="text-lg font-semibold flex items-center">
+        <h3 className="text-lg font-semibold flex items-center text-foreground">
           📊 Today's Reddit Signals
           {usingFallback && <span className="text-sm text-muted-foreground ml-2 font-normal">As of last trading day</span>}
         </h3>
