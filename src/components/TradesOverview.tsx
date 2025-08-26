@@ -481,7 +481,7 @@ const TradesOverview = () => {
             <div className="font-semibold">
               {typeof trade.entry_price === 'number' ? `$${trade.entry_price.toFixed(2)}` : 'N/A'}
               <div className="text-xs text-muted-foreground">
-                {new Date(trade.entry_date).toLocaleDateString()}
+                {trade.entry_date ? new Date(trade.entry_date).toLocaleDateString() : 'N/A'}
               </div>
             </div>
           </div>
@@ -523,7 +523,7 @@ const TradesOverview = () => {
 
         <div className="mt-3 pt-3 border-t text-xs text-muted-foreground">
           <div>Source: {trade.source} • Qty: 1 (paper default)</div>
-          <div>Trade Date: {new Date(trade.trade_date).toLocaleDateString()}</div>
+          <div>Trade Date: {trade.trade_date ? new Date(trade.trade_date).toLocaleDateString() : 'N/A'}</div>
         </div>
       </Card>
     );
@@ -908,7 +908,7 @@ const TradesOverview = () => {
                     <div>
                       <div className="text-sm text-muted-foreground">Entry Date</div>
                       <div className="font-medium">
-                        {new Date(selectedTrade.entry_date).toLocaleString()}
+                        {selectedTrade.entry_date ? new Date(selectedTrade.entry_date).toLocaleString() : 'N/A'}
                       </div>
                     </div>
                     <div>
@@ -1111,7 +1111,7 @@ const TradesOverview = () => {
                                 key={index}
                                 className="flex-1 bg-primary rounded-sm opacity-70 hover:opacity-100 transition-opacity"
                                 style={{ height: `${height}px` }}
-                                title={`$${point.price.toFixed(2)} on ${new Date(point.timestamp).toLocaleDateString()}`}
+                                title={`$${point.price.toFixed(2)} on ${point.timestamp ? new Date(point.timestamp).toLocaleDateString() : 'Unknown date'}`}
                               />
                             );
                           })}
