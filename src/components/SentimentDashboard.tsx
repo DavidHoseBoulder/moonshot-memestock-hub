@@ -144,7 +144,9 @@ const SentimentDashboard = () => {
   const [candidates, setCandidates] = useState<RedditCandidate[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [lastUpdate, setLastUpdate] = useState<Date | null>(null);
-  const [usingFallback, setUsingFallback] = useState(false);
+  const [isToday, setIsToday] = useState(false);
+  const [isFallback, setIsFallback] = useState(false);
+  const [asOfDate, setAsOfDate] = useState<Date | null>(null);
   
   const { toast } = useToast();
 
@@ -152,7 +154,8 @@ const SentimentDashboard = () => {
     setIsLoading(true);
     
     try {
-      let isUsingFallback = false;
+      let usedFallback = false;
+      let dataDate: Date | null = null;
 
       // 1. Try today's signals first, fallback if empty
       let { data: signalsData } = await supabase
@@ -169,8 +172,13 @@ const SentimentDashboard = () => {
 
         if (fallbackSignals && fallbackSignals.length > 0) {
           signalsData = fallbackSignals;
-          isUsingFallback = true;
+          usedFallback = true;
         }
+      }
+
+      // Extract date from signals data
+      if (signalsData && signalsData.length > 0) {
+        dataDate = new Date(signalsData[0].trade_date);
       }
 
       setRedditSignals(signalsData || []);
@@ -193,17 +201,26 @@ const SentimentDashboard = () => {
 
         if (fallbackCandidates && fallbackCandidates.length > 0) {
           candidatesData = fallbackCandidates;
-          isUsingFallback = true;
+          usedFallback = true;
+          // If we didn't get a date from signals, get it from candidates
+          if (!dataDate && fallbackCandidates.length > 0) {
+            dataDate = new Date(fallbackCandidates[0].trade_date);
+          }
         }
+      } else if (!dataDate && candidatesData.length > 0) {
+        // If we got today's candidates but no signals, use today's date
+        dataDate = new Date(candidatesData[0].trade_date);
       }
 
       setCandidates(candidatesData || []);
-      setUsingFallback(isUsingFallback);
+      setIsFallback(usedFallback);
+      setIsToday(!usedFallback);
+      setAsOfDate(dataDate);
       setLastUpdate(new Date());
       
       toast({
         title: "Reddit Data Updated",
-        description: `Loaded ${signalsData?.length || 0} signals, ${candidatesData?.length || 0} candidates${isUsingFallback ? ' (last trading day)' : ''}`,
+        description: `Loaded ${signalsData?.length || 0} signals, ${candidatesData?.length || 0} candidates${usedFallback ? ' (last trading day)' : ''}`,
       });
 
     } catch (error) {
@@ -222,7 +239,20 @@ const SentimentDashboard = () => {
     fetchRedditData();
   }, []);
 
-  console.log('SentimentDashboard rendering - signals:', redditSignals.length, 'candidates:', candidates.length, 'loading:', isLoading, 'fallback:', usingFallback);
+  console.log('SentimentDashboard rendering - signals:', redditSignals.length, 'candidates:', candidates.length, 'loading:', isLoading, 'fallback:', isFallback);
+
+  // Helper function to get banner message
+  const getBannerMessage = () => {
+    if (isFallback && asOfDate) {
+      return `Market closed — Showing last trading day data (as of ${asOfDate.toLocaleDateString()}).`;
+    }
+    if (isToday && asOfDate) {
+      return `Live Reddit signals for ${asOfDate.toLocaleDateString()}.`;
+    }
+    return null;
+  };
+
+  const bannerMessage = getBannerMessage();
 
   return (
     <div className="space-y-6">
@@ -257,14 +287,13 @@ const SentimentDashboard = () => {
         </div>
       </div>
 
-      {/* Market State Banner */}
-      {usingFallback && (
-        <div className="bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800 rounded-lg p-4">
+      {/* Global Status Banner */}
+      {bannerMessage && (
+        <div className={`border rounded-lg p-4 ${isFallback ? 'bg-amber-50 dark:bg-amber-950/20 border-amber-200 dark:border-amber-800' : 'bg-blue-50 dark:bg-blue-950/20 border-blue-200 dark:border-blue-800'}`}>
           <div className="flex items-center gap-2">
-            <div className="w-2 h-2 bg-amber-500 rounded-full"></div>
-            <p className="text-sm text-amber-800 dark:text-amber-200">
-              <strong>Market closed</strong> — Live Reddit signals paused. Showing last trading day data. 
-              Mentions will be 0 until next session.
+            <div className={`w-2 h-2 rounded-full ${isFallback ? 'bg-amber-500' : 'bg-blue-500'}`}></div>
+            <p className={`text-sm ${isFallback ? 'text-amber-800 dark:text-amber-200' : 'text-blue-800 dark:text-blue-200'}`}>
+              {bannerMessage}
             </p>
           </div>
         </div>
@@ -272,9 +301,9 @@ const SentimentDashboard = () => {
       
       {/* Today's Triggered Candidates */}
       <div className="space-y-4">
-        <h3 className="text-lg font-semibold flex items-center text-foreground">
-          🎯 Today's Triggered Candidates
-          {usingFallback && <span className="text-sm text-muted-foreground ml-2 font-normal">As of last trading day</span>}
+        <h3 className="text-lg font-semibold flex items-center justify-between text-foreground">
+          <span>🎯 Today's Triggered Candidates</span>
+          {isFallback && <span className="text-sm text-muted-foreground font-normal">As of last trading day</span>}
         </h3>
         {candidates.filter(c => c.triggered).length > 0 ? (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -294,9 +323,9 @@ const SentimentDashboard = () => {
 
       {/* Monitoring Candidates */}
       <div className="space-y-4">
-        <h3 className="text-lg font-semibold flex items-center text-foreground">
-          👀 Monitoring
-          {usingFallback && <span className="text-sm text-muted-foreground ml-2 font-normal">As of last trading day</span>}
+        <h3 className="text-lg font-semibold flex items-center justify-between text-foreground">
+          <span>👀 Monitoring</span>
+          {isFallback && <span className="text-sm text-muted-foreground font-normal">As of last trading day</span>}
         </h3>
         {candidates.filter(c => !c.triggered).length > 0 ? (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -316,9 +345,9 @@ const SentimentDashboard = () => {
 
       {/* Daily Signals */}
       <div className="space-y-4">
-        <h3 className="text-lg font-semibold flex items-center text-foreground">
-          📊 Today's Reddit Signals
-          {usingFallback && <span className="text-sm text-muted-foreground ml-2 font-normal">As of last trading day</span>}
+        <h3 className="text-lg font-semibold flex items-center justify-between text-foreground">
+          <span>📊 Today's Reddit Signals</span>
+          {isFallback && <span className="text-sm text-muted-foreground font-normal">As of last trading day</span>}
         </h3>
         {redditSignals.length > 0 ? (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
