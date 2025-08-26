@@ -1168,6 +1168,31 @@ export type Database = {
         }
         Relationships: []
       }
+      v_backtest_summary: {
+        Row: {
+          avg_ret: number | null
+          composite_score: number | null
+          horizon: string | null
+          median_ret: number | null
+          sharpe: number | null
+          symbol: string | null
+          trades: number | null
+          win_rate: number | null
+        }
+        Relationships: []
+      }
+      v_daily_scores: {
+        Row: {
+          avg_score: number | null
+          data_date: string | null
+          generated_at: string | null
+          n_mentions: number | null
+          symbol: string | null
+          used_score: number | null
+          velocity: number | null
+        }
+        Relationships: []
+      }
       v_live_sentiment_rules: {
         Row: {
           avg_ret: number | null
@@ -1446,6 +1471,22 @@ export type Database = {
         }
         Relationships: []
       }
+      v_today_candidates: {
+        Row: {
+          horizon: string | null
+          min_mentions: number | null
+          n_mentions: number | null
+          pos_thresh: number | null
+          priority: number | null
+          side: string | null
+          symbol: string | null
+          trade_date: string | null
+          triggered: boolean | null
+          use_weighted: boolean | null
+          used_score: number | null
+        }
+        Relationships: []
+      }
       v_today_live_entries: {
         Row: {
           avg_score: number | null
@@ -1466,6 +1507,23 @@ export type Database = {
           use_weighted: boolean | null
           used_score: number | null
           wt_score: number | null
+        }
+        Relationships: []
+      }
+      v_today_recommendations: {
+        Row: {
+          backtest_key: string | null
+          composite_score: number | null
+          horizon: string | null
+          n_mentions: number | null
+          pos_thresh: number | null
+          priority: number | null
+          sharpe: number | null
+          side: string | null
+          symbol: string | null
+          trade_date: string | null
+          triggered: boolean | null
+          used_score: number | null
         }
         Relationships: []
       }

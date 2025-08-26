@@ -16,29 +16,24 @@ interface RedditSignal {
 
 interface RedditCandidate {
   symbol: string;
-  d: string;
-  n_mentions: number;
-  avg_score: number;
-  wt_score: number;
-  sig_score: number;
-  triggered: boolean;
+  trade_date: string;
   horizon: string;
-  side: string;
+  n_mentions: number;
+  used_score: number;
   min_mentions: number;
   pos_thresh: number;
   use_weighted: boolean;
+  triggered: boolean;
+  priority: number | null;
+  side: string;
 }
 
 interface BacktestResult {
   symbol: string;
   horizon: string;
-  side: string;
-  min_mentions: number;
-  pos_thresh: number;
-  use_weighted: boolean;
   avg_ret: number;
   median_ret: number;
-  hit_rate: number;
+  win_rate: number;
   sharpe: number;
   trades: number;
   composite_score: number;
@@ -114,7 +109,7 @@ const CandidateCard = ({ candidate, backtest }: { candidate: RedditCandidate; ba
         </div>
         <div>
           <div className="text-sm text-muted-foreground">Score</div>
-          <div className="text-base font-semibold">{candidate.sig_score?.toFixed(2) || 'N/A'} / {candidate.pos_thresh?.toFixed(2) || 'N/A'}</div>
+          <div className="text-base font-semibold">{candidate.used_score?.toFixed(2) || 'N/A'} / {candidate.pos_thresh?.toFixed(2) || 'N/A'}</div>
         </div>
       </div>
 
@@ -127,7 +122,7 @@ const CandidateCard = ({ candidate, backtest }: { candidate: RedditCandidate; ba
               <div className="text-muted-foreground">Avg Return</div>
             </div>
             <div>
-              <div className="font-medium">{(backtest.hit_rate * 100).toFixed(0)}%</div>
+              <div className="font-medium">{(backtest.win_rate * 100).toFixed(0)}%</div>
               <div className="text-muted-foreground">Win Rate</div>
             </div>
             <div>
@@ -154,47 +149,30 @@ const SentimentDashboard = () => {
     setIsLoading(true);
     
     try {
-      // Use available tables - start with sentiment_history for Reddit data
-      const { data: sentimentData, error: sentimentError } = await supabase
-        .from('sentiment_history')
+      // Use standardized views for Reddit data
+      const { data: dailyScores, error: scoresError } = await supabase
+        .from('v_daily_scores')
         .select('*')
-        .eq('source', 'reddit')
-        .order('data_timestamp', { ascending: false })
+        .order('generated_at', { ascending: false })
         .limit(50);
 
-      if (sentimentError) {
-        console.error('Error fetching sentiment history:', sentimentError);
+      if (scoresError) {
+        console.error('Error fetching daily scores:', scoresError);
       } else {
-        // Process sentiment data into signals format
-        const signalMap = new Map();
-        sentimentData?.forEach(item => {
-          if (!signalMap.has(item.symbol)) {
-            signalMap.set(item.symbol, {
-              symbol: item.symbol,
-              trade_date: new Date(item.data_timestamp).toISOString().split('T')[0],
-              avg_score: item.sentiment_score || 0,
-              used_score: item.sentiment_score || 0,
-              n_mentions: item.volume_indicator || 1,
-              count: 1,
-              score_sum: item.sentiment_score || 0
-            });
-          } else {
-            const existing = signalMap.get(item.symbol);
-            existing.count += 1;
-            existing.score_sum += (item.sentiment_score || 0);
-            existing.avg_score = existing.score_sum / existing.count;
-            existing.used_score = existing.avg_score;
-            existing.n_mentions += (item.volume_indicator || 1);
-          }
-        });
-        
-        const signals = Array.from(signalMap.values()).slice(0, 12);
+        // Convert to signals format
+        const signals = (dailyScores || []).map(item => ({
+          symbol: item.symbol,
+          trade_date: item.data_date,
+          avg_score: item.avg_score,
+          used_score: item.used_score,
+          n_mentions: item.n_mentions
+        })).slice(0, 12);
         setRedditSignals(signals);
       }
 
-      // Use daily_sentiment_candidates for candidate data
+      // Use v_today_candidates for candidate data
       const { data: candidatesData, error: candidatesError } = await supabase
-        .from('daily_sentiment_candidates')
+        .from('v_today_candidates')
         .select('*')
         .order('triggered', { ascending: false })
         .limit(20);
@@ -205,9 +183,9 @@ const SentimentDashboard = () => {
         setCandidates(candidatesData || []);
       }
 
-      // Get backtest results from backtest_sweep_results
+      // Get backtest results from v_backtest_summary
       const { data: backtestData, error: backtestError } = await supabase
-        .from('backtest_sweep_results')
+        .from('v_backtest_summary')
         .select('*')
         .order('sharpe', { ascending: false })
         .limit(50);
@@ -221,7 +199,7 @@ const SentimentDashboard = () => {
       setLastUpdate(new Date());
       toast({
         title: "Data Updated",
-        description: `Loaded ${redditSignals?.length || 0} signals and ${candidatesData?.length || 0} candidates`,
+        description: `Loaded ${dailyScores?.length || 0} signals and ${candidatesData?.length || 0} candidates`,
       });
 
     } catch (error) {
