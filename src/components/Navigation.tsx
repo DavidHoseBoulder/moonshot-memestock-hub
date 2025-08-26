@@ -9,6 +9,7 @@ import {
   Settings,
   Target,
   TrendingUp,
+  DollarSign,
 } from "lucide-react"
 import { NavLink, useLocation } from "react-router-dom"
 
@@ -28,6 +29,7 @@ import {
 
 const navItems = [
   { path: "/", icon: TrendingUp, label: "Dashboard" },
+  { path: "/trades", icon: DollarSign, label: "Portfolio & Trades" },
   { path: "/trading-pipeline", icon: Target, label: "Daily Pipeline" },
   { path: "/sentiment", icon: MessageSquare, label: "Sentiment Analysis" },
   { path: "/backtesting", icon: BarChart3, label: "Strategy Testing" },

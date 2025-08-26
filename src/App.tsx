@@ -15,6 +15,7 @@ import Auth from "./pages/Auth";
 import ExtractionTester from "./pages/ExtractionTester";
 import Backtesting from "./pages/Backtesting";
 import Reports from "./pages/Reports";
+import Trades from "./pages/Trades";
 
 const queryClient = new QueryClient();
 
@@ -56,6 +57,7 @@ const App: React.FC = () => {
             <Route path="/dev/extraction-tester" element={<ProtectedRoute><ExtractionTester /></ProtectedRoute>} />
             <Route path="/backtesting" element={<ProtectedRoute><Backtesting /></ProtectedRoute>} />
             <Route path="/reports" element={<ProtectedRoute><Reports /></ProtectedRoute>} />
+            <Route path="/trades" element={<ProtectedRoute><Trades /></ProtectedRoute>} />
             <Route path="*" element={<NotFound />} />
           </Routes>
         </BrowserRouter>
