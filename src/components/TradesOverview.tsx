@@ -93,9 +93,11 @@ const TradesOverview = () => {
             .order('timestamp', { ascending: false })
             .limit(1)
             .maybeSingle();
-          
           if (marketRow) {
-            marketDataMap[symbol] = marketRow;
+            marketDataMap[symbol] = {
+              ...(marketRow as any),
+              price: Number((marketRow as any).price)
+            } as any;
           }
         }
       }
@@ -104,15 +106,26 @@ const TradesOverview = () => {
 
       // Calculate PnL for each trade
       const tradesWithPnL = ((tradesData as any[]) || []).map((trade: any) => {
-        const currentPrice = marketDataMap[trade.symbol]?.price;
-        const pnlData = calculatePnL(trade, currentPrice);
+        const entryPriceNum = trade.entry_price != null ? Number(trade.entry_price) : null;
+        const exitPriceNum = trade.exit_price != null ? Number(trade.exit_price) : null;
+        const currentPriceNum = marketDataMap[trade.symbol]?.price as number | undefined;
+
+        let pnlData: any = {};
+        if (typeof entryPriceNum === 'number' && !isNaN(entryPriceNum)) {
+          pnlData = calculatePnL(
+            { ...(trade as any), entry_price: entryPriceNum, exit_price: (exitPriceNum ?? undefined) } as any,
+            typeof currentPriceNum === 'number' ? currentPriceNum : undefined
+          );
+        }
         
         return {
           ...trade,
-          current_price: currentPrice,
+          entry_price: entryPriceNum,
+          exit_price: exitPriceNum,
+          current_price: typeof currentPriceNum === 'number' ? currentPriceNum : undefined,
           mark_timestamp: marketDataMap[trade.symbol]?.timestamp,
           ...pnlData
-        };
+        } as any;
       });
 
       setTrades(tradesWithPnL);
@@ -187,7 +200,7 @@ const TradesOverview = () => {
   const summary = {
     openPositions: {
       count: openTrades.length,
-      grossExposure: openTrades.reduce((sum, t) => sum + t.entry_price, 0),
+      grossExposure: openTrades.reduce((sum, t) => sum + (typeof t.entry_price === 'number' ? t.entry_price : 0), 0),
       unrealizedPnL: openTrades.reduce((sum, t) => sum + (t.unrealized_pnl || 0), 0),
       avgReturn: openTrades.length > 0 
         ? openTrades.reduce((sum, t) => sum + (t.return_pct || 0), 0) / openTrades.length 
@@ -260,7 +273,7 @@ const TradesOverview = () => {
           <div>
             <div className="text-sm text-muted-foreground">Entry</div>
             <div className="font-semibold">
-              ${trade.entry_price.toFixed(2)}
+              {typeof trade.entry_price === 'number' ? `$${trade.entry_price.toFixed(2)}` : 'N/A'}
               <div className="text-xs text-muted-foreground">
                 {new Date(trade.entry_date).toLocaleDateString()}
               </div>
@@ -272,10 +285,10 @@ const TradesOverview = () => {
             </div>
             <div className="font-semibold">
               {isOpen 
-                ? trade.current_price 
-                  ? `$${trade.current_price.toFixed(2)}`
-                  : "Loading..."
-                : `$${trade.exit_price?.toFixed(2) || 'N/A'}`
+                ? (typeof trade.current_price === 'number'
+                    ? `$${trade.current_price.toFixed(2)}`
+                    : "Loading...")
+                : (typeof trade.exit_price === 'number' ? `$${trade.exit_price.toFixed(2)}` : 'N/A')
               }
               {!isOpen && trade.exit_date && (
                 <div className="text-xs text-muted-foreground">
@@ -296,7 +309,7 @@ const TradesOverview = () => {
                 ${pnl.toFixed(2)}
               </div>
               <div className={`text-sm ${isProfit ? 'text-green-600' : 'text-red-600'}`}>
-                {trade.return_pct?.toFixed(2)}%
+                {typeof trade.return_pct === 'number' ? `${trade.return_pct.toFixed(2)}%` : '—'}
               </div>
             </div>
           </div>
