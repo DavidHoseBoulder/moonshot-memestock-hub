@@ -82,7 +82,7 @@ const CandidateCard = ({ candidate }: { candidate: RedditCandidate }) => {
   const side = candidate.side || 'LONG';
   
   return (
-    <Card className={`p-4 hover:shadow-lg transition-shadow border ${candidate.triggered ? 'border-green-500 bg-green-50 dark:bg-green-950/20' : 'bg-card'}`}>
+    <Card className={`p-4 hover:shadow-lg transition-shadow border bg-card ${candidate.triggered ? 'border-success/60 ring-1 ring-success/30 shadow-success' : ''}`}>
       <div className="flex justify-between items-start mb-3">
         <div>
           <h3 className="text-lg font-bold text-foreground flex items-center gap-2">
