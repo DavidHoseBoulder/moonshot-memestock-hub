@@ -99,7 +99,6 @@ Deno.serve(async (req) => {
         status: 'closed',
         exit_date: new Date().toISOString(),
         exit_price,
-        exit_price_source: 'enhanced_market_data',
       })
       .eq('trade_id', trade_id)
       .select()
