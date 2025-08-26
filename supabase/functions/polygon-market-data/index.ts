@@ -25,18 +25,34 @@ interface PolygonMarketData {
   price_change_5d: number
 }
 
-// Backoff-aware fetch helper
-async function fetchWithBackoff(url: string, init: RequestInit = {}, maxRetries = 3, baseDelayMs = 2000): Promise<Response> {
+// Enhanced backoff-aware fetch helper with better 429 handling
+async function fetchWithBackoff(url: string, init: RequestInit = {}, maxRetries = 5, baseDelayMs = 5000): Promise<Response> {
   let attempt = 0;
   while (true) {
     const res = await fetch(url, init);
     if (res.ok || attempt >= maxRetries || (res.status < 500 && res.status !== 429)) return res;
-    const retryAfter = Number(res.headers.get('retry-after'));
-    const jitter = Math.floor(Math.random() * 250);
-    const delay = retryAfter ? retryAfter * 1000 : baseDelayMs * Math.pow(2, attempt) + jitter;
-    console.warn(`Backoff ${delay}ms for status ${res.status}`);
-    await new Promise(r => setTimeout(r, delay));
+    
     attempt++;
+    let delay = baseDelayMs;
+    
+    if (res.status === 429) {
+      // Handle rate limit with Retry-After header or aggressive backoff
+      const retryAfter = res.headers.get('retry-after');
+      if (retryAfter) {
+        delay = parseInt(retryAfter) * 1000; // Convert seconds to ms
+      } else {
+        delay = Math.min(60000, baseDelayMs * Math.pow(2, attempt)); // Cap at 60s
+      }
+    } else {
+      // Exponential backoff for other errors
+      delay = baseDelayMs * Math.pow(2, attempt);
+    }
+    
+    const jitter = Math.floor(Math.random() * 1000); // Add jitter
+    delay += jitter;
+    
+    console.warn(`Attempt ${attempt}/${maxRetries} failed with status ${res.status}, retrying in ${delay}ms`);
+    await new Promise(r => setTimeout(r, delay));
   }
 }
 
@@ -78,8 +94,8 @@ Deno.serve(async (req) => {
     console.log(`Fetching Polygon market data for ${symbols.length} symbols over ${days} days`)
 
     const enhancedData: PolygonMarketData[] = []
-    const BATCH_SIZE = 2 // Further reduced for free tier rate limits
-    const MAX_SYMBOLS = 10 // Limit to 10 symbols max for free tier (2 minutes max)
+    const BATCH_SIZE = 1 // Process one symbol at a time for rate limits
+    const MAX_SYMBOLS = 10 // Limit to 10 symbols max for free tier
     
     // Limit symbols for free tier rate limits
     const limitedSymbols = symbols.slice(0, MAX_SYMBOLS)
@@ -212,9 +228,10 @@ Deno.serve(async (req) => {
         }
       })
       
-      // Rate limit delay between batches (15 seconds for free tier)
+      // Aggressive rate limit delay between batches (30 seconds for free tier)
       if (i + BATCH_SIZE < limitedSymbols.length) {
-        await new Promise(resolve => setTimeout(resolve, 15000))
+        console.log(`Waiting 30 seconds before next batch to respect rate limits...`)
+        await new Promise(resolve => setTimeout(resolve, 30000))
       }
     }
 
