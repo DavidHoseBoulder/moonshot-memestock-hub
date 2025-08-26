@@ -299,7 +299,7 @@ const TradesOverview = () => {
           </div>
         </div>
 
-        {pnl !== undefined && (
+        {typeof pnl === 'number' && (
           <div className="flex justify-between items-center p-2 rounded bg-muted/50">
             <span className="text-sm font-medium">
               {isOpen ? "Unrealized" : "Realized"} PnL
