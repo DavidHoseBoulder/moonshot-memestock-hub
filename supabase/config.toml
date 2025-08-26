@@ -122,3 +122,6 @@ verify_jwt = false
 
 [functions.reddit-queue-processor]
 verify_jwt = false
+
+[functions.close-paper-trade]
+verify_jwt = false

@@ -13,6 +13,7 @@ const Trades = () => {
             <SidebarTrigger />
             <div className="flex items-center gap-2 ml-4">
               <h1 className="text-lg font-semibold">Portfolio & Trades</h1>
+              <link rel="canonical" href="/trades" />
             </div>
           </header>
           <main className="max-w-7xl mx-auto p-6">

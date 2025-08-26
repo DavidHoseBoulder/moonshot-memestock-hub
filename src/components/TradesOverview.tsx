@@ -172,40 +172,25 @@ const TradesOverview = () => {
 
   const closePaperTrade = async (tradeId: number, symbol: string) => {
     try {
-      const marketPrice = marketData[symbol];
-      if (!marketPrice) {
-        toast({
-          title: "Error",
-          description: `No recent market tick for ${symbol} — please try again shortly.`,
-          variant: "destructive",
-        });
-        return;
-      }
+      const { data, error } = await supabase.functions.invoke('close-paper-trade', {
+        body: { trade_id: tradeId },
+      });
 
-      const { error } = await (supabase as any)
-        .from('trades')
-        .update({
-          status: 'closed',
-          exit_date: new Date().toISOString(),
-          exit_price: marketPrice.price,
-          exit_price_source: 'enhanced_market_data'
-        })
-        .eq('trade_id', tradeId);
-
-      if (error) throw error;
+      if (error) throw error as any;
 
       toast({
-        title: "Trade Closed",
+        title: 'Trade Closed',
         description: `Paper trade for ${symbol} closed successfully`,
       });
 
-      fetchTrades(); // Refresh data
-    } catch (error) {
+      fetchTrades();
+    } catch (error: any) {
       console.error('Error closing trade:', error);
+      const message = error?.message || error?.details || 'Failed to close trade';
       toast({
-        title: "Error",
-        description: "Failed to close trade",
-        variant: "destructive",
+        title: 'Error',
+        description: message,
+        variant: 'destructive',
       });
     }
   };
