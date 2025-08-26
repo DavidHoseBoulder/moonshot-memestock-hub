@@ -1,6 +1,7 @@
 import BulkHistoricalImport from "@/components/BulkHistoricalImport";
 import ImportProgressMonitor from "@/components/ImportProgressMonitor";
 import RedditBackfillImport from "@/components/RedditBackfillImport";
+import PolygonRealTimeImport from "@/components/PolygonRealTimeImport";
 
 const BulkImport = () => {
   return (
@@ -11,8 +12,9 @@ const BulkImport = () => {
           <p className="text-muted-foreground">Import historical market and sentiment data for backtesting and analysis</p>
         </div>
         
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-4 gap-6">
           <BulkHistoricalImport />
+          <PolygonRealTimeImport />
           <ImportProgressMonitor />
           <RedditBackfillImport />
         </div>
