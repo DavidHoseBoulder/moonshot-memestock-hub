@@ -204,9 +204,10 @@ const SentimentDashboard = () => {
         }
       }
 
-      // Extract date from signals data
+      // Extract date string from signals data (avoid timezone issues)
+      let dataDateString: string | null = null;
       if (signalsData && signalsData.length > 0) {
-        dataDate = new Date(signalsData[0].trade_date);
+        dataDateString = signalsData[0].trade_date;
       }
 
       setRedditSignals(signalsData || []);
@@ -231,14 +232,13 @@ const SentimentDashboard = () => {
           candidatesData = fallbackCandidates;
           usedFallback = true;
           // If we didn't get a date from signals, get it from candidates
-          if (!dataDate && fallbackCandidates.length > 0) {
-            dataDate = new Date(fallbackCandidates[0].trade_date);
+          if (!dataDateString && fallbackCandidates.length > 0) {
+            dataDateString = fallbackCandidates[0].trade_date;
           }
         }
       } else if (candidatesData.length > 0) {
         // Check if candidates are for today
         const candidateDate = candidatesData[0].trade_date;
-        dataDate = new Date(candidateDate);
         
         // If candidate date matches today, we're not using fallback
         if (candidateDate === today) {
@@ -249,10 +249,13 @@ const SentimentDashboard = () => {
         }
         
         // If we didn't get date from signals, use candidate date
-        if (!dataDate) {
-          dataDate = new Date(candidateDate);
+        if (!dataDateString) {
+          dataDateString = candidateDate;
         }
       }
+
+      // Convert to display format (MM/DD/YYYY)
+      dataDate = dataDateString ? new Date(dataDateString + 'T12:00:00') : null;
 
       setCandidates(candidatesData || []);
       setIsFallback(usedFallback);
