@@ -37,52 +37,88 @@ export const SentimentCoverageMonitor: React.FC<SentimentCoverageProps> = ({
   const fetchCoverageData = async () => {
     setIsLoading(true);
     try {
-      // Get total ticker count from ticker_universe
-      const { data: totalTickers, error: totalError, count: totalCount } = await supabase
-        .from('ticker_universe')
-        .select('symbol', { count: 'exact' })
-        .eq('active', true);
+      const today = new Date().toISOString().split('T')[0];
+      
+      // First try to get universe from live_sentiment_entry_rules for stable denominator
+      let totalUniverse = 0;
+      const { data: rulesData, error: rulesError } = await supabase
+        .from('live_sentiment_entry_rules')
+        .select('symbol, horizon')
+        .eq('is_enabled', true);
 
-      if (totalError) {
-        console.error('Error fetching total tickers:', totalError);
-        return;
+      if (!rulesError && rulesData && rulesData.length > 0) {
+        // Use rules as universe (symbol, horizon pairs)
+        const uniquePairs = new Set(rulesData.map(r => `${r.symbol}:${r.horizon}`));
+        totalUniverse = uniquePairs.size;
+      } else {
+        // Fallback to daily_sentiment_candidates for today
+        const { data: candidatesData } = await supabase
+          .from('daily_sentiment_candidates')
+          .select('symbol, horizon')
+          .eq('d', today);
+        
+        if (candidatesData) {
+          const uniquePairs = new Set(candidatesData.map(c => `${c.symbol}:${c.horizon}`));
+          totalUniverse = uniquePairs.size;
+        }
       }
 
-      // Get today's Reddit sentiment coverage from v_reddit_daily_signals
-      const today = new Date().toISOString().split('T')[0];
-      const { data: redditData, error: redditError, count: redditCount } = await supabase
+      // Get symbols with Reddit sentiment today using priority system:
+      // 1. Try v_reddit_today_signals if present
+      // 2. Fallback to v_reddit_daily_signals
+      // 3. Fallback to sentiment_history filtered to today + Reddit
+      let withRedditSentiment = 0;
+      
+      // Try v_reddit_daily_signals first (this is what we have available)
+      const { data: signalsData, error: signalsError } = await supabase
         .from('v_reddit_daily_signals')
-        .select('symbol', { count: 'exact' })
+        .select('symbol')
         .eq('trade_date', today);
 
-      if (redditError) {
-        console.error('Error fetching Reddit coverage:', redditError);
-        return;
+      if (!signalsError && signalsData) {
+        withRedditSentiment = signalsData.length;
+      } else {
+        // Fallback to sentiment_history
+        const { data: historyData } = await supabase
+          .from('sentiment_history')
+          .select('symbol')
+          .eq('source', 'reddit')
+          .gte('data_timestamp', `${today}T00:00:00Z`)
+          .lt('data_timestamp', `${today}T23:59:59Z`);
+        
+        if (historyData) {
+          const uniqueSymbols = new Set(historyData.map(h => h.symbol));
+          withRedditSentiment = uniqueSymbols.size;
+        }
       }
 
-      const totalTickersCount = totalCount || 0;
-      const withRedditSentimentCount = redditCount || 0;
-      const zeroSentimentCount = totalTickersCount - withRedditSentimentCount;
-      const coveragePercentage = totalTickersCount > 0 
-        ? (withRedditSentimentCount / totalTickersCount) * 100 
-        : 0;
+      const zeroSentiment = Math.max(0, totalUniverse - withRedditSentiment);
+      const coveragePercentage = totalUniverse > 0 ? (withRedditSentiment / totalUniverse) * 100 : 0;
 
       // Determine Reddit status based on whether we have data for today
-      const redditStatus = withRedditSentimentCount > 0 ? 'active' : 'awaiting';
+      const redditStatus = withRedditSentiment > 0 ? 'active' : 'awaiting';
 
       setCoverage({
-        totalTickers: totalTickersCount,
-        withRedditSentiment: withRedditSentimentCount,
-        zeroSentiment: zeroSentimentCount,
+        totalTickers: totalUniverse,
+        withRedditSentiment,
+        zeroSentiment,
         coveragePercentage,
         redditStatus,
         lastUpdate: new Date()
       });
 
-      toast({
-        title: "Coverage Updated",
-        description: `${coveragePercentage.toFixed(1)}% Reddit coverage (${withRedditSentimentCount}/${totalTickersCount} tickers)`,
-      });
+      if (totalUniverse === 0) {
+        toast({
+          title: "No Universe Defined",
+          description: "No rule universe defined for today",
+          variant: "destructive",
+        });
+      } else {
+        toast({
+          title: "Coverage Updated",
+          description: `${Math.round(coveragePercentage)}% Reddit coverage (${withRedditSentiment}/${totalUniverse})`,
+        });
+      }
 
     } catch (error) {
       console.error('Error fetching coverage data:', error);
@@ -155,29 +191,50 @@ export const SentimentCoverageMonitor: React.FC<SentimentCoverageProps> = ({
           </div>
         </CardHeader>
         <CardContent>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-            <div className="text-center p-4 border rounded-lg">
-              <div className="text-3xl font-bold text-foreground">{coverage.totalTickers}</div>
-              <div className="text-sm text-muted-foreground">Total Tickers</div>
-              <div className="text-xs text-muted-foreground mt-1">
-                Active in ticker_universe
+          {coverage.totalTickers > 0 ? (
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+              <div className="text-center p-4 border rounded-lg">
+                <div className="text-2xl font-bold text-primary">{coverage.totalTickers}</div>
+                <div className="text-sm text-muted-foreground">Total Universe</div>
+                <div className="text-xs text-muted-foreground mt-1">
+                  (symbol, horizon) pairs
+                </div>
+              </div>
+              <div className="text-center p-4 border rounded-lg">
+                <div className="text-2xl font-bold text-green-600">{coverage.withRedditSentiment}</div>
+                <div className="text-sm text-muted-foreground">With Reddit Sentiment</div>
+                <div className="text-xs text-muted-foreground mt-1">
+                  Today's Reddit data
+                </div>
+              </div>
+              <div className="text-center p-4 border rounded-lg">
+                <div className="text-2xl font-bold text-red-600">{coverage.zeroSentiment}</div>
+                <div className="text-sm text-muted-foreground">Zero Sentiment</div>
+                <div className="text-xs text-muted-foreground mt-1">
+                  No Reddit mentions today
+                </div>
+              </div>
+              <div className="text-center p-4 border rounded-lg">
+                <div className="text-2xl font-bold text-blue-600">{Math.round(coverage.coveragePercentage)}%</div>
+                <div className="text-sm text-muted-foreground">Coverage %</div>
+                <div className="text-xs text-muted-foreground mt-1">
+                  Reddit sentiment today
+                </div>
               </div>
             </div>
-            <div className="text-center p-4 border rounded-lg">
-              <div className="text-3xl font-bold text-green-600">{coverage.withRedditSentiment}</div>
-              <div className="text-sm text-muted-foreground">With Reddit Sentiment</div>
-              <div className="text-xs text-muted-foreground mt-1">
-                Today's Reddit data
+          ) : (
+            <div className="text-center py-8">
+              <div className="bg-yellow-50 dark:bg-yellow-950/20 border border-yellow-200 dark:border-yellow-800 rounded-lg p-6">
+                <TrendingUp className="w-12 h-12 text-yellow-500 mx-auto mb-4" />
+                <h3 className="text-lg font-semibold text-yellow-900 dark:text-yellow-100 mb-2">
+                  No Rule Universe Defined
+                </h3>
+                <p className="text-yellow-700 dark:text-yellow-300 text-sm">
+                  No trading rules or candidates found for today.
+                </p>
               </div>
             </div>
-            <div className="text-center p-4 border rounded-lg">
-              <div className="text-3xl font-bold text-red-600">{coverage.zeroSentiment}</div>
-              <div className="text-sm text-muted-foreground">Zero Sentiment</div>
-              <div className="text-xs text-muted-foreground mt-1">
-                No Reddit mentions today
-              </div>
-            </div>
-          </div>
+          )}
           
           <div className="space-y-3 mb-6">
             <div className="flex justify-between text-sm">
