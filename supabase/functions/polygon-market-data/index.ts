@@ -108,11 +108,27 @@ Deno.serve(async (req) => {
       
       const batchPromises = batch.map(async (symbol) => {
         try {
-          const toDate = new Date().toISOString().split('T')[0]
-          const fromDate = new Date(Date.now() - (days * 2 * 24 * 60 * 60 * 1000)).toISOString().split('T')[0] // Double the days to account for weekends
+          const now = new Date()
+          const toDate = now.toISOString().split('T')[0]
+          const fromDate = new Date(Date.now() - (days * 2 * 24 * 60 * 60 * 1000)).toISOString().split('T')[0]
           
-          // Get aggregated bars (daily data) - Using query parameter for API key, not Authorization header
-          const barsUrl = `https://api.polygon.io/v2/aggs/ticker/${symbol}/range/1/day/${fromDate}/${toDate}?adjusted=true&sort=asc&limit=5000&apikey=${polygonApiKey}`
+          // Check if it's a trading day (Mon-Fri) and market hours (9:30 AM - 4 PM ET)
+          const dayOfWeek = now.getUTCDay() // 0 = Sunday, 1 = Monday, ... 6 = Saturday
+          const isWeekday = dayOfWeek >= 1 && dayOfWeek <= 5
+          const etHour = now.getUTCHours() - 5 // Convert UTC to approximate ET (ignoring DST for simplicity)
+          const isMarketHours = etHour >= 9.5 && etHour <= 16
+          
+          let barsUrl: string
+          
+          if (isWeekday && isMarketHours) {
+            // During market hours, try to get current day's minute data aggregated
+            console.log(`Market is open for ${symbol}, fetching intraday data`)
+            barsUrl = `https://api.polygon.io/v2/aggs/ticker/${symbol}/range/1/minute/${toDate}/${toDate}?adjusted=true&sort=desc&limit=1&apikey=${polygonApiKey}`
+          } else {
+            // Market closed, get daily bars including today (if available)
+            console.log(`Market is closed for ${symbol}, fetching daily bars`)
+            barsUrl = `https://api.polygon.io/v2/aggs/ticker/${symbol}/range/1/day/${fromDate}/${toDate}?adjusted=true&sort=desc&limit=5000&apikey=${polygonApiKey}`
+          }
           
           console.log(`Fetching Polygon data for ${symbol} from ${fromDate} to ${toDate}`)
           
