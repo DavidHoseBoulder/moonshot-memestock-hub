@@ -14,6 +14,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import { Link } from 'react-router-dom';
+import DailyPnLWidget from './DailyPnLWidget';
 
 interface RedditDailySignal {
   trade_date: string;
@@ -535,6 +536,10 @@ const SentimentDashboard = () => {
           </div>
         </div>
       )}
+
+      {/* Daily P&L Widget */}
+      <DailyPnLWidget />
+      
       
       {/* Today's Triggered Candidates */}
       <div className="space-y-4">
