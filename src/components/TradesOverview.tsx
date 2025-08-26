@@ -7,6 +7,8 @@ import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { TrendingUp, TrendingDown, DollarSign, Target, ExternalLink, X, Info } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { Drawer, DrawerContent, DrawerHeader, DrawerTitle, DrawerClose } from "@/components/ui/drawer";
+import { Separator } from "@/components/ui/separator";
 
 interface Trade {
   trade_id: number;
@@ -42,11 +44,38 @@ interface TradeWithPnL extends Trade {
   mark_timestamp?: string;
 }
 
+interface SignalData {
+  n_mentions?: number;
+  min_mentions?: number;
+  used_score?: number;
+  pos_thresh?: number;
+  use_weighted?: boolean;
+}
+
+interface MentionData {
+  title: string;
+  selftext?: string;
+  permalink?: string;
+  overall_score?: number;
+  label?: string;
+  confidence?: number;
+}
+
+interface TradeDetailData {
+  signal?: SignalData;
+  mentions: MentionData[];
+  priceHistory: MarketData[];
+}
+
 const TradesOverview = () => {
   const [trades, setTrades] = useState<TradeWithPnL[]>([]);
   const [marketData, setMarketData] = useState<Record<string, MarketData>>({});
   const [isLoading, setIsLoading] = useState(true);
   const [filter, setFilter] = useState<'all' | 'paper' | 'live'>('all');
+  const [selectedTrade, setSelectedTrade] = useState<TradeWithPnL | null>(null);
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const [tradeDetailData, setTradeDetailData] = useState<TradeDetailData | null>(null);
+  const [isLoadingDetails, setIsLoadingDetails] = useState(false);
   const { toast } = useToast();
 
   // Calculate PnL for a trade
@@ -181,6 +210,113 @@ const TradesOverview = () => {
     }
   };
 
+  const fetchTradeDetails = async (trade: TradeWithPnL) => {
+    setIsLoadingDetails(true);
+    try {
+      const tradeDate = trade.trade_date;
+      
+      // 1. Fetch signal data from reddit candidates (today or last trading day)
+      let signalData: SignalData | null = null;
+      
+      // Try today's signals first
+      const { data: todaySignals } = await supabase
+        .from('v_reddit_candidates_today')
+        .select('*')
+        .eq('symbol', trade.symbol)
+        .eq('horizon', trade.horizon)
+        .maybeSingle();
+      
+      if (todaySignals) {
+        signalData = {
+          n_mentions: (todaySignals as any).n_mentions,
+          min_mentions: (todaySignals as any).min_mentions,
+          used_score: (todaySignals as any).used_score,
+          pos_thresh: (todaySignals as any).pos_thresh,
+          use_weighted: (todaySignals as any).use_weighted,
+        };
+      } else {
+        // Fallback to last trading day
+        const { data: lastDaySignals } = await supabase
+          .from('v_reddit_candidates_last_trading_day')
+          .select('*')
+          .eq('symbol', trade.symbol)
+          .eq('horizon', trade.horizon)
+          .maybeSingle();
+          
+        if (lastDaySignals) {
+          signalData = {
+            n_mentions: (lastDaySignals as any).n_mentions,
+            min_mentions: (lastDaySignals as any).min_mentions,
+            used_score: (lastDaySignals as any).used_score,
+            pos_thresh: (lastDaySignals as any).pos_thresh,
+            use_weighted: (lastDaySignals as any).use_weighted,
+          };
+        }
+      }
+
+      // 2. Fetch top 3 recent mentions for the symbol on trade date
+      const { data: mentionsData } = await supabase
+        .from('reddit_mentions')
+        .select(`
+          post_id,
+          reddit_sentiment!inner(overall_score, label, confidence),
+          v_scoring_posts!inner(title, selftext, permalink)
+        `)
+        .eq('symbol', trade.symbol)
+        .gte('created_utc', tradeDate + ' 00:00:00')
+        .lt('created_utc', tradeDate + ' 23:59:59')
+        .order('created_utc', { ascending: false })
+        .limit(3);
+
+      const mentions: MentionData[] = (mentionsData || []).map((item: any) => ({
+        title: item.v_scoring_posts?.title || '',
+        selftext: item.v_scoring_posts?.selftext || '',
+        permalink: item.v_scoring_posts?.permalink || '',
+        overall_score: item.reddit_sentiment?.overall_score,
+        label: item.reddit_sentiment?.label,
+        confidence: item.reddit_sentiment?.confidence,
+      }));
+
+      // 3. Fetch price history since entry (last ~20 marks)
+      const entryTimestamp = new Date(trade.entry_date).toISOString();
+      const { data: priceData } = await supabase
+        .from('enhanced_market_data')
+        .select('symbol, price, timestamp, data_date')
+        .eq('symbol', trade.symbol)
+        .gte('timestamp', entryTimestamp)
+        .order('timestamp', { ascending: true })
+        .limit(20);
+
+      const priceHistory: MarketData[] = (priceData || []).map((item: any) => ({
+        symbol: item.symbol,
+        price: Number(item.price),
+        timestamp: item.timestamp,
+        data_date: item.data_date,
+      }));
+
+      setTradeDetailData({
+        signal: signalData || undefined,
+        mentions,
+        priceHistory,
+      });
+    } catch (error) {
+      console.error('Error fetching trade details:', error);
+      toast({
+        title: "Error",
+        description: "Failed to fetch trade details",
+        variant: "destructive",
+      });
+    } finally {
+      setIsLoadingDetails(false);
+    }
+  };
+
+  const handleTradeClick = (trade: TradeWithPnL) => {
+    setSelectedTrade(trade);
+    setDrawerOpen(true);
+    fetchTradeDetails(trade);
+  };
+
   useEffect(() => {
     fetchTrades();
   }, []);
@@ -225,7 +361,7 @@ const TradesOverview = () => {
     const isProfit = (pnl || 0) > 0;
 
     return (
-      <Card className="p-4 hover:shadow-lg transition-shadow">
+      <Card className="p-4 hover:shadow-lg transition-shadow cursor-pointer" onClick={() => handleTradeClick(trade)}>
         <div className="flex justify-between items-start mb-3">
           <div className="flex items-center gap-2">
             <h3 className="text-lg font-bold flex items-center gap-2">
@@ -234,6 +370,7 @@ const TradesOverview = () => {
                 target="_blank"
                 rel="noopener noreferrer"
                 className="hover:text-primary flex items-center gap-1"
+                onClick={(e) => e.stopPropagation()}
               >
                 {trade.symbol}
                 <ExternalLink className="w-3 h-3" />
@@ -260,7 +397,10 @@ const TradesOverview = () => {
               <Button
                 size="sm"
                 variant="outline"
-                onClick={() => closePaperTrade(trade.trade_id, trade.symbol)}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  closePaperTrade(trade.trade_id, trade.symbol);
+                }}
               >
                 <X className="w-4 h-4 mr-1" />
                 Close
@@ -436,6 +576,262 @@ const TradesOverview = () => {
           )}
         </TabsContent>
       </Tabs>
+
+      {/* Trade Detail Drawer */}
+      <Drawer open={drawerOpen} onOpenChange={setDrawerOpen}>
+        <DrawerContent className="max-h-[80vh]">
+          <DrawerHeader className="border-b">
+            <div className="flex items-center justify-between">
+              <DrawerTitle className="flex items-center gap-2">
+                {selectedTrade && (
+                  <>
+                    <span className="text-xl font-bold">{selectedTrade.symbol}</span>
+                    <span className="text-muted-foreground">•</span>
+                    <Badge variant="outline">{selectedTrade.side}</Badge>
+                    <Badge variant="outline">{selectedTrade.horizon}</Badge>
+                    <Badge variant={selectedTrade.mode === 'paper' ? "secondary" : "default"}>
+                      {selectedTrade.mode === 'paper' ? "PAPER" : "REAL"}
+                    </Badge>
+                  </>
+                )}
+              </DrawerTitle>
+              <DrawerClose asChild>
+                <Button variant="ghost" size="sm">
+                  <X className="w-4 h-4" />
+                </Button>
+              </DrawerClose>
+            </div>
+          </DrawerHeader>
+          
+          <div className="p-6 overflow-y-auto space-y-6">
+            {selectedTrade && (
+              <>
+                {/* Entry Section */}
+                <div>
+                  <h3 className="text-lg font-semibold mb-3">Entry Details</h3>
+                  <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+                    <div>
+                      <div className="text-sm text-muted-foreground">Entry Date</div>
+                      <div className="font-medium">
+                        {new Date(selectedTrade.entry_date).toLocaleString()}
+                      </div>
+                    </div>
+                    <div>
+                      <div className="text-sm text-muted-foreground">Entry Price</div>
+                      <div className="font-medium">
+                        {typeof selectedTrade.entry_price === 'number' 
+                          ? `$${selectedTrade.entry_price.toFixed(2)}` 
+                          : 'N/A'
+                        }
+                      </div>
+                    </div>
+                    <div>
+                      <div className="text-sm text-muted-foreground">Quantity</div>
+                      <div className="font-medium">1 (paper default)</div>
+                    </div>
+                    <div>
+                      <div className="text-sm text-muted-foreground">Source</div>
+                      <div className="font-medium">{selectedTrade.source}</div>
+                    </div>
+                    <div>
+                      <div className="text-sm text-muted-foreground">Status</div>
+                      <div className="font-medium">
+                        <Badge variant={selectedTrade.status === 'open' ? "default" : "secondary"}>
+                          {selectedTrade.status.toUpperCase()}
+                        </Badge>
+                      </div>
+                    </div>
+                    {selectedTrade.notes && (
+                      <div className="col-span-full">
+                        <div className="text-sm text-muted-foreground">Notes</div>
+                        <div className="font-medium">{selectedTrade.notes}</div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                <Separator />
+
+                {/* Signal Section */}
+                {isLoadingDetails ? (
+                  <div className="text-center py-4">Loading signal data...</div>
+                ) : tradeDetailData?.signal ? (
+                  <div>
+                    <h3 className="text-lg font-semibold mb-3">Signal Used</h3>
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                      <div>
+                        <div className="text-sm text-muted-foreground">Mentions</div>
+                        <div className="font-medium">
+                          {tradeDetailData.signal.n_mentions} / {tradeDetailData.signal.min_mentions}
+                        </div>
+                      </div>
+                      <div>
+                        <div className="text-sm text-muted-foreground">Score</div>
+                        <div className="font-medium">
+                          {tradeDetailData.signal.used_score?.toFixed(3)} / {tradeDetailData.signal.pos_thresh?.toFixed(3)}
+                        </div>
+                      </div>
+                      <div>
+                        <div className="text-sm text-muted-foreground">Weighted</div>
+                        <div className="font-medium">
+                          {tradeDetailData.signal.use_weighted ? 'Yes' : 'No'}
+                        </div>
+                      </div>
+                      <div>
+                        <div className="text-sm text-muted-foreground">Side</div>
+                        <div className="font-medium">{selectedTrade.side}</div>
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <div>
+                    <h3 className="text-lg font-semibold mb-3">Signal Used</h3>
+                    <p className="text-muted-foreground">No signal data found for this trade date</p>
+                  </div>
+                )}
+
+                <Separator />
+
+                {/* Mentions Audit Section */}
+                <div>
+                  <h3 className="text-lg font-semibold mb-3">Mentions Audit</h3>
+                  {isLoadingDetails ? (
+                    <div className="text-center py-4">Loading mentions...</div>
+                  ) : tradeDetailData?.mentions && tradeDetailData.mentions.length > 0 ? (
+                    <div className="space-y-3">
+                      {tradeDetailData.mentions.map((mention, index) => (
+                        <Card key={index} className="p-3">
+                          <div className="flex justify-between items-start gap-3">
+                            <div className="flex-1 min-w-0">
+                              <div className="font-medium text-sm mb-1 truncate">
+                                {mention.title}
+                              </div>
+                              {mention.selftext && (
+                                <div className="text-xs text-muted-foreground mb-2 line-clamp-2">
+                                  {mention.selftext.slice(0, 100)}...
+                                </div>
+                              )}
+                              {mention.permalink && (
+                                <a 
+                                  href={`https://reddit.com${mention.permalink}`}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="text-xs text-primary hover:underline flex items-center gap-1"
+                                >
+                                  View on Reddit
+                                  <ExternalLink className="w-3 h-3" />
+                                </a>
+                              )}
+                            </div>
+                            <div className="flex flex-col items-end text-xs">
+                              <Badge 
+                                variant={
+                                  mention.label === 'positive' ? 'default' : 
+                                  mention.label === 'negative' ? 'destructive' : 
+                                  'secondary'
+                                }
+                                className="mb-1"
+                              >
+                                {mention.label || 'neutral'}
+                              </Badge>
+                              {mention.overall_score !== undefined && (
+                                <div className="text-muted-foreground">
+                                  Score: {mention.overall_score.toFixed(2)}
+                                </div>
+                              )}
+                              {mention.confidence !== undefined && (
+                                <div className="text-muted-foreground">
+                                  Confidence: {(mention.confidence * 100).toFixed(0)}%
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        </Card>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-muted-foreground">No scored mentions found on trade date</p>
+                  )}
+                </div>
+
+                <Separator />
+
+                {/* Price Since Entry Section */}
+                <div>
+                  <h3 className="text-lg font-semibold mb-3">Price Since Entry</h3>
+                  {isLoadingDetails ? (
+                    <div className="text-center py-4">Loading price data...</div>
+                  ) : tradeDetailData?.priceHistory && tradeDetailData.priceHistory.length > 0 ? (
+                    <div className="space-y-3">
+                      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                        <div>
+                          <div className="text-sm text-muted-foreground">Current Price</div>
+                          <div className="font-medium">
+                            {typeof selectedTrade.current_price === 'number'
+                              ? `$${selectedTrade.current_price.toFixed(2)}`
+                              : 'N/A'
+                            }
+                          </div>
+                        </div>
+                        <div>
+                          <div className="text-sm text-muted-foreground">Unrealized PnL</div>
+                          <div className={`font-medium ${
+                            (selectedTrade.unrealized_pnl || 0) >= 0 ? 'text-green-600' : 'text-red-600'
+                          }`}>
+                            {selectedTrade.status === 'open' && typeof selectedTrade.unrealized_pnl === 'number'
+                              ? `$${selectedTrade.unrealized_pnl.toFixed(2)}`
+                              : 'N/A'
+                            }
+                          </div>
+                        </div>
+                        <div>
+                          <div className="text-sm text-muted-foreground">Return %</div>
+                          <div className={`font-medium ${
+                            (selectedTrade.return_pct || 0) >= 0 ? 'text-green-600' : 'text-red-600'
+                          }`}>
+                            {typeof selectedTrade.return_pct === 'number'
+                              ? `${selectedTrade.return_pct.toFixed(2)}%`
+                              : 'N/A'
+                            }
+                          </div>
+                        </div>
+                        <div>
+                          <div className="text-sm text-muted-foreground">Data Points</div>
+                          <div className="font-medium">{tradeDetailData.priceHistory.length}</div>
+                        </div>
+                      </div>
+                      
+                      {/* Simple price sparkline representation */}
+                      <div className="mt-4">
+                        <div className="text-xs text-muted-foreground mb-2">Price History (Entry → Current)</div>
+                        <div className="flex items-end gap-1 h-16 bg-muted/20 rounded p-2">
+                          {tradeDetailData.priceHistory.map((point, index) => {
+                            const minPrice = Math.min(...tradeDetailData.priceHistory.map(p => p.price));
+                            const maxPrice = Math.max(...tradeDetailData.priceHistory.map(p => p.price));
+                            const range = maxPrice - minPrice;
+                            const height = range > 0 ? ((point.price - minPrice) / range) * 48 + 4 : 24;
+                            
+                            return (
+                              <div
+                                key={index}
+                                className="flex-1 bg-primary rounded-sm opacity-70 hover:opacity-100 transition-opacity"
+                                style={{ height: `${height}px` }}
+                                title={`$${point.price.toFixed(2)} on ${new Date(point.timestamp).toLocaleDateString()}`}
+                              />
+                            );
+                          })}
+                        </div>
+                      </div>
+                    </div>
+                  ) : (
+                    <p className="text-muted-foreground">No price history available since entry</p>
+                  )}
+                </div>
+              </>
+            )}
+          </div>
+        </DrawerContent>
+      </Drawer>
     </div>
   );
 };
