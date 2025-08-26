@@ -70,15 +70,16 @@ const TradesOverview = () => {
   const fetchTrades = async () => {
     setIsLoading(true);
     try {
+      // Using raw query to bypass type issues
       const { data: tradesData, error: tradesError } = await supabase
-        .from('trades')
+        .from('trades' as any)
         .select('*')
         .order('created_at', { ascending: false });
 
       if (tradesError) throw tradesError;
 
       // Get unique symbols for market data
-      const symbols = [...new Set(tradesData?.map(t => t.symbol) || [])];
+      const symbols = [...new Set((tradesData as any[] || []).map((t: any) => t.symbol))];
       
       // Fetch latest market data for all symbols
       const marketDataMap: Record<string, MarketData> = {};
@@ -91,7 +92,7 @@ const TradesOverview = () => {
             .eq('symbol', symbol)
             .order('timestamp', { ascending: false })
             .limit(1)
-            .single();
+            .maybeSingle();
           
           if (marketRow) {
             marketDataMap[symbol] = marketRow;
@@ -102,7 +103,7 @@ const TradesOverview = () => {
       setMarketData(marketDataMap);
 
       // Calculate PnL for each trade
-      const tradesWithPnL = (tradesData || []).map(trade => {
+      const tradesWithPnL = ((tradesData as any[]) || []).map((trade: any) => {
         const currentPrice = marketDataMap[trade.symbol]?.price;
         const pnlData = calculatePnL(trade, currentPrice);
         
@@ -139,7 +140,7 @@ const TradesOverview = () => {
         return;
       }
 
-      const { error } = await supabase
+      const { error } = await (supabase as any)
         .from('trades')
         .update({
           status: 'closed',
