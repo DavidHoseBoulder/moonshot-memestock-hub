@@ -5,10 +5,18 @@ import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
-import { TrendingUp, TrendingDown, DollarSign, Target, ExternalLink, X, Info } from "lucide-react";
+import { TrendingUp, TrendingDown, DollarSign, Target, ExternalLink, X, Info, Plus } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Drawer, DrawerContent, DrawerHeader, DrawerTitle, DrawerClose } from "@/components/ui/drawer";
 import { Separator } from "@/components/ui/separator";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
+import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Textarea } from "@/components/ui/textarea";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import * as z from "zod";
 
 interface Trade {
   trade_id: number;
@@ -67,6 +75,21 @@ interface TradeDetailData {
   priceHistory: MarketData[];
 }
 
+const newTradeSchema = z.object({
+  symbol: z.string().min(1, "Symbol is required").max(5, "Symbol must be 5 characters or less"),
+  side: z.enum(["LONG", "SHORT"]),
+  horizon: z.enum(["1d", "3d", "5d", "10d"]),
+  mode: z.enum(["paper", "live"]),
+  trade_date: z.string().min(1, "Trade date is required"),
+  entry_price: z.string().optional(),
+  qty: z.string().min(1, "Quantity is required"),
+  notes: z.string().optional(),
+  fees_bps: z.string().optional(),
+  slippage_bps: z.string().optional(),
+});
+
+type NewTradeFormData = z.infer<typeof newTradeSchema>;
+
 const TradesOverview = () => {
   const [trades, setTrades] = useState<TradeWithPnL[]>([]);
   const [marketData, setMarketData] = useState<Record<string, MarketData>>({});
@@ -76,7 +99,22 @@ const TradesOverview = () => {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [tradeDetailData, setTradeDetailData] = useState<TradeDetailData | null>(null);
   const [isLoadingDetails, setIsLoadingDetails] = useState(false);
+  const [newTradeDialogOpen, setNewTradeDialogOpen] = useState(false);
+  const [isSubmittingTrade, setIsSubmittingTrade] = useState(false);
   const { toast } = useToast();
+
+  const form = useForm<NewTradeFormData>({
+    resolver: zodResolver(newTradeSchema),
+    defaultValues: {
+      side: "LONG",
+      horizon: "3d",
+      mode: "paper",
+      trade_date: new Date().toISOString().split('T')[0],
+      qty: "1",
+      fees_bps: "0",
+      slippage_bps: "0",
+    },
+  });
 
   // Calculate PnL for a trade
   const calculatePnL = (trade: Trade, currentPrice?: number) => {
@@ -192,6 +230,49 @@ const TradesOverview = () => {
         description: message,
         variant: 'destructive',
       });
+    }
+  };
+
+  const submitNewTrade = async (formData: NewTradeFormData) => {
+    setIsSubmittingTrade(true);
+    try {
+      const { error } = await supabase
+        .from('trades' as any)
+        .insert({
+          symbol: formData.symbol.toUpperCase(),
+          side: formData.side,
+          horizon: formData.horizon,
+          mode: formData.mode,
+          trade_date: formData.trade_date,
+          entry_date: new Date().toISOString(),
+          entry_price: formData.entry_price ? parseFloat(formData.entry_price) : null,
+          qty: parseFloat(formData.qty),
+          notes: formData.notes || null,
+          fees_bps: formData.fees_bps ? parseFloat(formData.fees_bps) : 0,
+          slippage_bps: formData.slippage_bps ? parseFloat(formData.slippage_bps) : 0,
+          source: 'manual',
+          status: 'open',
+        });
+
+      if (error) throw error;
+
+      toast({
+        title: 'Trade Created',
+        description: `New ${formData.mode} trade for ${formData.symbol} created successfully`,
+      });
+
+      form.reset();
+      setNewTradeDialogOpen(false);
+      fetchTrades();
+    } catch (error: any) {
+      console.error('Error creating trade:', error);
+      toast({
+        title: 'Error',
+        description: error.message || 'Failed to create trade',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsSubmittingTrade(false);
     }
   };
 
@@ -457,9 +538,238 @@ const TradesOverview = () => {
             Track your paper and real trading positions with live PnL
           </p>
         </div>
-        <Button onClick={fetchTrades} variant="outline">
-          Refresh Data
-        </Button>
+        <div className="flex gap-2">
+          <Dialog open={newTradeDialogOpen} onOpenChange={setNewTradeDialogOpen}>
+            <DialogTrigger asChild>
+              <Button>
+                <Plus className="w-4 h-4 mr-2" />
+                New Trade
+              </Button>
+            </DialogTrigger>
+            <DialogContent className="sm:max-w-[500px]">
+              <DialogHeader>
+                <DialogTitle>Create New Trade</DialogTitle>
+              </DialogHeader>
+              <Form {...form}>
+                <form onSubmit={form.handleSubmit(submitNewTrade)} className="space-y-4">
+                  <div className="grid grid-cols-2 gap-4">
+                    <FormField
+                      control={form.control}
+                      name="symbol"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Symbol</FormLabel>
+                          <FormControl>
+                            <Input 
+                              placeholder="e.g. AAPL" 
+                              {...field} 
+                              onChange={(e) => field.onChange(e.target.value.toUpperCase())}
+                            />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                    <FormField
+                      control={form.control}
+                      name="side"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Side</FormLabel>
+                          <Select onValueChange={field.onChange} defaultValue={field.value}>
+                            <FormControl>
+                              <SelectTrigger>
+                                <SelectValue placeholder="Select side" />
+                              </SelectTrigger>
+                            </FormControl>
+                            <SelectContent>
+                              <SelectItem value="LONG">LONG</SelectItem>
+                              <SelectItem value="SHORT">SHORT</SelectItem>
+                            </SelectContent>
+                          </Select>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-4">
+                    <FormField
+                      control={form.control}
+                      name="horizon"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Horizon</FormLabel>
+                          <Select onValueChange={field.onChange} defaultValue={field.value}>
+                            <FormControl>
+                              <SelectTrigger>
+                                <SelectValue placeholder="Select horizon" />
+                              </SelectTrigger>
+                            </FormControl>
+                            <SelectContent>
+                              <SelectItem value="1d">1 Day</SelectItem>
+                              <SelectItem value="3d">3 Days</SelectItem>
+                              <SelectItem value="5d">5 Days</SelectItem>
+                              <SelectItem value="10d">10 Days</SelectItem>
+                            </SelectContent>
+                          </Select>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                    <FormField
+                      control={form.control}
+                      name="mode"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Mode</FormLabel>
+                          <Select onValueChange={field.onChange} defaultValue={field.value}>
+                            <FormControl>
+                              <SelectTrigger>
+                                <SelectValue placeholder="Select mode" />
+                              </SelectTrigger>
+                            </FormControl>
+                            <SelectContent>
+                              <SelectItem value="paper">Paper</SelectItem>
+                              <SelectItem value="live">Live</SelectItem>
+                            </SelectContent>
+                          </Select>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-4">
+                    <FormField
+                      control={form.control}
+                      name="trade_date"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Trade Date</FormLabel>
+                          <FormControl>
+                            <Input type="date" {...field} />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                    <FormField
+                      control={form.control}
+                      name="entry_price"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Entry Price (optional)</FormLabel>
+                          <FormControl>
+                            <Input 
+                              type="number" 
+                              step="0.01" 
+                              placeholder="e.g. 150.25" 
+                              {...field} 
+                            />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-3 gap-4">
+                    <FormField
+                      control={form.control}
+                      name="qty"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Quantity</FormLabel>
+                          <FormControl>
+                            <Input 
+                              type="number" 
+                              step="0.01" 
+                              min="0.01"
+                              {...field} 
+                            />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                    <FormField
+                      control={form.control}
+                      name="fees_bps"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Fees (bps)</FormLabel>
+                          <FormControl>
+                            <Input 
+                              type="number" 
+                              step="0.1" 
+                              placeholder="0"
+                              {...field} 
+                            />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                    <FormField
+                      control={form.control}
+                      name="slippage_bps"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Slippage (bps)</FormLabel>
+                          <FormControl>
+                            <Input 
+                              type="number" 
+                              step="0.1" 
+                              placeholder="0"
+                              {...field} 
+                            />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                  </div>
+
+                  <FormField
+                    control={form.control}
+                    name="notes"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Notes (optional)</FormLabel>
+                        <FormControl>
+                          <Textarea 
+                            placeholder="Add any notes about this trade..."
+                            className="resize-none"
+                            rows={3}
+                            {...field} 
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  <div className="flex justify-end gap-2 pt-4">
+                    <Button 
+                      type="button" 
+                      variant="outline" 
+                      onClick={() => setNewTradeDialogOpen(false)}
+                    >
+                      Cancel
+                    </Button>
+                    <Button type="submit" disabled={isSubmittingTrade}>
+                      {isSubmittingTrade ? 'Creating...' : 'Create Trade'}
+                    </Button>
+                  </div>
+                </form>
+              </Form>
+            </DialogContent>
+          </Dialog>
+          <Button onClick={fetchTrades} variant="outline">
+            Refresh Data
+          </Button>
+        </div>
       </div>
 
       <Tabs value={filter} onValueChange={(value) => setFilter(value as typeof filter)}>
