@@ -81,6 +81,30 @@ const RedditSignalCard = ({ signal }: { signal: RedditDailySignal }) => {
 const CandidateCard = ({ candidate }: { candidate: RedditCandidate }) => {
   const side = candidate.side || 'LONG';
   
+  // Get sentiment colors and labels for monitoring candidates
+  const getSentimentColor = (score: number | null) => {
+    if (score === null) return 'text-muted-foreground';
+    if (score > 0.05) return 'text-green-600 dark:text-green-400';
+    if (score < -0.05) return 'text-red-600 dark:text-red-400';
+    return 'text-yellow-600 dark:text-yellow-400';
+  };
+
+  const getSentimentLabel = (score: number | null, triggered: boolean) => {
+    if (triggered) return "🎯 TRIGGERED";
+    if (score === null) return "Monitoring";
+    if (score > 0.05) return "Bullish (Monitoring)";
+    if (score < -0.05) return "Bearish (Monitoring)";
+    return "Neutral (Monitoring)";
+  };
+
+  const getSentimentBadgeVariant = (score: number | null, triggered: boolean) => {
+    if (triggered) return "default";
+    if (score === null) return "outline";
+    if (score > 0.05) return "secondary"; // Use secondary for bullish monitoring
+    if (score < -0.05) return "destructive"; // Use destructive for bearish monitoring
+    return "outline"; // Use outline for neutral monitoring
+  };
+  
   return (
     <Card className={`p-4 hover:shadow-lg transition-shadow border bg-card ${candidate.triggered ? 'border-success/60 ring-1 ring-success/30 shadow-success' : ''}`}>
       <div className="flex justify-between items-start mb-3">
@@ -90,8 +114,11 @@ const CandidateCard = ({ candidate }: { candidate: RedditCandidate }) => {
           </h3>
         </div>
         <div className="flex gap-2">
-          <Badge variant={candidate.triggered ? "default" : "outline"} className="text-foreground">
-            {candidate.triggered ? "🎯 TRIGGERED" : "Monitoring"}
+          <Badge 
+            variant={getSentimentBadgeVariant(candidate.used_score, candidate.triggered)} 
+            className={candidate.triggered ? "text-foreground" : getSentimentColor(candidate.used_score)}
+          >
+            {getSentimentLabel(candidate.used_score, candidate.triggered)}
           </Badge>
           {candidate.triggered && <Target className="w-4 h-4 text-green-600 dark:text-green-400" />}
         </div>
@@ -104,7 +131,7 @@ const CandidateCard = ({ candidate }: { candidate: RedditCandidate }) => {
         </div>
         <div>
           <div className="text-sm text-muted-foreground">Score</div>
-          <div className="text-base font-semibold text-foreground">
+          <div className={`text-base font-semibold ${getSentimentColor(candidate.used_score)}`}>
             {candidate.used_score !== null ? candidate.used_score.toFixed(2) : 'N/A'} / {candidate.pos_thresh.toFixed(2)}
           </div>
         </div>
@@ -156,6 +183,7 @@ const SentimentDashboard = () => {
     try {
       let usedFallback = false;
       let dataDate: Date | null = null;
+      const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD format
 
       // 1. Try today's signals first, fallback if empty
       let { data: signalsData } = await supabase
@@ -207,9 +235,23 @@ const SentimentDashboard = () => {
             dataDate = new Date(fallbackCandidates[0].trade_date);
           }
         }
-      } else if (!dataDate && candidatesData.length > 0) {
-        // If we got today's candidates but no signals, use today's date
-        dataDate = new Date(candidatesData[0].trade_date);
+      } else if (candidatesData.length > 0) {
+        // Check if candidates are for today
+        const candidateDate = candidatesData[0].trade_date;
+        dataDate = new Date(candidateDate);
+        
+        // If candidate date matches today, we're not using fallback
+        if (candidateDate === today) {
+          usedFallback = false;
+        } else {
+          // Data exists but it's not for today, so it's essentially fallback
+          usedFallback = true;
+        }
+        
+        // If we didn't get date from signals, use candidate date
+        if (!dataDate) {
+          dataDate = new Date(candidateDate);
+        }
       }
 
       setCandidates(candidatesData || []);
