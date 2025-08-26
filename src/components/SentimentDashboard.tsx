@@ -1,275 +1,234 @@
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { TrendingUp, TrendingDown, MessageCircle, Users, Zap, RefreshCw } from "lucide-react";
+import { TrendingUp, TrendingDown, Target, Zap, RefreshCw } from "lucide-react";
 import { useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
-import DataSourceIndicator from "@/components/DataSourceIndicator";
-import { DEFAULT_CONFIGS } from "@/data/subredditUniverse";
 
-interface SentimentData {
+interface RedditSignal {
   symbol: string;
-  name: string;
-  hypeScore: number;
-  sentiment: 'bullish' | 'bearish' | 'neutral';
-  socialVolume: number;
-  keyMentions: string[];
-  trendingEmojis: string[];
-  influencerSentiment: number;
-  communityMood: 'diamond_hands' | 'paper_hands' | 'neutral';
+  trade_date: string;
+  avg_score: number;
+  used_score: number;
+  n_mentions: number;
 }
 
-const SentimentCard = ({ data }: { data: SentimentData }) => {
-  const getSentimentColor = (sentiment: string) => {
-    switch (sentiment) {
-      case 'bullish': return 'text-green-500';
-      case 'bearish': return 'text-red-500';
-      default: return 'text-yellow-500';
-    }
+interface RedditCandidate {
+  symbol: string;
+  d: string;
+  n_mentions: number;
+  avg_score: number;
+  wt_score: number;
+  sig_score: number;
+  triggered: boolean;
+  horizon: string;
+  side: string;
+  min_mentions: number;
+  pos_thresh: number;
+  use_weighted: boolean;
+}
+
+interface BacktestResult {
+  symbol: string;
+  horizon: string;
+  side: string;
+  min_mentions: number;
+  pos_thresh: number;
+  use_weighted: boolean;
+  avg_ret: number;
+  median_ret: number;
+  hit_rate: number;
+  sharpe: number;
+  trades: number;
+  composite_score: number;
+}
+
+const RedditSignalCard = ({ signal }: { signal: RedditSignal }) => {
+  const getSentimentColor = (score: number) => {
+    if (score > 0.1) return 'text-green-500';
+    if (score < -0.1) return 'text-red-500';
+    return 'text-yellow-500';
   };
 
-  const getHypeColor = (score: number) => {
-    if (score >= 80) return 'text-green-500';
-    if (score >= 60) return 'text-yellow-500';
-    return 'text-red-500';
-  };
-
-  const getMoodEmoji = (mood: string) => {
-    switch (mood) {
-      case 'diamond_hands': return '💎🙌';
-      case 'paper_hands': return '📄🙌';
-      default: return '😐';
-    }
+  const getSentimentLabel = (score: number) => {
+    if (score > 0.1) return 'Bullish';
+    if (score < -0.1) return 'Bearish';
+    return 'Neutral';
   };
 
   return (
-    <Card className="p-6 hover:shadow-lg transition-shadow border bg-card">
-      <div className="flex justify-between items-start mb-4">
+    <Card className="p-4 hover:shadow-lg transition-shadow border bg-card">
+      <div className="flex justify-between items-start mb-3">
         <div>
-          <h3 className="text-xl font-bold text-foreground">{data.symbol}</h3>
-          <p className="text-sm text-muted-foreground">{data.name}</p>
+          <h3 className="text-lg font-bold text-foreground">{signal.symbol}</h3>
+          <p className="text-sm text-muted-foreground">Reddit Daily Signal</p>
         </div>
-        <Badge className={`${getSentimentColor(data.sentiment)} bg-transparent`}>
-          {data.sentiment}
+        <Badge className={`${getSentimentColor(signal.avg_score)} bg-transparent border`}>
+          {getSentimentLabel(signal.avg_score)}
         </Badge>
       </div>
 
-      <div className="grid grid-cols-2 gap-4 mb-4">
-        <div className="text-center">
-          <div className={`text-2xl font-bold ${getHypeColor(data.hypeScore)}`}>
-            {data.hypeScore}
+      <div className="grid grid-cols-3 gap-3 text-center">
+        <div>
+          <div className="text-xl font-bold text-foreground">{signal.n_mentions}</div>
+          <div className="text-xs text-muted-foreground">Mentions</div>
+        </div>
+        <div>
+          <div className={`text-xl font-bold ${getSentimentColor(signal.avg_score)}`}>
+            {signal.avg_score.toFixed(2)}
           </div>
-          <div className="text-xs text-muted-foreground">Hype Score</div>
+          <div className="text-xs text-muted-foreground">Avg Score</div>
         </div>
-        <div className="text-center">
-          <div className="text-2xl font-bold text-foreground">{data.socialVolume}</div>
-          <div className="text-xs text-muted-foreground">Social Volume</div>
-        </div>
-      </div>
-
-      <div className="mb-3">
-        <div className="flex justify-between items-center mb-1">
-          <span className="text-sm text-muted-foreground">Influencer Score</span>
-          <span className="text-sm font-semibold text-foreground">{data.influencerSentiment}/100</span>
-        </div>
-        <div className="w-full bg-secondary rounded-full h-2">
-          <div 
-            className="bg-primary h-2 rounded-full transition-all" 
-            style={{ width: `${data.influencerSentiment}%` }}
-          ></div>
-        </div>
-      </div>
-
-      <div className="mb-3">
-        <div className="flex items-center gap-2 mb-2">
-          <span className="text-sm text-muted-foreground">Community Mood</span>
-          <span className="text-lg">{getMoodEmoji(data.communityMood)}</span>
-          <span className="text-sm font-medium text-foreground">{data.communityMood.replace('_', ' ')}</span>
-        </div>
-      </div>
-
-      <div className="mb-3">
-        <div className="text-sm text-muted-foreground mb-1">Trending Emojis</div>
-        <div className="flex gap-1">
-          {data.trendingEmojis.map((emoji, index) => (
-            <span key={index} className="text-lg">{emoji}</span>
-          ))}
-        </div>
-      </div>
-
-      <div>
-        <div className="text-sm text-muted-foreground mb-2">Key Mentions</div>
-        <div className="flex flex-wrap gap-1">
-          {data.keyMentions.slice(0, 3).map((mention, index) => (
-            <Badge key={index} variant="outline" className="text-xs">
-              {mention}
-            </Badge>
-          ))}
+        <div>
+          <div className={`text-xl font-bold ${getSentimentColor(signal.used_score)}`}>
+            {signal.used_score.toFixed(2)}
+          </div>
+          <div className="text-xs text-muted-foreground">Used Score</div>
         </div>
       </div>
     </Card>
   );
 };
 
+const CandidateCard = ({ candidate, backtest }: { candidate: RedditCandidate; backtest?: BacktestResult }) => {
+  return (
+    <Card className={`p-4 hover:shadow-lg transition-shadow border ${candidate.triggered ? 'border-green-500 bg-green-50 dark:bg-green-950/20' : 'bg-card'}`}>
+      <div className="flex justify-between items-start mb-3">
+        <div>
+          <h3 className="text-lg font-bold text-foreground">{candidate.symbol}</h3>
+          <p className="text-sm text-muted-foreground">{candidate.horizon} • {candidate.side}</p>
+        </div>
+        <div className="flex gap-2">
+          <Badge variant={candidate.triggered ? "default" : "outline"}>
+            {candidate.triggered ? "🎯 TRIGGERED" : "Monitoring"}
+          </Badge>
+          {candidate.triggered && <Target className="w-4 h-4 text-green-500" />}
+        </div>
+      </div>
+
+      <div className="grid grid-cols-2 gap-3 mb-3">
+        <div>
+          <div className="text-sm text-muted-foreground">Mentions</div>
+          <div className="text-base font-semibold">{candidate.n_mentions} / {candidate.min_mentions}</div>
+        </div>
+        <div>
+          <div className="text-sm text-muted-foreground">Score</div>
+          <div className="text-base font-semibold">{candidate.sig_score?.toFixed(2) || 'N/A'} / {candidate.pos_thresh?.toFixed(2) || 'N/A'}</div>
+        </div>
+      </div>
+
+      {backtest && (
+        <div className="mt-3 pt-3 border-t border-border">
+          <div className="text-sm text-muted-foreground mb-2">Historical Performance</div>
+          <div className="grid grid-cols-3 gap-2 text-xs">
+            <div>
+              <div className="font-medium">{(backtest.avg_ret * 100).toFixed(1)}%</div>
+              <div className="text-muted-foreground">Avg Return</div>
+            </div>
+            <div>
+              <div className="font-medium">{(backtest.hit_rate * 100).toFixed(0)}%</div>
+              <div className="text-muted-foreground">Win Rate</div>
+            </div>
+            <div>
+              <div className="font-medium">{backtest.trades}</div>
+              <div className="text-muted-foreground">Trades</div>
+            </div>
+          </div>
+        </div>
+      )}
+    </Card>
+  );
+};
+
 const SentimentDashboard = () => {
-  const [sentimentData, setSentimentData] = useState<SentimentData[]>([]);
+  const [redditSignals, setRedditSignals] = useState<RedditSignal[]>([]);
+  const [candidates, setCandidates] = useState<any[]>([]);
+  const [backtests, setBacktests] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(false);
-  const [redditPosts, setRedditPosts] = useState<any[]>([]);
-  const [dataSourceStatus, setDataSourceStatus] = useState({
-    reddit: { status: 'unavailable' as 'unavailable' | 'live' | 'cached' | 'fallback', lastUpdate: undefined as Date | undefined },
-    stocktwits: { status: 'unavailable' as 'unavailable' | 'live' | 'cached' | 'fallback', lastUpdate: undefined as Date | undefined },
-    news: { status: 'unavailable' as 'unavailable' | 'live' | 'cached' | 'fallback', lastUpdate: undefined as Date | undefined },
-    youtube: { status: 'unavailable' as 'unavailable' | 'live' | 'cached' | 'fallback', lastUpdate: undefined as Date | undefined },
-    trends: { status: 'unavailable' as 'unavailable' | 'live' | 'cached' | 'fallback', lastUpdate: undefined as Date | undefined },
-    twitter: { status: 'unavailable' as 'unavailable' | 'live' | 'cached' | 'fallback', lastUpdate: undefined as Date | undefined }
-  });
+  const [lastUpdate, setLastUpdate] = useState<Date | null>(null);
   
   const { toast } = useToast();
 
-  const analyzeRedditPosts = (posts: any[]) => {
-    // Group posts by symbols mentioned (simplified analysis)
-    const symbolMap = new Map();
-    
-    posts.forEach(post => {
-      const symbols = post.symbols_mentioned || [];
-      symbols.forEach((symbol: string) => {
-        if (!symbolMap.has(symbol)) {
-          symbolMap.set(symbol, {
-            symbol,
-            name: `${symbol} Discussion`,
-            posts: [],
-            totalScore: 0,
-            totalComments: 0,
-            sentimentSum: 0
-          });
-        }
-        
-        const entry = symbolMap.get(symbol);
-        entry.posts.push(post);
-        entry.totalScore += post.score || 0;
-        entry.totalComments += post.num_comments || 0;
-        entry.sentimentSum += post.overall_sentiment || 0;
-      });
-    });
-    
-    // Convert to SentimentData format
-    return Array.from(symbolMap.values()).slice(0, 6).map(entry => ({
-      symbol: entry.symbol,
-      name: entry.name,
-      hypeScore: Math.min(100, Math.max(0, Math.round((entry.sentimentSum / entry.posts.length + 1) * 50))),
-      sentiment: entry.sentimentSum > 0.1 ? 'bullish' as const : 
-                entry.sentimentSum < -0.1 ? 'bearish' as const : 'neutral' as const,
-      socialVolume: entry.totalScore + entry.totalComments,
-      keyMentions: entry.posts.slice(0, 3).map((p: any) => p.key_themes?.[0] || 'discussion').filter(Boolean),
-      trendingEmojis: entry.sentimentSum > 0 ? ['📈', '🚀'] : 
-                     entry.sentimentSum < 0 ? ['📉', '😰'] : ['📊'],
-      influencerSentiment: Math.round(Math.min(100, Math.max(0, (entry.sentimentSum + 1) * 50))),
-      communityMood: entry.sentimentSum > 0.2 ? 'diamond_hands' as const :
-                    entry.sentimentSum < -0.2 ? 'paper_hands' as const : 'neutral' as const
-    }));
-  };
-
-  const fetchRedditData = async (subreddit = DEFAULT_CONFIGS.core[0]) => {
+  const fetchRedditData = async () => {
     setIsLoading(true);
     
-    // Reset data source status
-    setDataSourceStatus({
-      reddit: { status: 'unavailable', lastUpdate: undefined },
-      stocktwits: { status: 'unavailable', lastUpdate: undefined },
-      news: { status: 'unavailable', lastUpdate: undefined },
-      youtube: { status: 'unavailable', lastUpdate: undefined },
-      trends: { status: 'unavailable', lastUpdate: undefined },
-      twitter: { status: 'unavailable', lastUpdate: undefined }
-    });
-
     try {
-      const { data, error } = await supabase.functions.invoke('reddit-auth', {
-        body: { subreddit, action: 'hot', limit: 25 }
+      // Use available tables - start with sentiment_history for Reddit data
+      const { data: sentimentData, error: sentimentError } = await supabase
+        .from('sentiment_history')
+        .select('*')
+        .eq('source', 'reddit')
+        .order('data_timestamp', { ascending: false })
+        .limit(50);
+
+      if (sentimentError) {
+        console.error('Error fetching sentiment history:', sentimentError);
+      } else {
+        // Process sentiment data into signals format
+        const signalMap = new Map();
+        sentimentData?.forEach(item => {
+          if (!signalMap.has(item.symbol)) {
+            signalMap.set(item.symbol, {
+              symbol: item.symbol,
+              trade_date: new Date(item.data_timestamp).toISOString().split('T')[0],
+              avg_score: item.sentiment_score || 0,
+              used_score: item.sentiment_score || 0,
+              n_mentions: item.volume_indicator || 1,
+              count: 1,
+              score_sum: item.sentiment_score || 0
+            });
+          } else {
+            const existing = signalMap.get(item.symbol);
+            existing.count += 1;
+            existing.score_sum += (item.sentiment_score || 0);
+            existing.avg_score = existing.score_sum / existing.count;
+            existing.used_score = existing.avg_score;
+            existing.n_mentions += (item.volume_indicator || 1);
+          }
+        });
+        
+        const signals = Array.from(signalMap.values()).slice(0, 12);
+        setRedditSignals(signals);
+      }
+
+      // Use daily_sentiment_candidates for candidate data
+      const { data: candidatesData, error: candidatesError } = await supabase
+        .from('daily_sentiment_candidates')
+        .select('*')
+        .order('triggered', { ascending: false })
+        .limit(20);
+
+      if (candidatesError) {
+        console.error('Error fetching candidates:', candidatesError);
+      } else {
+        setCandidates(candidatesData || []);
+      }
+
+      // Get backtest results from backtest_sweep_results
+      const { data: backtestData, error: backtestError } = await supabase
+        .from('backtest_sweep_results')
+        .select('*')
+        .order('sharpe', { ascending: false })
+        .limit(50);
+
+      if (backtestError) {
+        console.error('Error fetching backtest data:', backtestError);
+      } else {
+        setBacktests(backtestData || []);
+      }
+
+      setLastUpdate(new Date());
+      toast({
+        title: "Data Updated",
+        description: `Loaded ${redditSignals?.length || 0} signals and ${candidatesData?.length || 0} candidates`,
       });
 
-      if (error) {
-        console.error('Reddit API error:', error);
-        setDataSourceStatus(prev => ({
-          ...prev,
-          reddit: { status: 'unavailable', lastUpdate: undefined }
-        }));
-        toast({
-          title: "Reddit API unavailable",
-          description: "No fallback data will be shown",
-          variant: "destructive",
-        });
-        setSentimentData([]);
-        return;
-      }
-
-      if (data?.posts) {
-        setRedditPosts(data.posts);
-        setDataSourceStatus(prev => ({
-          ...prev,
-          reddit: { status: 'live', lastUpdate: new Date() }
-        }));
-        
-        // Send posts to AI sentiment analysis
-        console.log('Sending posts for AI sentiment analysis...');
-        const { data: aiData, error: aiError } = await supabase.functions.invoke('ai-sentiment-analysis', {
-          body: { posts: data.posts }
-        });
-        
-        if (aiError) {
-          console.error('AI sentiment analysis error:', aiError);
-        } else {
-          console.log('AI analysis completed:', aiData);
-        }
-        
-        // Fetch stored sentiment data from database
-        const { data: sentimentData, error: sentimentError } = await supabase
-          .from('sentiment_analysis')
-          .select('*')
-          .eq('subreddit', subreddit)
-          .order('post_created_at', { ascending: false })
-          .limit(6);
-          
-        if (sentimentError) {
-          console.error('Error fetching sentiment data:', sentimentError);
-          // Only use simple analysis as absolute fallback
-          const analyzedData = analyzeRedditPosts(data.posts);
-          setSentimentData(analyzedData);
-        } else if (sentimentData && sentimentData.length > 0) {
-          // Convert database sentiment data to display format
-          const displayData = sentimentData.map(item => ({
-            symbol: item.symbols_mentioned?.[0] || `POST${item.id.slice(0,3)}`,
-            name: item.title.slice(0, 30) + '...',
-            hypeScore: Math.round((item.overall_sentiment + 1) * 50), // Convert -1 to 1 range to 0-100
-            sentiment: item.sentiment_label === 'bullish' || item.sentiment_label === 'very_bullish' ? 'bullish' as const :
-                      item.sentiment_label === 'bearish' || item.sentiment_label === 'very_bearish' ? 'bearish' as const : 'neutral' as const,
-            socialVolume: item.score + item.num_comments,
-            keyMentions: item.key_themes || [item.subreddit],
-            trendingEmojis: item.investment_signals?.includes('buy_signal') ? ['🚀', '💎'] : 
-                           item.investment_signals?.includes('sell_signal') ? ['📉', '😰'] : ['📈'],
-            influencerSentiment: Math.round(item.confidence_score * 100),
-            communityMood: item.sentiment_label === 'bullish' || item.sentiment_label === 'very_bullish' ? 'diamond_hands' as const :
-                          item.sentiment_label === 'bearish' || item.sentiment_label === 'very_bearish' ? 'paper_hands' as const : 'neutral' as const
-          }));
-          
-          setSentimentData(displayData);
-        } else {
-          setSentimentData([]);
-        }
-        
-        toast({
-          title: "Reddit Data Fetched",
-          description: `Analyzed ${data.posts.length} posts from r/${subreddit}`,
-        });
-      } else {
-        setSentimentData([]);
-      }
     } catch (error) {
       console.error('Error:', error);
-      setSentimentData([]);
       toast({
         title: "Connection error",
-        description: "Check console for details",
+        description: "Failed to fetch Reddit sentiment data",
         variant: "destructive",
       });
     } finally {
@@ -277,139 +236,113 @@ const SentimentDashboard = () => {
     }
   };
 
-  // Removed auto-fetch to prevent unnecessary API calls on page load
-  // Users can manually refresh data using the refresh button
-  // useEffect(() => {
-  //   fetchRedditData();
-  // }, []);
+  useEffect(() => {
+    fetchRedditData();
+  }, []);
+
+  // Helper to find backtest data for a candidate
+  const getBacktestForCandidate = (candidate: any): any => {
+    return backtests.find(bt => 
+      bt.symbol === candidate.symbol &&
+      bt.horizon === candidate.horizon
+    );
+  };
 
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-2xl font-bold flex items-center">
-            🧠 AI Sentiment Analysis
+            🧠 Reddit Sentiment Dashboard
             <Zap className="w-6 h-6 ml-3 text-accent" />
           </h2>
-          <p className="text-muted-foreground">Real-time Reddit sentiment tracking</p>
-          <div className="flex flex-wrap gap-4 mt-2">
-            <DataSourceIndicator 
-              source="Reddit" 
-              status={dataSourceStatus.reddit.status} 
-              lastUpdate={dataSourceStatus.reddit.lastUpdate}
-            />
-            <DataSourceIndicator 
-              source="StockTwits" 
-              status={dataSourceStatus.stocktwits.status} 
-              lastUpdate={dataSourceStatus.stocktwits.lastUpdate}
-            />
-            <DataSourceIndicator 
-              source="News" 
-              status={dataSourceStatus.news.status} 
-              lastUpdate={dataSourceStatus.news.lastUpdate}
-            />
-            <DataSourceIndicator 
-              source="YouTube" 
-              status={dataSourceStatus.youtube.status} 
-              lastUpdate={dataSourceStatus.youtube.lastUpdate}
-            />
-            <DataSourceIndicator 
-              source="Trends" 
-              status={dataSourceStatus.trends.status} 
-              lastUpdate={dataSourceStatus.trends.lastUpdate}
-            />
-            <DataSourceIndicator 
-              source="Twitter" 
-              status={dataSourceStatus.twitter.status} 
-              lastUpdate={dataSourceStatus.twitter.lastUpdate}
-            />
-          </div>
+          <p className="text-muted-foreground">
+            Live Reddit sentiment signals and trading candidates
+          </p>
+          {lastUpdate && (
+            <p className="text-sm text-muted-foreground mt-1">
+              Last updated: {lastUpdate.toLocaleTimeString()}
+            </p>
+          )}
         </div>
         <div className="flex items-center gap-2">
           <Button 
             variant="outline" 
             size="sm" 
-            onClick={() => fetchRedditData('stocks')}
+            onClick={fetchRedditData}
             disabled={isLoading}
           >
             <RefreshCw className={`w-4 h-4 mr-2 ${isLoading ? 'animate-spin' : ''}`} />
             Refresh
           </Button>
-          {dataSourceStatus.reddit.status === 'live' && (
-            <Badge className="bg-gradient-primary text-primary-foreground">
-              Live Data
-            </Badge>
-          )}
+          <Badge className="bg-gradient-primary text-primary-foreground">
+            Reddit MVP
+          </Badge>
         </div>
       </div>
 
-      <div className="flex gap-2 mb-4">
-        <Badge variant="outline">Live Data</Badge>
-        <Button 
-          variant="outline" 
-          size="sm" 
-          onClick={() => fetchRedditData('stocks')}
-          disabled={isLoading}
-        >
-          r/stocks
-        </Button>
-        <Button 
-          variant="outline" 
-          size="sm" 
-          onClick={() => fetchRedditData('investing')}
-          disabled={isLoading}
-        >
-          r/investing
-        </Button>
-        <Button 
-          variant="outline" 
-          size="sm" 
-          onClick={() => fetchRedditData('wallstreetbets')}
-          disabled={isLoading}
-        >
-          r/wallstreetbets
-        </Button>
-        <Button 
-          variant="outline" 
-          size="sm" 
-          onClick={() => fetchRedditData('SecurityAnalysis')}
-          disabled={isLoading}
-        >
-          r/SecurityAnalysis
-        </Button>
-      </div>
-
-      {sentimentData.length > 0 ? (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {sentimentData.map((data, index) => (
-            <SentimentCard key={index} data={data} />
-          ))}
-        </div>
-      ) : (
-        <div className="text-center py-12">
-          <p className="text-muted-foreground">
-            {isLoading ? 'Loading sentiment data...' : 'No sentiment data available - Reddit API may be down'}
-          </p>
-        </div>
-      )}
-
-      <div className="mt-8">
-        <h3 className="text-lg font-semibold mb-4 flex items-center">
-          🔥 Real-time Alerts
+      {/* Today's Triggered Candidates */}
+      <div className="space-y-4">
+        <h3 className="text-lg font-semibold flex items-center">
+          🎯 Today's Triggered Candidates
         </h3>
-        <div className="space-y-2 max-h-48 overflow-y-auto">
-          {redditPosts.slice(0, 3).map((post, index) => (
-            <div key={index} className="flex items-center justify-between p-3 bg-secondary rounded-lg">
-              <div>
-                <span className="font-medium">r/{post.subreddit || 'stocks'}: </span>
-                <span className="text-muted-foreground">{post.title?.slice(0, 50)}... </span>
-                <span className="text-sm text-muted-foreground">
-                  ({post.score || 0} upvotes, {post.num_comments || 0} comments)
-                </span>
-              </div>
-            </div>
-          ))}
-        </div>
+        {candidates.filter(c => c.triggered).length > 0 ? (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {candidates.filter(c => c.triggered).map((candidate, index) => (
+              <CandidateCard 
+                key={index} 
+                candidate={candidate} 
+                backtest={getBacktestForCandidate(candidate)}
+              />
+            ))}
+          </div>
+        ) : (
+          <div className="text-center py-8 text-muted-foreground">
+            No triggered candidates today
+          </div>
+        )}
+      </div>
+
+      {/* Monitoring Candidates */}
+      <div className="space-y-4">
+        <h3 className="text-lg font-semibold flex items-center">
+          👀 Monitoring
+        </h3>
+        {candidates.filter(c => !c.triggered).length > 0 ? (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {candidates.filter(c => !c.triggered).slice(0, 6).map((candidate, index) => (
+              <CandidateCard 
+                key={index} 
+                candidate={candidate} 
+                backtest={getBacktestForCandidate(candidate)}
+              />
+            ))}
+          </div>
+        ) : (
+          <div className="text-center py-8 text-muted-foreground">
+            No candidates being monitored
+          </div>
+        )}
+      </div>
+
+      {/* Daily Signals */}
+      <div className="space-y-4">
+        <h3 className="text-lg font-semibold flex items-center">
+          📊 Today's Reddit Signals
+        </h3>
+        {redditSignals.length > 0 ? (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+            {redditSignals.map((signal, index) => (
+              <RedditSignalCard key={index} signal={signal} />
+            ))}
+          </div>
+        ) : (
+          <div className="text-center py-8">
+            <p className="text-muted-foreground">
+              {isLoading ? 'Loading Reddit signals...' : 'No Reddit signals available for today'}
+            </p>
+          </div>
+        )}
       </div>
     </div>
   );
