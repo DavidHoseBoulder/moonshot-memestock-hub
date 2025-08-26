@@ -222,6 +222,8 @@ const SentimentDashboard = () => {
     fetchRedditData();
   }, []);
 
+  console.log('SentimentDashboard rendering - signals:', redditSignals.length, 'candidates:', candidates.length, 'loading:', isLoading, 'fallback:', usingFallback);
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
