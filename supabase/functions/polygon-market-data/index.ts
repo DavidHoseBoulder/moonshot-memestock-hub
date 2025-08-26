@@ -241,23 +241,13 @@ Deno.serve(async (req) => {
       
       const dbRecords = enhancedData.map(item => ({
         symbol: item.symbol,
-        data_date: new Date(item.timestamp).toISOString().split('T')[0],
-        open_price: item.price, // Using current price as proxy since we don't have OHLC from this function
-        close_price: item.price,
-        high_price: item.price,
-        low_price: item.price,
+        price: item.price,
         volume: item.volume,
-        adj_close_price: item.price,
-        rsi_14: item.technical_indicators.rsi,
-        sma_20: item.technical_indicators.sma_20,
-        sma_50: item.technical_indicators.sma_50,
-        volume_sma_20: item.volume, // Using current volume as proxy
+        timestamp: item.timestamp,
+        technical_indicators: item.technical_indicators,
         price_change_1d: item.price_change_1d,
         price_change_5d: item.price_change_5d,
-        volatility: item.technical_indicators.volatility,
-        momentum_score: item.technical_indicators.momentum,
-        volume_ratio: item.technical_indicators.volume_ratio,
-        data_source: 'polygon',
+        data_date: new Date(item.timestamp).toISOString().split('T')[0],
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString()
       }))

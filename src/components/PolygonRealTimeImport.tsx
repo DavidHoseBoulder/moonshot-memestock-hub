@@ -15,10 +15,10 @@ const PolygonRealTimeImport = () => {
 
       // Get all active symbols
       const { data: tickersData, error: tickersError } = await supabase
-        .from('ticker_universe')
-        .select('symbol')
-        .eq('active', true)
-        .order('priority', { ascending: true });
+        .from('daily_sentiment_candidates')
+        .select('symbol, d, triggered')
+        .eq('d', new Date().toISOString().slice(0, 10))
+        .order('triggered', { ascending: false });
 
       if (tickersError) throw tickersError;
 
