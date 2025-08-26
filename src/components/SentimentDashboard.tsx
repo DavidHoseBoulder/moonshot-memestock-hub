@@ -6,26 +6,25 @@ import { useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 
-interface RedditSignal {
+interface RedditDailySignal {
+  data_date: string;
   symbol: string;
-  trade_date: string;
+  n_mentions: number;
   avg_score: number;
   used_score: number;
-  n_mentions: number;
 }
 
 interface RedditCandidate {
-  symbol: string;
   trade_date: string;
+  symbol: string;
   horizon: string;
-  n_mentions: number;
-  used_score: number;
   min_mentions: number;
   pos_thresh: number;
-  use_weighted: boolean;
+  used_score: number;
+  n_mentions: number;
   triggered: boolean;
-  priority: number | null;
-  side: string;
+  use_weighted?: boolean;
+  side?: string;
 }
 
 interface BacktestResult {
@@ -33,13 +32,25 @@ interface BacktestResult {
   horizon: string;
   avg_ret: number;
   median_ret: number;
-  win_rate: number;
+  win_rate?: number;
+  hit_rate?: number;
   sharpe: number;
   trades: number;
-  composite_score: number;
+  composite_score?: number;
 }
 
-const RedditSignalCard = ({ signal }: { signal: RedditSignal }) => {
+interface LiveEntry {
+  symbol: string;
+  horizon: string;
+  d: string;
+  triggered: boolean;
+  n_mentions: number;
+  used_score: number;
+  pos_thresh: number;
+  min_mentions: number;
+}
+
+const RedditSignalCard = ({ signal }: { signal: RedditDailySignal }) => {
   const getSentimentColor = (score: number) => {
     if (score > 0.1) return 'text-green-500';
     if (score < -0.1) return 'text-red-500';
@@ -122,7 +133,7 @@ const CandidateCard = ({ candidate, backtest }: { candidate: RedditCandidate; ba
               <div className="text-muted-foreground">Avg Return</div>
             </div>
             <div>
-              <div className="font-medium">{(backtest.win_rate * 100).toFixed(0)}%</div>
+              <div className="font-medium">{((backtest.win_rate || backtest.hit_rate || 0) * 100).toFixed(0)}%</div>
               <div className="text-muted-foreground">Win Rate</div>
             </div>
             <div>
@@ -137,9 +148,10 @@ const CandidateCard = ({ candidate, backtest }: { candidate: RedditCandidate; ba
 };
 
 const SentimentDashboard = () => {
-  const [redditSignals, setRedditSignals] = useState<RedditSignal[]>([]);
-  const [candidates, setCandidates] = useState<any[]>([]);
-  const [backtests, setBacktests] = useState<any[]>([]);
+  const [redditSignals, setRedditSignals] = useState<RedditDailySignal[]>([]);
+  const [candidates, setCandidates] = useState<RedditCandidate[]>([]);
+  const [backtests, setBacktests] = useState<BacktestResult[]>([]);
+  const [liveEntries, setLiveEntries] = useState<LiveEntry[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [lastUpdate, setLastUpdate] = useState<Date | null>(null);
   
@@ -149,33 +161,31 @@ const SentimentDashboard = () => {
     setIsLoading(true);
     
     try {
-      // Use standardized views for Reddit data
-      const { data: dailyScores, error: scoresError } = await supabase
-        .from('v_daily_scores')
+      // 1. Fetch v_reddit_daily_signals
+      const { data: dailySignals, error: signalsError } = await supabase
+        .from('v_reddit_daily_signals')
         .select('*')
-        .order('generated_at', { ascending: false })
-        .limit(50);
+        .order('trade_date', { ascending: false })
+        .limit(20);
 
-      if (scoresError) {
-        console.error('Error fetching daily scores:', scoresError);
+      if (signalsError) {
+        console.error('Error fetching daily signals:', signalsError);
       } else {
-        // Convert to signals format
-        const signals = (dailyScores || []).map(item => ({
+        const signals = (dailySignals || []).map(item => ({
+          data_date: item.trade_date,
           symbol: item.symbol,
-          trade_date: item.data_date,
+          n_mentions: item.n_mentions,
           avg_score: item.avg_score,
-          used_score: item.used_score,
-          n_mentions: item.n_mentions
-        })).slice(0, 12);
+          used_score: item.used_score
+        }));
         setRedditSignals(signals);
       }
 
-      // Use v_today_candidates for candidate data
+      // 2. Fetch v_reddit_candidates_today
       const { data: candidatesData, error: candidatesError } = await supabase
-        .from('v_today_candidates')
+        .from('v_reddit_candidates_today')
         .select('*')
-        .order('triggered', { ascending: false })
-        .limit(20);
+        .order('triggered', { ascending: false });
 
       if (candidatesError) {
         console.error('Error fetching candidates:', candidatesError);
@@ -183,12 +193,12 @@ const SentimentDashboard = () => {
         setCandidates(candidatesData || []);
       }
 
-      // Get backtest results from v_backtest_summary
+      // 3. Fetch v_reddit_backtest_lookup
       const { data: backtestData, error: backtestError } = await supabase
-        .from('v_backtest_summary')
+        .from('v_reddit_backtest_lookup')
         .select('*')
         .order('sharpe', { ascending: false })
-        .limit(50);
+        .limit(100);
 
       if (backtestError) {
         console.error('Error fetching backtest data:', backtestError);
@@ -196,10 +206,22 @@ const SentimentDashboard = () => {
         setBacktests(backtestData || []);
       }
 
+      // 4. Fetch v_today_live_entries
+      const { data: liveData, error: liveError } = await supabase
+        .from('v_today_live_entries')
+        .select('*')
+        .order('triggered', { ascending: false });
+
+      if (liveError) {
+        console.error('Error fetching live entries:', liveError);
+      } else {
+        setLiveEntries(liveData || []);
+      }
+
       setLastUpdate(new Date());
       toast({
-        title: "Data Updated",
-        description: `Loaded ${dailyScores?.length || 0} signals and ${candidatesData?.length || 0} candidates`,
+        title: "Reddit Data Updated",
+        description: `Loaded ${dailySignals?.length || 0} signals, ${candidatesData?.length || 0} candidates`,
       });
 
     } catch (error) {
@@ -219,7 +241,7 @@ const SentimentDashboard = () => {
   }, []);
 
   // Helper to find backtest data for a candidate
-  const getBacktestForCandidate = (candidate: any): any => {
+  const getBacktestForCandidate = (candidate: RedditCandidate): BacktestResult | undefined => {
     return backtests.find(bt => 
       bt.symbol === candidate.symbol &&
       bt.horizon === candidate.horizon
@@ -254,7 +276,7 @@ const SentimentDashboard = () => {
             Refresh
           </Button>
           <Badge className="bg-gradient-primary text-primary-foreground">
-            Reddit MVP
+            Reddit-only MVP
           </Badge>
         </div>
       </div>
