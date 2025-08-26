@@ -71,10 +71,7 @@ const SentimentDashboardPage = () => {
         </TabsContent>
 
         <TabsContent value="coverage" className="space-y-6">
-          <SentimentCoverageMonitor 
-            dataSourcesStatus={sampleDataSources}
-            tickerCoverage={tickerCoverage}
-          />
+          <SentimentCoverageMonitor />
         </TabsContent>
 
       </Tabs>
