@@ -47,14 +47,16 @@ Deno.serve(async (req) => {
       )
     }
 
-    if (trade.mode !== 'paper') {
+    const tradeMode = String(trade.mode || '').toLowerCase();
+    if (tradeMode !== 'paper') {
       return new Response(
         JSON.stringify({ error: 'Only paper trades can be closed via this action' }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       )
     }
 
-    if (trade.status !== 'open') {
+    const tradeStatus = String(trade.status || '').toLowerCase();
+    if (tradeStatus !== 'open') {
       return new Response(
         JSON.stringify({ error: 'Trade is already closed' }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
@@ -96,7 +98,7 @@ Deno.serve(async (req) => {
     const { data: updated, error: updateError } = await supabase
       .from('trades')
       .update({
-        status: 'closed',
+        status: 'CLOSED',
         exit_ts: new Date().toISOString(),
         exit_price,
       })
