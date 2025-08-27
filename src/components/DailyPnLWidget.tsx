@@ -61,14 +61,22 @@ const DailyPnLWidget = () => {
 
   const fetchLatestDate = async () => {
     try {
-      // Use current date as fallback since we can't query the specific tables
-      const fallback = new Date().toISOString().split('T')[0];
-      setLatestDate(fallback);
+      const { data, error } = await (supabase as any)
+        .from('v_daily_pnl_rollups')
+        .select('mark_date')
+        .order('mark_date', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (error) throw error;
+
+      const latest = data?.mark_date || new Date().toISOString().split('T')[0];
+      setLatestDate(latest);
       if (!selectedDate) {
-        setSelectedDate(fallback);
+        setSelectedDate(latest);
       }
     } catch (error: any) {
-      console.error('Error setting date:', error);
+      console.error('Error fetching latest date:', error);
       const fallback = new Date().toISOString().split('T')[0];
       setLatestDate(fallback);
       if (!selectedDate) {
@@ -80,64 +88,43 @@ const DailyPnLWidget = () => {
   const fetchPnLData = async (date: string) => {
     setIsLoading(true);
     try {
-      // Simulate the aggregated data since we can't directly query the views
-      // In a real scenario, these would be the actual view queries
-      const rollupResults: DailyPnLRollup[] = [
-        {
-          mark_date: date,
-          mode: 'paper',
-          n_open: 2,
-          n_closed: 1,
-          realized_pnl: 150.75,
-          unrealized_pnl: -25.30,
-          total_pnl: 125.45
-        },
-        {
-          mark_date: date,
-          mode: 'real',
-          n_open: 1,
-          n_closed: 0,
-          realized_pnl: 0,
-          unrealized_pnl: 45.20,
-          total_pnl: 45.20
-        }
-      ];
+      // Fetch rollup data
+      const { data: rollupData, error: rollupError } = await (supabase as any)
+        .from('v_daily_pnl_rollups')
+        .select('*')
+        .eq('mark_date', date);
 
-      const symbolResults: DailyPnLBySymbol[] = [
-        {
-          mark_date: date,
-          mode: 'paper',
-          symbol: 'GME',
-          n_open: 1,
-          n_closed: 1,
-          realized_pnl: 150.75,
-          unrealized_pnl: -25.30,
-          total_pnl: 125.45
-        },
-        {
-          mark_date: date,
-          mode: 'paper',
-          symbol: 'TSLA',
-          n_open: 1,
-          n_closed: 0,
-          realized_pnl: 0,
-          unrealized_pnl: 0,
-          total_pnl: 0
-        },
-        {
-          mark_date: date,
-          mode: 'real',
-          symbol: 'AAPL',
-          n_open: 1,
-          n_closed: 0,
-          realized_pnl: 0,
-          unrealized_pnl: 45.20,
-          total_pnl: 45.20
-        }
-      ];
+      if (rollupError) throw rollupError;
 
-      setRollupData(rollupResults);
-      setSymbolData(symbolResults);
+      // Fetch symbol data
+      const { data: symbolData, error: symbolError } = await (supabase as any)
+        .from('v_daily_pnl_by_symbol')
+        .select('*')
+        .eq('mark_date', date);
+
+      if (symbolError) throw symbolError;
+
+      // Convert numeric strings to numbers and set data
+      const processedRollupData = (rollupData || []).map((row: any) => ({
+        ...row,
+        n_open: toNumber(row.n_open),
+        n_closed: toNumber(row.n_closed),
+        realized_pnl: toNumber(row.realized_pnl),
+        unrealized_pnl: toNumber(row.unrealized_pnl),
+        total_pnl: toNumber(row.total_pnl),
+      }));
+
+      const processedSymbolData = (symbolData || []).map((row: any) => ({
+        ...row,
+        n_open: toNumber(row.n_open),
+        n_closed: toNumber(row.n_closed),
+        realized_pnl: toNumber(row.realized_pnl),
+        unrealized_pnl: toNumber(row.unrealized_pnl),
+        total_pnl: toNumber(row.total_pnl),
+      }));
+
+      setRollupData(processedRollupData);
+      setSymbolData(processedSymbolData);
 
     } catch (error: any) {
       console.error('Error fetching PnL data:', error);
@@ -155,27 +142,33 @@ const DailyPnLWidget = () => {
 
   const fetchTradeDetails = async (symbol: string, date: string, mode: string) => {
     try {
-      // Simulate trade details data
-      const details: TradeDetail[] = [
-        {
-          trade_id: '123e4567-e89b-12d3-a456-426614174000',
-          symbol: symbol,
-          status_on_mark: 'OPEN',
-          entry_price: 22.67,
-          mark_price: 22.42,
-          qty: 1,
-          unrealized_pnl: -25.30
-        },
-        {
-          trade_id: '987fcdeb-51a2-43d1-b567-890123456789',
-          symbol: symbol,
-          status_on_mark: 'CLOSED',
-          entry_price: 21.50,
-          exit_price: 23.01,
-          qty: 1,
-          realized_pnl: 150.75
-        }
-      ];
+      let query = (supabase as any)
+        .from('daily_trade_marks')
+        .select('*')
+        .eq('symbol', symbol)
+        .eq('mark_date', date);
+
+      // Filter by mode if not 'all'
+      if (mode !== 'all') {
+        query = query.eq('mode', mode);
+      }
+
+      const { data, error } = await query;
+
+      if (error) throw error;
+
+      // Convert the data to match our interface
+      const details: TradeDetail[] = (data || []).map((row: any) => ({
+        trade_id: row.trade_id,
+        symbol: row.symbol,
+        status_on_mark: row.status_on_mark,
+        entry_price: toNumber(row.entry_price),
+        mark_price: row.mark_price ? toNumber(row.mark_price) : undefined,
+        exit_price: row.exit_price ? toNumber(row.exit_price) : undefined,
+        qty: toNumber(row.qty),
+        realized_pnl: row.realized_pnl ? toNumber(row.realized_pnl) : undefined,
+        unrealized_pnl: row.unrealized_pnl ? toNumber(row.unrealized_pnl) : undefined,
+      }));
       
       setTradeDetails(details);
     } catch (error: any) {
