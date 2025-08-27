@@ -18,7 +18,7 @@ Deno.serve(async (req) => {
 
     const { trade_id } = await req.json()
 
-    if (!trade_id || typeof trade_id !== 'number') {
+    if (!trade_id || typeof trade_id !== 'string') {
       return new Response(
         JSON.stringify({ error: 'Missing or invalid trade_id' }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
@@ -97,7 +97,7 @@ Deno.serve(async (req) => {
       .from('trades')
       .update({
         status: 'closed',
-        exit_date: new Date().toISOString(),
+        exit_ts: new Date().toISOString(),
         exit_price,
       })
       .eq('trade_id', trade_id)
