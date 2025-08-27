@@ -425,14 +425,12 @@ const SentimentDashboard = () => {
           horizon: formData.horizon,
           mode: formData.mode,
           trade_date: formData.trade_date,
-          entry_date: new Date().toISOString(),
           entry_price: formData.entry_price ? parseFloat(formData.entry_price) : null,
           qty: parseFloat(formData.qty),
           notes: formData.notes || null,
-          fees_bps: formData.fees_bps ? parseFloat(formData.fees_bps) : 0,
-          slippage_bps: formData.slippage_bps ? parseFloat(formData.slippage_bps) : 0,
+          fees_total: formData.fees_bps ? parseFloat(formData.fees_bps) : 0,
           source: 'triggered_sentiment',
-          status: 'open',
+          status: 'OPEN',
         });
 
       if (error) throw error;
