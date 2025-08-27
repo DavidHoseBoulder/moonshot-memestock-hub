@@ -639,6 +639,7 @@ const TradesOverview = () => {
         </div>
         <div className="flex gap-2 items-center">
           <div className="flex items-center gap-2">
+            <span className="text-sm text-muted-foreground whitespace-nowrap">View Date:</span>
             <Input
               type="date"
               value={selectedDate}
@@ -657,12 +658,6 @@ const TradesOverview = () => {
             </Button>
           </div>
           <Dialog open={newTradeDialogOpen} onOpenChange={setNewTradeDialogOpen}>
-            <DialogTrigger asChild>
-              <Button>
-                <Plus className="w-4 h-4 mr-2" />
-                New Trade
-              </Button>
-            </DialogTrigger>
             <DialogTrigger asChild>
               <Button>
                 <Plus className="w-4 h-4 mr-2" />
