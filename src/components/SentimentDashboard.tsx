@@ -229,13 +229,13 @@ const CandidateCard = ({ candidate, existingTrade, onNewTrade }: {
         <div className="mt-3 pt-3 border-t border-border">
           <div className="text-sm text-muted-foreground mb-2">Historical Performance</div>
           <div className="grid grid-cols-3 gap-2 text-xs">
-            {candidate.avg_ret !== undefined && (
+            {candidate.avg_ret != null && (
               <div>
                 <div className="font-medium text-foreground">{(candidate.avg_ret * 100).toFixed(1)}%</div>
                 <div className="text-muted-foreground">Avg Return</div>
               </div>
             )}
-            {candidate.win_rate !== undefined && (
+            {candidate.win_rate != null && (
               <div>
                 <div className="font-medium text-foreground">{(candidate.win_rate * 100).toFixed(0)}%</div>
                 <div className="text-muted-foreground">Win Rate</div>
