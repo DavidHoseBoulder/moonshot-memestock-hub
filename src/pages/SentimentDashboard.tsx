@@ -1,9 +1,10 @@
 import SentimentDashboard from "@/components/SentimentDashboard";
+import RedditSentimentDashboard from "@/components/RedditSentimentDashboard";
 import SentimentHistoryViewer from "@/components/SentimentHistoryViewer";
 import SentimentVelocityTracker from "@/components/SentimentVelocityTracker";
 import SentimentCoverageMonitor from "@/components/SentimentCoverageMonitor";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { MessageSquare, History, Zap, Activity, Settings } from "lucide-react";
+import { MessageSquare, History, Zap, Activity, Settings, BarChart3 } from "lucide-react";
 import { SentimentOrchestrationDashboard } from "@/components/SentimentOrchestrationDashboard";
 
 const SentimentDashboardPage = () => {
@@ -38,11 +39,15 @@ const SentimentDashboardPage = () => {
         </div>
       </div>
 
-      <Tabs defaultValue="dashboard" className="space-y-6">
-        <TabsList className="grid w-full grid-cols-4">
+      <Tabs defaultValue="reddit-sentiment" className="space-y-6">
+        <TabsList className="grid w-full grid-cols-5">
+          <TabsTrigger value="reddit-sentiment" className="flex items-center gap-2">
+            <BarChart3 className="w-4 h-4" />
+            Reddit Sentiment
+          </TabsTrigger>
           <TabsTrigger value="dashboard" className="flex items-center gap-2">
             <MessageSquare className="w-4 h-4" />
-            Reddit Dashboard
+            Trading Dashboard
           </TabsTrigger>
           <TabsTrigger value="history" className="flex items-center gap-2">
             <History className="w-4 h-4" />
@@ -57,6 +62,10 @@ const SentimentDashboardPage = () => {
             Data Coverage
           </TabsTrigger>
         </TabsList>
+
+        <TabsContent value="reddit-sentiment" className="space-y-6">
+          <RedditSentimentDashboard />
+        </TabsContent>
 
         <TabsContent value="dashboard" className="space-y-6">
           <SentimentDashboard />
