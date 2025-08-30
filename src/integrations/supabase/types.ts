@@ -197,6 +197,54 @@ export type Database = {
         }
         Relationships: []
       }
+      daily_trade_marks: {
+        Row: {
+          created_at: string
+          entry_price: number
+          exit_price: number | null
+          fees_total: number
+          mark_date: string
+          mark_price: number | null
+          mode: string
+          qty: number
+          realized_pnl: number | null
+          status_on_mark: string
+          symbol: string
+          trade_id: string
+          unrealized_pnl: number | null
+        }
+        Insert: {
+          created_at?: string
+          entry_price: number
+          exit_price?: number | null
+          fees_total?: number
+          mark_date: string
+          mark_price?: number | null
+          mode: string
+          qty?: number
+          realized_pnl?: number | null
+          status_on_mark: string
+          symbol: string
+          trade_id: string
+          unrealized_pnl?: number | null
+        }
+        Update: {
+          created_at?: string
+          entry_price?: number
+          exit_price?: number | null
+          fees_total?: number
+          mark_date?: string
+          mark_price?: number | null
+          mode?: string
+          qty?: number
+          realized_pnl?: number | null
+          status_on_mark?: string
+          symbol?: string
+          trade_id?: string
+          unrealized_pnl?: number | null
+        }
+        Relationships: []
+      }
       enhanced_market_data: {
         Row: {
           created_at: string | null
@@ -440,6 +488,63 @@ export type Database = {
         }
         Relationships: []
       }
+      reddit_comments: {
+        Row: {
+          author: string | null
+          body: string
+          comment_id: string
+          created_at: string
+          created_utc: string
+          depth: number | null
+          is_submitter: boolean | null
+          parent_id: string | null
+          permalink: string | null
+          post_id: string
+          score: number | null
+          subreddit: string
+        }
+        Insert: {
+          author?: string | null
+          body: string
+          comment_id: string
+          created_at?: string
+          created_utc: string
+          depth?: number | null
+          is_submitter?: boolean | null
+          parent_id?: string | null
+          permalink?: string | null
+          post_id: string
+          score?: number | null
+          subreddit: string
+        }
+        Update: {
+          author?: string | null
+          body?: string
+          comment_id?: string
+          created_at?: string
+          created_utc?: string
+          depth?: number | null
+          is_submitter?: boolean | null
+          parent_id?: string | null
+          permalink?: string | null
+          post_id?: string
+          score?: number | null
+          subreddit?: string
+        }
+        Relationships: []
+      }
+      reddit_comments_stage: {
+        Row: {
+          line: string | null
+        }
+        Insert: {
+          line?: string | null
+        }
+        Update: {
+          line?: string | null
+        }
+        Relationships: []
+      }
       reddit_finance_keep: {
         Row: {
           author: string | null
@@ -514,27 +619,33 @@ export type Database = {
           content_len: number | null
           created_utc: string
           disambig_rule: string
+          doc_id: string
+          doc_type: string
           match_source: string
           mention_id: number
-          post_id: string
+          post_id: string | null
           symbol: string
         }
         Insert: {
           content_len?: number | null
           created_utc: string
           disambig_rule: string
+          doc_id: string
+          doc_type?: string
           match_source: string
           mention_id?: number
-          post_id: string
+          post_id?: string | null
           symbol: string
         }
         Update: {
           content_len?: number | null
           created_utc?: string
           disambig_rule?: string
+          doc_id?: string
+          doc_type?: string
           match_source?: string
           mention_id?: number
-          post_id?: string
+          post_id?: string | null
           symbol?: string
         }
         Relationships: [
@@ -585,6 +696,8 @@ export type Database = {
       reddit_sentiment: {
         Row: {
           confidence: number | null
+          doc_id: string | null
+          doc_type: string | null
           label: string | null
           mention_id: number
           model: string | null
@@ -592,9 +705,12 @@ export type Database = {
           overall_score: number | null
           processed_at: string | null
           rationale: string | null
+          score: number | null
         }
         Insert: {
           confidence?: number | null
+          doc_id?: string | null
+          doc_type?: string | null
           label?: string | null
           mention_id: number
           model?: string | null
@@ -602,9 +718,12 @@ export type Database = {
           overall_score?: number | null
           processed_at?: string | null
           rationale?: string | null
+          score?: number | null
         }
         Update: {
           confidence?: number | null
+          doc_id?: string | null
+          doc_type?: string | null
           label?: string | null
           mention_id?: number
           model?: string | null
@@ -612,6 +731,7 @@ export type Database = {
           overall_score?: number | null
           processed_at?: string | null
           rationale?: string | null
+          score?: number | null
         }
         Relationships: [
           {
@@ -795,6 +915,18 @@ export type Database = {
         }
         Relationships: []
       }
+      stage_lines_persist: {
+        Row: {
+          line: string | null
+        }
+        Insert: {
+          line?: string | null
+        }
+        Update: {
+          line?: string | null
+        }
+        Relationships: []
+      }
       staging_reddit_comments: {
         Row: {
           author: string | null
@@ -965,14 +1097,17 @@ export type Database = {
       }
       symbol_disambig: {
         Row: {
+          cashtag_only: boolean
           keywords: string[]
           symbol: string
         }
         Insert: {
+          cashtag_only?: boolean
           keywords: string[]
           symbol: string
         }
         Update: {
+          cashtag_only?: boolean
           keywords?: string[]
           symbol?: string
         }
@@ -1005,6 +1140,69 @@ export type Database = {
           sector?: string | null
           symbol?: string
           updated_at?: string
+        }
+        Relationships: []
+      }
+      trades: {
+        Row: {
+          audit: Json | null
+          created_at: string
+          entry_price: number
+          entry_ts: string
+          exit_price: number | null
+          exit_ts: string | null
+          fees_total: number
+          horizon: string
+          mode: string
+          notes: string | null
+          opened_by: string | null
+          qty: number
+          side: string
+          source: string | null
+          status: string
+          symbol: string
+          trade_date: string
+          trade_id: string
+        }
+        Insert: {
+          audit?: Json | null
+          created_at?: string
+          entry_price: number
+          entry_ts?: string
+          exit_price?: number | null
+          exit_ts?: string | null
+          fees_total?: number
+          horizon: string
+          mode: string
+          notes?: string | null
+          opened_by?: string | null
+          qty?: number
+          side: string
+          source?: string | null
+          status?: string
+          symbol: string
+          trade_date: string
+          trade_id?: string
+        }
+        Update: {
+          audit?: Json | null
+          created_at?: string
+          entry_price?: number
+          entry_ts?: string
+          exit_price?: number | null
+          exit_ts?: string | null
+          fees_total?: number
+          horizon?: string
+          mode?: string
+          notes?: string | null
+          opened_by?: string | null
+          qty?: number
+          side?: string
+          source?: string | null
+          status?: string
+          symbol?: string
+          trade_date?: string
+          trade_id?: string
         }
         Relationships: []
       }
@@ -1127,6 +1325,33 @@ export type Database = {
         }
         Relationships: []
       }
+      reddit_daily_sentiment_v1: {
+        Row: {
+          avg_confidence: number | null
+          avg_score: number | null
+          day: string | null
+          doc_type: string | null
+          n_neg: number | null
+          n_neu: number | null
+          n_pos: number | null
+          n_scored: number | null
+          symbol: string | null
+        }
+        Relationships: []
+      }
+      reddit_mentions_all: {
+        Row: {
+          body_text: string | null
+          content_len: number | null
+          created_utc: string | null
+          doc_id: string | null
+          doc_type: string | null
+          post_id: string | null
+          subreddit: string | null
+          title: string | null
+        }
+        Relationships: []
+      }
       reddit_posts: {
         Row: {
           created_utc: string | null
@@ -1160,6 +1385,39 @@ export type Database = {
         }
         Relationships: []
       }
+      reddit_posts_std: {
+        Row: {
+          created_utc: string | null
+          num_comments: number | null
+          permalink: string | null
+          post_id: string | null
+          score: number | null
+          selftext: string | null
+          subreddit: string | null
+          title: string | null
+        }
+        Insert: {
+          created_utc?: string | null
+          num_comments?: number | null
+          permalink?: string | null
+          post_id?: never
+          score?: number | null
+          selftext?: string | null
+          subreddit?: string | null
+          title?: string | null
+        }
+        Update: {
+          created_utc?: string | null
+          num_comments?: number | null
+          permalink?: string | null
+          post_id?: never
+          score?: number | null
+          selftext?: string | null
+          subreddit?: string | null
+          title?: string | null
+        }
+        Relationships: []
+      }
       tmp_symbol_disambig: {
         Row: {
           exclude_keywords: string[] | null
@@ -1178,6 +1436,31 @@ export type Database = {
           symbol: string | null
           trades: number | null
           win_rate: number | null
+        }
+        Relationships: []
+      }
+      v_daily_pnl_by_symbol: {
+        Row: {
+          mark_date: string | null
+          mode: string | null
+          n_closed: number | null
+          n_open: number | null
+          realized_pnl: number | null
+          symbol: string | null
+          total_pnl: number | null
+          unrealized_pnl: number | null
+        }
+        Relationships: []
+      }
+      v_daily_pnl_rollups: {
+        Row: {
+          mark_date: string | null
+          mode: string | null
+          n_closed: number | null
+          n_open: number | null
+          realized_pnl: number | null
+          total_pnl: number | null
+          unrealized_pnl: number | null
         }
         Relationships: []
       }
