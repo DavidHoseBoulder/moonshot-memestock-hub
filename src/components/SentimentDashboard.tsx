@@ -321,7 +321,6 @@ const SentimentDashboard = () => {
       let { data: candidatesData } = await supabase
         .from('v_reddit_candidates_today')
         .select('*')
-        .eq('triggered', true)
         .order('used_score', { ascending: false, nullsFirst: false })
         .order('symbol', { ascending: true })
         .order('horizon', { ascending: true });
@@ -330,7 +329,6 @@ const SentimentDashboard = () => {
         const { data: fallbackCandidates } = await supabase
           .from('v_reddit_candidates_last_trading_day')
           .select('*')
-          .eq('triggered', true)
           .order('used_score', { ascending: false, nullsFirst: false })
           .order('symbol', { ascending: true })
           .order('horizon', { ascending: true });
