@@ -28,8 +28,8 @@ interface RedditCandidate {
   trade_date: string;
   symbol: string;
   horizon: string;
-  min_mentions: number;
-  pos_thresh: number;
+  min_mentions?: number | null;
+  pos_thresh?: number | null;
   used_score: number | null;
   n_mentions: number;
   triggered: boolean;
@@ -168,12 +168,12 @@ const CandidateCard = ({ candidate, existingTrade, onNewTrade }: {
       <div className="grid grid-cols-2 gap-3 mb-3">
         <div>
           <div className="text-sm text-muted-foreground">Mentions</div>
-          <div className="text-base font-semibold text-foreground">{candidate.n_mentions} / {candidate.min_mentions}</div>
+          <div className="text-base font-semibold text-foreground">{candidate.n_mentions} / {candidate.min_mentions ?? '—'}</div>
         </div>
         <div>
           <div className="text-sm text-muted-foreground">Score</div>
           <div className={`text-base font-semibold ${getSentimentColor(candidate.used_score)}`}>
-            {candidate.used_score !== null ? candidate.used_score.toFixed(2) : 'N/A'} / {candidate.pos_thresh.toFixed(2)}
+            {candidate.used_score != null ? candidate.used_score.toFixed(2) : 'N/A'} / {candidate.pos_thresh != null ? candidate.pos_thresh.toFixed(2) : '—'}
           </div>
         </div>
       </div>
