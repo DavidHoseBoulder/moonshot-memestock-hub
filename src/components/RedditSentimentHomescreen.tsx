@@ -139,7 +139,7 @@ const RedditSentimentHomescreen = () => {
   const fetchTriggeredCandidates = async () => {
     console.log('🎯 Fetching triggered candidates...');
     try {
-      // Since triggered_candidates table doesn't exist, use recent trades as proxy for triggered candidates
+      // Use recent trades as proxy for triggered candidates since triggered_candidates table doesn't exist
       const { data: tradesData, error: tradesError } = await supabase
         .from('trades')
         .select('symbol, horizon, side, entry_price, trade_date, status, notes')
