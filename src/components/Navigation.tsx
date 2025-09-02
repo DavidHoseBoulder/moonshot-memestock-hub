@@ -1,10 +1,6 @@
 
 import {
   BarChart3,
-  Database,
-  FileText,
-  LayoutDashboard,
-  ListChecks,
   MessageSquare,
   Settings,
   Target,
@@ -28,13 +24,11 @@ import {
 } from "@/components/ui/sidebar"
 
 const navItems = [
-  { path: "/", icon: TrendingUp, label: "Dashboard" },
-  { path: "/trades", icon: DollarSign, label: "Portfolio & Trades" },
-  { path: "/trading-pipeline", icon: Target, label: "Daily Pipeline" },
-  { path: "/sentiment", icon: MessageSquare, label: "Sentiment Analysis" },
-  { path: "/backtesting", icon: BarChart3, label: "Strategy Testing" },
-  { path: "/reports", icon: FileText, label: "AI Reports" },
-  { path: "/bulk-import", icon: Database, label: "Bulk Import" },
+  { path: "/", icon: TrendingUp, label: "Home" },
+  { path: "/candidates", icon: Target, label: "Triggered Candidates" },
+  { path: "/sentiment", icon: MessageSquare, label: "Sentiment" },
+  { path: "/portfolio", icon: DollarSign, label: "Portfolio & Trades" },
+  { path: "/backtesting", icon: BarChart3, label: "Backtesting" },
 ];
 
 export function NavigationSidebar() {
@@ -80,8 +74,11 @@ export function Navigation() {
       <div className="min-h-screen flex w-full">
         <NavigationSidebar />
         <div className="flex-1">
-          <header className="h-12 flex items-center border-b px-4">
+          <header className="h-12 flex items-center justify-between border-b px-4">
             <SidebarTrigger />
+            <button className="p-2 hover:bg-muted rounded-md">
+              <Settings className="w-4 h-4" />
+            </button>
           </header>
         </div>
       </div>

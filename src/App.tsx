@@ -44,14 +44,17 @@ const App: React.FC = () => {
       <Routes>
         <Route path="/auth" element={<Auth />} />
         <Route path="/" element={<ProtectedRoute><Index /></ProtectedRoute>} />
-        <Route path="/trading-pipeline" element={<ProtectedRoute><TradingPipeline /></ProtectedRoute>} />
+        <Route path="/candidates" element={<ProtectedRoute><TriggeredCandidatesDashboard /></ProtectedRoute>} />
         <Route path="/sentiment" element={<ProtectedRoute><SentimentDashboardPage /></ProtectedRoute>} />
-        <Route path="/triggered-candidates" element={<ProtectedRoute><TriggeredCandidatesDashboard /></ProtectedRoute>} />
+        <Route path="/portfolio" element={<ProtectedRoute><Trades /></ProtectedRoute>} />
+        <Route path="/backtesting" element={<ProtectedRoute><Backtesting /></ProtectedRoute>} />
         <Route path="/bulk-import" element={<ProtectedRoute><BulkImport /></ProtectedRoute>} />
         <Route path="/dev/extraction-tester" element={<ProtectedRoute><ExtractionTester /></ProtectedRoute>} />
-        <Route path="/backtesting" element={<ProtectedRoute><Backtesting /></ProtectedRoute>} />
         <Route path="/reports" element={<ProtectedRoute><Reports /></ProtectedRoute>} />
-        <Route path="/trades" element={<ProtectedRoute><Trades /></ProtectedRoute>} />
+        {/* Legacy redirects */}
+        <Route path="/trades" element={<Navigate to="/portfolio" replace />} />
+        <Route path="/triggered-candidates" element={<Navigate to="/candidates" replace />} />
+        <Route path="/trading-pipeline" element={<Navigate to="/" replace />} />
         <Route path="*" element={<NotFound />} />
       </Routes>
       <Toaster />
