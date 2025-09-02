@@ -491,7 +491,7 @@ const RedditSentimentHomescreen = () => {
             <Button 
               variant="outline" 
               size="sm"
-              onClick={() => navigate('/sentiment-dashboard')}
+              onClick={() => navigate('/triggered-candidates')}
             >
               View All
               <ArrowRight className="w-4 h-4 ml-2" />

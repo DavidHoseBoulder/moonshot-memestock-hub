@@ -12,6 +12,7 @@ import ExtractionTester from "./pages/ExtractionTester";
 import Backtesting from "./pages/Backtesting";
 import Reports from "./pages/Reports";
 import Trades from "./pages/Trades";
+import TriggeredCandidatesDashboard from "./components/TriggeredCandidatesDashboard";
 import { Toaster } from "@/components/ui/toaster";
 
 
@@ -45,6 +46,7 @@ const App: React.FC = () => {
         <Route path="/" element={<ProtectedRoute><Index /></ProtectedRoute>} />
         <Route path="/trading-pipeline" element={<ProtectedRoute><TradingPipeline /></ProtectedRoute>} />
         <Route path="/sentiment" element={<ProtectedRoute><SentimentDashboardPage /></ProtectedRoute>} />
+        <Route path="/triggered-candidates" element={<ProtectedRoute><TriggeredCandidatesDashboard /></ProtectedRoute>} />
         <Route path="/bulk-import" element={<ProtectedRoute><BulkImport /></ProtectedRoute>} />
         <Route path="/dev/extraction-tester" element={<ProtectedRoute><ExtractionTester /></ProtectedRoute>} />
         <Route path="/backtesting" element={<ProtectedRoute><Backtesting /></ProtectedRoute>} />
