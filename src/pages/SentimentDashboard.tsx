@@ -1,104 +1,107 @@
+import { useSearchParams } from 'react-router-dom';
 import TriggeredCandidatesDashboard from "@/components/TriggeredCandidatesDashboard";
 import SentimentDashboard from "@/components/SentimentDashboard";
 import RedditSentimentDashboard from "@/components/RedditSentimentDashboard";
+import RedditSentimentHomescreen from "@/components/RedditSentimentHomescreen";
 import GradeConfigAdmin from "@/components/GradeConfigAdmin";
 import SentimentHistoryViewer from "@/components/SentimentHistoryViewer";
 import SentimentVelocityTracker from "@/components/SentimentVelocityTracker";
 import SentimentCoverageMonitor from "@/components/SentimentCoverageMonitor";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { MessageSquare, History, Zap, Activity, Settings, BarChart3 } from "lucide-react";
+import { MessageSquare, History, Zap, Activity, Settings, BarChart3, Home } from "lucide-react";
 import { SentimentOrchestrationDashboard } from "@/components/SentimentOrchestrationDashboard";
 
 const SentimentDashboardPage = () => {
-  // Focus on Reddit-only for MVP - sample data for future multi-source features
-  const sampleDataSources = [
-    {
-      name: "Reddit",
-      status: "active" as const,
-      coverage: 100,
-      lastUpdate: new Date(),
-    }
-  ];
-
-  const tickerCoverage = {
-    total: 50,
-    withSentiment: 32,
-    withTechnical: 45,
-    zeroSentiment: 18
-  };
-
+  const [searchParams] = useSearchParams();
+  const defaultTab = searchParams.get('tab') || 'homescreen';
+  
   // Sample symbols for velocity tracker  
   const sampleSymbols = ['TSLA', 'AAPL', 'NVDA', 'AMD', 'GME'];
 
   return (
-    <div className="container mx-auto p-6 space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold text-foreground">Reddit Sentiment Dashboard</h1>
-          <p className="text-muted-foreground">
-            Reddit-focused sentiment analysis and trading signals (MVP)
-          </p>
+    <div className="min-h-screen">
+      <Tabs defaultValue={defaultTab} className="space-y-6">
+        <div className="container mx-auto px-6 pt-6">
+          <TabsList className="grid w-full grid-cols-8">
+            <TabsTrigger value="homescreen" className="flex items-center gap-2">
+              <Home className="w-4 h-4" />
+              Home
+            </TabsTrigger>
+            <TabsTrigger value="triggered-candidates" className="flex items-center gap-2">
+              <BarChart3 className="w-4 h-4" />
+              Triggered Candidates
+            </TabsTrigger>
+            <TabsTrigger value="reddit-sentiment" className="flex items-center gap-2">
+              <BarChart3 className="w-4 h-4" />
+              Reddit Sentiment
+            </TabsTrigger>
+            <TabsTrigger value="dashboard" className="flex items-center gap-2">
+              <MessageSquare className="w-4 h-4" />
+              Trading Dashboard
+            </TabsTrigger>
+            <TabsTrigger value="history" className="flex items-center gap-2">
+              <History className="w-4 h-4" />
+              Sentiment History
+            </TabsTrigger>
+            <TabsTrigger value="velocity" className="flex items-center gap-2">
+              <Zap className="w-4 h-4" />
+              Velocity Tracker
+            </TabsTrigger>
+            <TabsTrigger value="coverage" className="flex items-center gap-2">
+              <Activity className="w-4 h-4" />
+              Data Coverage
+            </TabsTrigger>
+            <TabsTrigger value="grade-config" className="flex items-center gap-2">
+              <Settings className="w-4 h-4" />
+              Grade Config
+            </TabsTrigger>
+          </TabsList>
         </div>
-      </div>
 
-      <Tabs defaultValue="triggered-candidates" className="space-y-6">
-        <TabsList className="grid w-full grid-cols-7">
-          <TabsTrigger value="triggered-candidates" className="flex items-center gap-2">
-            <BarChart3 className="w-4 h-4" />
-            Triggered Candidates
-          </TabsTrigger>
-          <TabsTrigger value="reddit-sentiment" className="flex items-center gap-2">
-            <BarChart3 className="w-4 h-4" />
-            Reddit Sentiment
-          </TabsTrigger>
-          <TabsTrigger value="dashboard" className="flex items-center gap-2">
-            <MessageSquare className="w-4 h-4" />
-            Trading Dashboard
-          </TabsTrigger>
-          <TabsTrigger value="history" className="flex items-center gap-2">
-            <History className="w-4 h-4" />
-            Sentiment History
-          </TabsTrigger>
-          <TabsTrigger value="velocity" className="flex items-center gap-2">
-            <Zap className="w-4 h-4" />
-            Velocity Tracker
-          </TabsTrigger>
-          <TabsTrigger value="coverage" className="flex items-center gap-2">
-            <Activity className="w-4 h-4" />
-            Data Coverage
-          </TabsTrigger>
-          <TabsTrigger value="grade-config" className="flex items-center gap-2">
-            <Settings className="w-4 h-4" />
-            Grade Config
-          </TabsTrigger>
-        </TabsList>
+        <TabsContent value="homescreen" className="space-y-6">
+          <RedditSentimentHomescreen />
+        </TabsContent>
 
         <TabsContent value="triggered-candidates" className="space-y-6">
-          <TriggeredCandidatesDashboard />
+          <div className="container mx-auto p-6">
+            <TriggeredCandidatesDashboard />
+          </div>
         </TabsContent>
 
         <TabsContent value="reddit-sentiment" className="space-y-6">
-          <RedditSentimentDashboard />
+          <div className="container mx-auto p-6">
+            <RedditSentimentDashboard />
+          </div>
         </TabsContent>
 
         <TabsContent value="dashboard" className="space-y-6">
-          <SentimentDashboard />
+          <div className="container mx-auto p-6">
+            <SentimentDashboard />
+          </div>
         </TabsContent>
 
         <TabsContent value="history" className="space-y-6">
-          <SentimentHistoryViewer />
+          <div className="container mx-auto p-6">
+            <SentimentHistoryViewer />
+          </div>
         </TabsContent>
 
         <TabsContent value="velocity" className="space-y-6">
-          <SentimentVelocityTracker symbols={sampleSymbols} />
+          <div className="container mx-auto p-6">
+            <SentimentVelocityTracker symbols={sampleSymbols} />
+          </div>
         </TabsContent>
 
         <TabsContent value="coverage" className="space-y-6">
-          <SentimentCoverageMonitor />
+          <div className="container mx-auto p-6">
+            <SentimentCoverageMonitor />
+          </div>
         </TabsContent>
 
         <TabsContent value="grade-config" className="space-y-6">
-          <GradeConfigAdmin />
+          <div className="container mx-auto p-6">
+            <GradeConfigAdmin />
+          </div>
         </TabsContent>
 
       </Tabs>

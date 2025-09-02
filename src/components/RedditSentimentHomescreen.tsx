@@ -1,0 +1,636 @@
+import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
+import { Skeleton } from '@/components/ui/skeleton';
+import { supabase } from '@/integrations/supabase/client';
+import { useToast } from '@/hooks/use-toast';
+import { todayInDenverDateString } from '@/utils/timezone';
+import { 
+  RefreshCw, 
+  Target, 
+  Eye, 
+  BarChart3, 
+  Beaker,
+  TrendingUp, 
+  TrendingDown, 
+  Activity,
+  DollarSign,
+  ArrowRight
+} from 'lucide-react';
+
+// Types
+interface KPIData {
+  openPositions: { count: number; exposure: number } | null;
+  unrealizedPnL: { amount: number; percentage: number } | null;
+  closed30d: { count: number; hitRate: number } | null;
+  totalRealized30d: { amount: number; avgPercentage: number } | null;
+}
+
+interface TriggeredCandidate {
+  symbol: string;
+  horizon: string;
+  side: string;
+  grade: 'Strong' | 'Moderate' | 'Weak';
+  mentions: number;
+  sharpe: number;
+  avg_ret: number;
+  win_rate: number;
+  trades: number;
+  start_date: string;
+  end_date: string;
+  notes: string | null;
+  status: 'TRIGGERED' | 'Active' | 'Closed';
+  isNew?: boolean;
+}
+
+interface MonitoringCandidate {
+  symbol: string;
+  horizon: string;
+  mentions: number;
+  score: number;
+}
+
+interface RedditSignal {
+  symbol: string;
+  mentions: number;
+  score: number;
+  sentiment: 'Bullish' | 'Neutral' | 'Bearish';
+}
+
+const RedditSentimentHomescreen = () => {
+  const [lastUpdated, setLastUpdated] = useState<Date>(new Date());
+  const [tradingDate, setTradingDate] = useState<string>(todayInDenverDateString());
+  const [kpiData, setKpiData] = useState<KPIData>({
+    openPositions: null,
+    unrealizedPnL: null,
+    closed30d: null,
+    totalRealized30d: null,
+  });
+  const [triggeredCandidates, setTriggeredCandidates] = useState<TriggeredCandidate[]>([]);
+  const [monitoringCandidates, setMonitoringCandidates] = useState<MonitoringCandidate[]>([]);
+  const [redditSignals, setRedditSignals] = useState<RedditSignal[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+
+  const { toast } = useToast();
+  const navigate = useNavigate();
+
+  // Helper functions
+  const formatCurrency = (value: number) => 
+    new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(value);
+
+  const formatPercent = (value: number) => 
+    `${value > 0 ? '+' : ''}${(value * 100).toFixed(1)}%`;
+
+  const formatDate = (date: string) => 
+    new Date(date + 'T12:00:00').toLocaleDateString('en-US', { 
+      month: 'short', 
+      day: 'numeric', 
+      year: 'numeric' 
+    });
+
+  const getStrengthOrder = (grade: string) => {
+    const order = { 'Strong': 1, 'Moderate': 2, 'Weak': 3 };
+    return order[grade as keyof typeof order] || 4;
+  };
+
+  const getHoldDays = (horizon: string): number => 
+    parseInt(horizon.replace(/\D/g, ''), 10);
+
+  // Data fetching functions
+  const fetchKPIData = async () => {
+    try {
+      // Fetch open positions and unrealized P&L
+      const { data: pnlData } = await supabase
+        .from('v_daily_pnl_rollups')
+        .select('*')
+        .eq('mark_date', tradingDate)
+        .maybeSingle();
+
+      // Mock data for now - replace with actual queries
+      setKpiData({
+        openPositions: pnlData ? { count: pnlData.n_open || 0, exposure: 25000 } : null,
+        unrealizedPnL: pnlData ? { amount: pnlData.unrealized_pnl || 0, percentage: 0.023 } : null,
+        closed30d: { count: 12, hitRate: 0.75 },
+        totalRealized30d: { amount: 2450, avgPercentage: 0.032 },
+      });
+    } catch (error) {
+      console.error('Error fetching KPI data:', error);
+    }
+  };
+
+  const fetchTriggeredCandidates = async () => {
+    try {
+      // Use direct API call since the view might not be in types
+      const response = await fetch(
+        `https://pdgjafywsxesgwukotxh.supabase.co/rest/v1/v_triggered_with_backtest?select=*&order=grade.asc,sharpe.desc`,
+        {
+          headers: {
+            'apikey': 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBkZ2phZnl3c3hlc2d3dWtvdHhoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTQ0MTU3NDMsImV4cCI6MjA2OTk5MTc0M30.41ABGjZKbgivTTlkHT2V-hJ6otFLz15dQgmsmz9ruQw',
+            'Authorization': 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBkZ2phZnl3c3hlc2d3dWtvdHhoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTQ0MTU3NDMsImV4cCI6MjA2OTk5MTc0M30.41ABGjZKbgivTTlkHT2V-hJ6otFLz15dQgmsmz9ruQw',
+            'Content-Type': 'application/json'
+          }
+        }
+      );
+
+      if (response.ok) {
+        const data = await response.json();
+        const processed = data.map((item: any) => ({
+          symbol: item.symbol,
+          horizon: item.horizon,
+          side: item.side,
+          grade: item.grade,
+          mentions: item.mentions || 0,
+          sharpe: item.sharpe || 0,
+          avg_ret: item.avg_ret || 0,
+          win_rate: item.win_rate || 0,
+          trades: item.trades || 0,
+          start_date: item.start_date,
+          end_date: item.end_date,
+          notes: item.notes,
+          status: 'TRIGGERED' as const,
+          isNew: false, // Would need logic to determine if first-seen today
+        }));
+
+        setTriggeredCandidates(processed);
+      }
+    } catch (error) {
+      console.error('Error fetching triggered candidates:', error);
+    }
+  };
+
+  const fetchMonitoringCandidates = async () => {
+    try {
+      const { data } = await supabase
+        .from('v_reddit_candidates_last_trading_day')
+        .select('symbol, horizon, n_mentions, used_score')
+        .eq('triggered', false)
+        .gte('used_score', 0.1)
+        .order('used_score', { ascending: false })
+        .order('n_mentions', { ascending: false })
+        .limit(5);
+
+      if (data) {
+        const processed = data.map((item: any) => ({
+          symbol: item.symbol,
+          horizon: item.horizon,
+          mentions: item.n_mentions || 0,
+          score: item.used_score || 0,
+        }));
+
+        setMonitoringCandidates(processed);
+      }
+    } catch (error) {
+      console.error('Error fetching monitoring candidates:', error);
+    }
+  };
+
+  const fetchRedditSignals = async () => {
+    try {
+      const { data } = await supabase
+        .from('v_reddit_daily_signals')
+        .select('symbol, n_mentions, used_score')
+        .eq('trade_date', tradingDate)
+        .order('used_score', { ascending: false })
+        .limit(20);
+
+      if (data) {
+        const processed = data.map((item: any) => {
+          const score = item.used_score || 0;
+          let sentiment: 'Bullish' | 'Neutral' | 'Bearish';
+          
+          if (score > 0.1) {
+            sentiment = 'Bullish';
+          } else if (score < -0.1) {
+            sentiment = 'Bearish';
+          } else {
+            sentiment = 'Neutral';
+          }
+
+          return {
+            symbol: item.symbol,
+            mentions: item.n_mentions || 0,
+            score: score,
+            sentiment: sentiment,
+          };
+        });
+
+        setRedditSignals(processed);
+      }
+    } catch (error) {
+      console.error('Error fetching reddit signals:', error);
+    }
+  };
+
+  const fetchAllData = async () => {
+    setIsLoading(true);
+    await Promise.all([
+      fetchKPIData(),
+      fetchTriggeredCandidates(),
+      fetchMonitoringCandidates(),
+      fetchRedditSignals(),
+    ]);
+    setLastUpdated(new Date());
+    setIsLoading(false);
+  };
+
+  const handleRefresh = async () => {
+    setIsRefreshing(true);
+    await fetchAllData();
+    setIsRefreshing(false);
+    toast({
+      title: 'Data Refreshed',
+      description: `Updated at ${lastUpdated.toLocaleTimeString()}`,
+    });
+  };
+
+  useEffect(() => {
+    fetchAllData();
+  }, []);
+
+  // Group triggered candidates by symbol
+  const groupedCandidates = triggeredCandidates.reduce((acc, candidate) => {
+    if (!acc[candidate.symbol]) {
+      acc[candidate.symbol] = [];
+    }
+    acc[candidate.symbol].push(candidate);
+    return acc;
+  }, {} as Record<string, TriggeredCandidate[]>);
+
+  // Sort symbols by best grade and sharpe
+  const sortedSymbols = Object.keys(groupedCandidates).sort((a, b) => {
+    const aGrades = groupedCandidates[a].map(c => getStrengthOrder(c.grade));
+    const bGrades = groupedCandidates[b].map(c => getStrengthOrder(c.grade));
+    const aBestGrade = Math.min(...aGrades);
+    const bBestGrade = Math.min(...bGrades);
+    
+    if (aBestGrade !== bBestGrade) {
+      return aBestGrade - bBestGrade;
+    }
+    
+    const aBestSharpe = Math.max(...groupedCandidates[a].map(c => c.sharpe));
+    const bBestSharpe = Math.max(...groupedCandidates[b].map(c => c.sharpe));
+    return bBestSharpe - aBestSharpe;
+  });
+
+  return (
+    <div className="container mx-auto p-6 space-y-8">
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-3xl font-bold text-foreground">Reddit Sentiment Dashboard</h1>
+          <p className="text-muted-foreground">
+            Last updated {lastUpdated.toLocaleTimeString()} • Market closed — showing last trading day ({formatDate(tradingDate)})
+          </p>
+        </div>
+        <Button onClick={handleRefresh} disabled={isRefreshing}>
+          <RefreshCw className={`w-4 h-4 mr-2 ${isRefreshing ? 'animate-spin' : ''}`} />
+          Refresh
+        </Button>
+      </div>
+
+      {/* KPIs */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <Card 
+          className="cursor-pointer hover:shadow-md transition-shadow"
+          onClick={() => navigate('/trades')}
+        >
+          <CardContent className="p-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-muted-foreground">Open Positions</p>
+                <div className="flex items-baseline gap-2">
+                  {kpiData.openPositions ? (
+                    <>
+                      <p className="text-2xl font-bold">{kpiData.openPositions.count}</p>
+                      <p className="text-sm text-muted-foreground">
+                        {formatCurrency(kpiData.openPositions.exposure)}
+                      </p>
+                    </>
+                  ) : (
+                    <Skeleton className="h-8 w-16" />
+                  )}
+                </div>
+              </div>
+              <Activity className="w-5 h-5 text-muted-foreground" />
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card 
+          className="cursor-pointer hover:shadow-md transition-shadow"
+          onClick={() => navigate('/trades')}
+        >
+          <CardContent className="p-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-muted-foreground">Unrealized P&L</p>
+                {kpiData.unrealizedPnL ? (
+                  <>
+                    <p className={`text-2xl font-bold ${
+                      kpiData.unrealizedPnL.amount >= 0 ? 'text-green-600' : 'text-red-600'
+                    }`}>
+                      {formatCurrency(kpiData.unrealizedPnL.amount)}
+                    </p>
+                    <p className="text-sm text-muted-foreground">
+                      {formatPercent(kpiData.unrealizedPnL.percentage)}
+                    </p>
+                  </>
+                ) : (
+                  <Skeleton className="h-8 w-20" />
+                )}
+              </div>
+              <DollarSign className="w-5 h-5 text-muted-foreground" />
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card 
+          className="cursor-pointer hover:shadow-md transition-shadow"
+          onClick={() => navigate('/trades')}
+        >
+          <CardContent className="p-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-muted-foreground">Closed (30d)</p>
+                <div className="flex items-baseline gap-2">
+                  {kpiData.closed30d ? (
+                    <>
+                      <p className="text-2xl font-bold">{kpiData.closed30d.count}</p>
+                      <p className="text-sm text-muted-foreground">
+                        {formatPercent(kpiData.closed30d.hitRate)} hit
+                      </p>
+                    </>
+                  ) : (
+                    <Skeleton className="h-8 w-16" />
+                  )}
+                </div>
+              </div>
+              <Target className="w-5 h-5 text-muted-foreground" />
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card 
+          className="cursor-pointer hover:shadow-md transition-shadow"
+          onClick={() => navigate('/trades')}
+        >
+          <CardContent className="p-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-muted-foreground">Total Realized (30d)</p>
+                {kpiData.totalRealized30d ? (
+                  <>
+                    <p className={`text-2xl font-bold ${
+                      kpiData.totalRealized30d.amount >= 0 ? 'text-green-600' : 'text-red-600'
+                    }`}>
+                      {formatCurrency(kpiData.totalRealized30d.amount)}
+                    </p>
+                    <p className="text-sm text-muted-foreground">
+                      avg {formatPercent(kpiData.totalRealized30d.avgPercentage)}
+                    </p>
+                  </>
+                ) : (
+                  <Skeleton className="h-8 w-20" />
+                )}
+              </div>
+              <TrendingUp className="w-5 h-5 text-muted-foreground" />
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Today's Triggered Candidates */}
+      <Card>
+        <CardHeader>
+          <div className="flex items-center justify-between">
+            <CardTitle className="flex items-center gap-2">
+              <Target className="w-5 h-5" />
+              Today's Triggered Candidates
+            </CardTitle>
+            <Button 
+              variant="outline" 
+              size="sm"
+              onClick={() => navigate('/sentiment-dashboard')}
+            >
+              View All
+              <ArrowRight className="w-4 h-4 ml-2" />
+            </Button>
+          </div>
+        </CardHeader>
+        <CardContent>
+          {isLoading ? (
+            <div className="space-y-4">
+              {[1, 2, 3].map(i => (
+                <div key={i} className="flex items-center justify-between p-4 border rounded-lg">
+                  <div className="space-y-2">
+                    <Skeleton className="h-6 w-20" />
+                    <Skeleton className="h-4 w-40" />
+                  </div>
+                  <Skeleton className="h-8 w-16" />
+                </div>
+              ))}
+            </div>
+          ) : sortedSymbols.length === 0 ? (
+            <div className="text-center py-8 text-muted-foreground">
+              <Target className="w-12 h-12 mx-auto mb-4 opacity-50" />
+              <p>No triggered candidates today</p>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {sortedSymbols.slice(0, 5).map(symbol => {
+                const candidates = groupedCandidates[symbol];
+                const bestCandidate = candidates[0];
+                
+                return (
+                  <div key={symbol} className="border rounded-lg p-4">
+                    <div className="flex items-center justify-between mb-3">
+                      <div className="flex items-center gap-3">
+                        <h3 className="text-lg font-bold">{symbol}</h3>
+                        <Badge variant={bestCandidate.status === 'TRIGGERED' ? 'default' : 'outline'}>
+                          {bestCandidate.status}
+                        </Badge>
+                        {bestCandidate.isNew && (
+                          <Badge variant="secondary" className="text-xs">New</Badge>
+                        )}
+                      </div>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => navigate(`/sentiment-dashboard?symbol=${symbol}`)}
+                      >
+                        View
+                      </Button>
+                    </div>
+                    
+                    {/* Horizons */}
+                    <div className="space-y-2">
+                      {candidates.map((candidate, idx) => {
+                        const holdDays = getHoldDays(candidate.horizon);
+                        
+                        return (
+                          <div key={idx} className="flex items-center justify-between text-sm">
+                            <div className="flex items-center gap-2">
+                              <span className="font-medium">{candidate.horizon}</span>
+                              <Badge 
+                                variant={candidate.grade === 'Strong' ? 'default' : 
+                                        candidate.grade === 'Moderate' ? 'outline' : 'secondary'}
+                                className="text-xs"
+                              >
+                                {candidate.grade}
+                              </Badge>
+                            </div>
+                            <div className="text-xs text-muted-foreground">
+                              Trades={candidate.trades} • Avg {formatPercent(candidate.avg_ret)} • 
+                              Win {formatPercent(candidate.win_rate)} • Sharpe {candidate.sharpe.toFixed(1)} ({formatDate(candidate.start_date)}—{formatDate(candidate.end_date)})
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                    
+                    {/* Notes */}
+                    {bestCandidate.notes && bestCandidate.notes.trim().length > 0 && (
+                      <div className="mt-3 text-xs text-muted-foreground border-t pt-2">
+                        <div className="line-clamp-2">{bestCandidate.notes}</div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Monitoring & Today's Reddit Signals Row */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Monitoring */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Eye className="w-5 h-5" />
+              Monitoring
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            {isLoading ? (
+              <div className="space-y-3">
+                {[1, 2, 3, 4, 5].map(i => (
+                  <div key={i} className="flex items-center justify-between">
+                    <Skeleton className="h-4 w-16" />
+                    <Skeleton className="h-4 w-24" />
+                  </div>
+                ))}
+              </div>
+            ) : monitoringCandidates.length === 0 ? (
+              <div className="text-center py-6 text-muted-foreground">
+                <Eye className="w-8 h-8 mx-auto mb-2 opacity-50" />
+                <p>No candidates under monitoring</p>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {monitoringCandidates.map((candidate, idx) => (
+                  <div 
+                    key={idx} 
+                    className="flex items-center justify-between cursor-pointer hover:bg-muted/50 p-2 rounded"
+                    onClick={() => navigate(`/sentiment-dashboard?symbol=${candidate.symbol}`)}
+                  >
+                    <div className="flex items-center gap-2">
+                      <span className="font-medium">{candidate.symbol}</span>
+                      <span className="text-sm text-muted-foreground">{candidate.horizon}</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm">{candidate.mentions} mentions</span>
+                      <span className="text-sm font-medium">{candidate.score.toFixed(2)}</span>
+                      <Badge variant="outline" className="text-xs">Bullish</Badge>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Today's Reddit Signals */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <BarChart3 className="w-5 h-5" />
+              Today's Reddit Signals
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            {isLoading ? (
+              <div className="flex gap-3 overflow-x-auto pb-2">
+                {[1, 2, 3, 4, 5].map(i => (
+                  <div key={i} className="flex-shrink-0 p-3 border rounded-lg w-32">
+                    <Skeleton className="h-4 w-12 mb-2" />
+                    <Skeleton className="h-3 w-16 mb-1" />
+                    <Skeleton className="h-3 w-14" />
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="flex gap-3 overflow-x-auto pb-2">
+                {redditSignals.slice(0, 10).map((signal, idx) => (
+                  <div 
+                    key={idx}
+                    className="flex-shrink-0 p-3 border rounded-lg cursor-pointer hover:shadow-md transition-shadow min-w-[120px]"
+                    onClick={() => navigate(`/sentiment-dashboard?symbol=${signal.symbol}`)}
+                  >
+                    <div className="font-medium text-sm">{signal.symbol}</div>
+                    <div className="text-xs text-muted-foreground">{signal.mentions} mentions</div>
+                    <div className="text-xs font-medium">{signal.score.toFixed(2)}</div>
+                    <Badge 
+                      variant={signal.sentiment === 'Bullish' ? 'default' : 
+                              signal.sentiment === 'Bearish' ? 'destructive' : 'outline'}
+                      className="text-xs mt-1"
+                    >
+                      {signal.sentiment}
+                    </Badge>
+                  </div>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Backtesting */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Beaker className="w-5 h-5" />
+            Backtesting
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="flex items-center justify-between">
+            <div className="space-y-1">
+              <p className="font-medium">Run New Backtest</p>
+              <p className="text-sm text-muted-foreground">
+                Last used: TSLA • 5d horizon
+              </p>
+            </div>
+            <div className="flex gap-2">
+              <Button 
+                variant="outline"
+                onClick={() => navigate('/backtesting')}
+              >
+                Manual
+              </Button>
+              <Button onClick={() => navigate('/backtesting')}>
+                AI Optimize
+              </Button>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+    </div>
+  );
+};
+
+export default RedditSentimentHomescreen;
