@@ -13,12 +13,12 @@ const PolygonRealTimeImport = () => {
     try {
       setIsImporting(true);
 
-      // Get symbols from the most recent available date instead of today's date
+      // Get symbols from the most recent available date from enhanced_market_data
       const { data: tickersData, error: tickersError } = await supabase
-        .from('daily_sentiment_candidates')
-        .select('symbol, d, triggered')
-        .order('d', { ascending: false })
-        .order('triggered', { ascending: false })
+        .from('enhanced_market_data')
+        .select('symbol')
+        .order('data_date', { ascending: false })
+        .order('created_at', { ascending: false })
         .limit(50);
 
       if (tickersError) throw tickersError;
