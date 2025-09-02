@@ -46,6 +46,12 @@ const signedPct = (x: number | null): string => {
 const fmt2 = (x: number | null): string => x === null ? "—" : Number(x).toFixed(2);
 const splitNotes = (notes: string | null): string[] => notes?.split('|').map(s => s.trim()).filter(Boolean) ?? [];
 
+// Extract strength from grade_explain (split on ':' and take first part)
+const getStrength = (gradeExplain: string): string => gradeExplain.split(':')[0].trim();
+
+// Extract hold days from horizon (remove non-digits and parse)
+const getHoldDays = (horizon: string): number => parseInt(horizon.replace(/\D/g, ''), 10);
+
 // Form schema for trade creation
 const newTradeSchema = z.object({
   symbol: z.string().min(1, 'Symbol is required'),
@@ -147,9 +153,20 @@ const TriggeredCandidatesDashboard: React.FC = () => {
       return matchesGrade && matchesSymbol;
     });
 
-    // Sort candidates - already ordered by grade priority in query
+    // Sort candidates
     filtered.sort((a, b) => {
-      if (sortBy === 'sharpe') {
+      if (sortBy === 'strength') {
+        // Sort by strength first, then by sharpe
+        const strengthOrder = { 'Strong': 1, 'Moderate': 2, 'Weak': 3 };
+        const strengthA = strengthOrder[a.grade as keyof typeof strengthOrder] || 4;
+        const strengthB = strengthOrder[b.grade as keyof typeof strengthOrder] || 4;
+        
+        if (strengthA !== strengthB) {
+          return strengthA - strengthB;
+        }
+        // If same strength, sort by sharpe descending
+        return (b.sharpe || 0) - (a.sharpe || 0);
+      } else if (sortBy === 'sharpe') {
         return (b.sharpe || 0) - (a.sharpe || 0);
       } else if (sortBy === 'trades') {
         return (b.trades || 0) - (a.trades || 0);
@@ -290,11 +307,12 @@ const TriggeredCandidatesDashboard: React.FC = () => {
               <SelectTrigger className="w-32">
                 <SelectValue />
               </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="sharpe">Sharpe</SelectItem>
-                <SelectItem value="trades">Trades</SelectItem>
-                <SelectItem value="symbol">Symbol</SelectItem>
-              </SelectContent>
+                  <SelectContent>
+                    <SelectItem value="strength">Strength</SelectItem>
+                    <SelectItem value="sharpe">Sharpe</SelectItem>
+                    <SelectItem value="trades">Trades</SelectItem>
+                    <SelectItem value="symbol">Symbol</SelectItem>
+                  </SelectContent>
             </Select>
           </div>
         </div>
