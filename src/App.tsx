@@ -12,6 +12,7 @@ import ExtractionTester from "./pages/ExtractionTester";
 import Backtesting from "./pages/Backtesting";
 import Reports from "./pages/Reports";
 import Trades from "./pages/Trades";
+import { Toaster } from "@/components/ui/toaster";
 
 
 const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -51,6 +52,7 @@ const App: React.FC = () => {
         <Route path="/trades" element={<ProtectedRoute><Trades /></ProtectedRoute>} />
         <Route path="*" element={<NotFound />} />
       </Routes>
+      <Toaster />
     </BrowserRouter>
   );
 };
