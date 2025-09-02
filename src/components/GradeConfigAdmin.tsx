@@ -459,8 +459,8 @@ const GradeConfigAdmin: React.FC = () => {
           </CardTitle>
         </CardHeader>
         <CardContent className="text-sm text-muted-foreground space-y-2">
-          <div><strong>Strong:</strong> Sharpe ≥ strong_sharpe AND Trades ≥ strong_trades AND (require_pos_avg ? avg_ret &gt; 0 : true)</div>
-          <div><strong>Moderate:</strong> Sharpe ≥ moderate_sharpe AND Trades ≥ moderate_trades AND (require_pos_avg ? avg_ret &gt; 0 : true)</div>
+          <div><strong>Strong:</strong> Sharpe ≥ strong_sharpe AND Trades ≥ strong_trades AND (require_pos_avg ? avg_ret {"> 0"} : true)</div>
+          <div><strong>Moderate:</strong> Sharpe ≥ moderate_sharpe AND Trades ≥ moderate_trades AND (require_pos_avg ? avg_ret {"> 0"} : true)</div>
           <div><strong>Wildcards:</strong> Use * for horizon and/or side to create default fallback configurations</div>
         </CardContent>
       </Card>
