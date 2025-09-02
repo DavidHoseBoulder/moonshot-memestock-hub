@@ -71,16 +71,17 @@ const DailyPnLWidget = () => {
       if (error) throw error;
 
       const latest = data?.mark_date || new Date().toISOString().split('T')[0];
+      const today = new Date().toISOString().split('T')[0];
       setLatestDate(latest);
       if (!selectedDate) {
-        setSelectedDate(latest);
+        setSelectedDate(today); // Default to today's date instead of latest DB date
       }
     } catch (error: any) {
       console.error('Error fetching latest date:', error);
       const fallback = new Date().toISOString().split('T')[0];
       setLatestDate(fallback);
       if (!selectedDate) {
-        setSelectedDate(fallback);
+        setSelectedDate(fallback); // This is already today's date, so it's correct
       }
     }
   };

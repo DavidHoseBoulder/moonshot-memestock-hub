@@ -39,6 +39,10 @@ interface RedditCandidate {
   win_rate?: number;
   trades?: number;
   sharpe?: number;
+  start_date?: string;
+  end_date?: string;
+  model_version?: string;
+  min_conf?: number | null;
 }
 
 interface ExistingTrade {
@@ -222,10 +226,14 @@ const CandidateCard = ({ candidate, existingTrade, onNewTrade }: {
               </Button>
             </div>
           )}
+          
+          {/* Backtest Statistics for Triggered Candidates */}
+          <BacktestStats candidate={candidate} />
         </div>
       )}
 
-      {(candidate.avg_ret !== undefined || candidate.win_rate !== undefined || candidate.trades !== undefined) && (
+      {/* Historical Performance for Non-Triggered Candidates */}
+      {!candidate.triggered && (candidate.trades !== undefined || candidate.avg_ret !== undefined || candidate.win_rate !== undefined) && (
         <div className="mt-3 pt-3 border-t border-border">
           <div className="text-sm text-muted-foreground mb-2">Historical Performance</div>
           <div className="grid grid-cols-3 gap-2 text-xs">
@@ -251,6 +259,73 @@ const CandidateCard = ({ candidate, existingTrade, onNewTrade }: {
         </div>
       )}
     </Card>
+  );
+};
+
+// BacktestStats component for triggered candidates
+const BacktestStats = ({ candidate }: { candidate: RedditCandidate }) => {
+  // Don't show stats if no backtest data
+  if (!candidate.trades && !candidate.avg_ret && !candidate.win_rate && !candidate.sharpe) {
+    return (
+      <div className="mt-2 p-2 bg-muted/30 rounded text-xs text-muted-foreground text-center">
+        No backtest history
+      </div>
+    );
+  }
+
+  // Calculate qualitative tag
+  const getQualityTag = () => {
+    const sharpe = candidate.sharpe || 0;
+    const trades = candidate.trades || 0;
+    
+    if (sharpe >= 2 && trades >= 10) return { label: "Strong", color: "text-green-600 dark:text-green-400" };
+    if (sharpe >= 1 && trades >= 5) return { label: "Moderate", color: "text-yellow-600 dark:text-yellow-400" };
+    return { label: "Weak", color: "text-red-600 dark:text-red-400" };
+  };
+
+  const qualityTag = getQualityTag();
+
+  // Helper to get color for numeric values
+  const getValueColor = (value: number | null | undefined) => {
+    if (value === null || value === undefined) return "text-muted-foreground";
+    if (value > 0) return "text-green-600 dark:text-green-400";
+    if (value < 0) return "text-red-600 dark:text-red-400";
+    return "text-muted-foreground";
+  };
+
+  const formatDate = (dateStr: string | undefined) => {
+    if (!dateStr) return "";
+    return new Date(dateStr).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: '2-digit' });
+  };
+
+  return (
+    <div className="mt-2 p-2 bg-muted/30 rounded text-xs">
+      <div className="flex items-center justify-between mb-1">
+        <span className="text-muted-foreground">Backtest:</span>
+        <span className={`font-medium px-1.5 py-0.5 rounded text-xs ${qualityTag.color} bg-opacity-20`}>
+          [{qualityTag.label}]
+        </span>
+      </div>
+      <div className="space-y-0.5">
+        <div className="flex items-center justify-between">
+          <span>
+            Trades={candidate.trades || 'N/A'}, 
+            AvgRet=<span className={getValueColor(candidate.avg_ret)}>
+              {candidate.avg_ret ? `${(candidate.avg_ret * 100).toFixed(1)}%` : 'N/A'}
+            </span>, 
+            Win={candidate.win_rate ? `${Math.round(candidate.win_rate * 100)}%` : 'N/A'}, 
+            Sharpe=<span className={getValueColor(candidate.sharpe)}>
+              {candidate.sharpe ? candidate.sharpe.toFixed(1) : 'N/A'}
+            </span>
+          </span>
+        </div>
+        {(candidate.start_date || candidate.end_date) && (
+          <div className="text-muted-foreground">
+            {formatDate(candidate.start_date)} - {formatDate(candidate.end_date)}
+          </div>
+        )}
+      </div>
+    </div>
   );
 };
 
@@ -364,7 +439,60 @@ const SentimentDashboard = () => {
 
       setCandidates(candidatesData || []);
 
-      // 3. Fetch existing trades for triggered candidates (both open and closed)
+      // 3. For triggered candidates only, fetch backtest statistics
+      if (candidatesData && candidatesData.length > 0) {
+        const triggeredCandidates = candidatesData.filter(c => c.triggered);
+        
+        if (triggeredCandidates.length > 0) {
+          // Fetch backtest stats from live_sentiment_entry_rules for triggered candidates
+          const backtestPromises = triggeredCandidates.map(async (candidate) => {
+            // Try to find matching backtest data without model_version since it's not in the view
+            const { data: backtestData } = await supabase
+              .from('live_sentiment_entry_rules')
+              .select('trades, avg_ret, win_rate, sharpe, start_date, end_date')
+              .eq('symbol', candidate.symbol)
+              .eq('horizon', candidate.horizon)
+              .eq('pos_thresh', candidate.pos_thresh)
+              .eq('min_mentions', candidate.min_mentions)
+              .eq('use_weighted', candidate.use_weighted || false)
+              .maybeSingle();
+            
+            return {
+              candidateKey: `${candidate.symbol}-${candidate.horizon}`,
+              backtest: backtestData
+            };
+          });
+          
+          const backtestResults = await Promise.all(backtestPromises);
+          
+          // Enhance candidates with backtest data
+          const enhancedCandidates = candidatesData.map(candidate => {
+            if (!candidate.triggered) return candidate;
+            
+            const backtestResult = backtestResults.find(
+              result => result.candidateKey === `${candidate.symbol}-${candidate.horizon}`
+            );
+            
+            if (backtestResult?.backtest) {
+              return {
+                ...candidate,
+                trades: backtestResult.backtest.trades,
+                avg_ret: backtestResult.backtest.avg_ret,
+                win_rate: backtestResult.backtest.win_rate,
+                sharpe: backtestResult.backtest.sharpe,
+                start_date: backtestResult.backtest.start_date,
+                end_date: backtestResult.backtest.end_date
+              };
+            }
+            
+            return candidate;
+          });
+          
+          setCandidates(enhancedCandidates);
+        }
+      }
+
+      // 4. Fetch existing trades for triggered candidates (both open and closed)
       if (candidatesData && candidatesData.length > 0) {
         const triggeredSymbols = candidatesData
           .filter(c => c.triggered)
