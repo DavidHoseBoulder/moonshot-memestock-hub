@@ -139,55 +139,34 @@ const RedditSentimentHomescreen = () => {
   const fetchTriggeredCandidates = async () => {
     console.log('🎯 Fetching triggered candidates...');
     try {
-      // Use recent trades as proxy for triggered candidates since triggered_candidates table doesn't exist
-      const { data: tradesData, error: tradesError } = await supabase
-        .from('trades')
-        .select('symbol, horizon, side, entry_price, trade_date, status, notes')
-        .order('trade_date', { ascending: false })
+      const { data, error } = await supabase
+        .from('live_sentiment_entry_rules')
+        .select('*')
+        .eq('is_enabled', true)
+        .order('priority', { ascending: true })
+        .order('sharpe', { ascending: false })
         .limit(20);
 
-      if (tradesError) {
-        console.error('❌ Trades query error:', tradesError);
-        throw tradesError;
+      if (error) {
+        console.error('❌ Triggered candidates query error:', error);
+        throw error;
       }
 
-      console.log('🎯 Recent trades:', tradesData?.length || 0);
+      console.log('🎯 Triggered candidates received:', data?.length || 0, 'items');
 
-      if (!tradesData || tradesData.length === 0) {
+      if (!data || data.length === 0) {
         setTriggeredCandidates([]);
         return;
       }
 
-      // Get backtest data for these symbols
-      const symbols = [...new Set(tradesData.map(item => item.symbol))];
-      const { data: backtestData, error: backtestError } = await supabase
-        .from('backtest_sweep_results')
-        .select('symbol, horizon, side, avg_ret, win_rate, sharpe, trades, start_date, end_date')
-        .in('symbol', symbols)
-        .order('sharpe', { ascending: false });
-
-      if (backtestError) {
-        console.warn('⚠️ Backtest data query warning:', backtestError);
-      }
-
-      console.log('📊 Backtest data:', backtestData?.length || 0);
-
-      // Process trades with backtest data
-      const processed = tradesData.map((item: any) => {
-        const backtest = backtestData?.find(b => 
-          b.symbol === item.symbol && 
-          b.horizon === item.horizon && 
-          b.side === item.side
-        );
-
-        // Determine grade based on backtest performance
+      // Process data from live_sentiment_entry_rules
+      const processed = data.map((item: any) => {
         let grade: 'Strong' | 'Moderate' | 'Weak' = 'Weak';
-        if (backtest) {
-          if (backtest.sharpe >= 2.0 && backtest.trades >= 10) {
-            grade = 'Strong';
-          } else if (backtest.sharpe >= 1.0 && backtest.trades >= 5) {
-            grade = 'Moderate';
-          }
+        
+        if (item.sharpe >= 2.0 && item.trades >= 6) {
+          grade = 'Strong';
+        } else if (item.sharpe >= 1.0 && item.trades >= 4) {
+          grade = 'Moderate';
         }
 
         return {
@@ -195,15 +174,15 @@ const RedditSentimentHomescreen = () => {
           horizon: item.horizon,
           side: item.side,
           grade,
-          mentions: 0, // Not available from trades
-          sharpe: backtest?.sharpe || 0,
-          avg_ret: backtest?.avg_ret || 0,
-          win_rate: backtest?.win_rate || 0,
-          trades: backtest?.trades || 0,
-          start_date: backtest?.start_date || '',
-          end_date: backtest?.end_date || '',
+          mentions: item.min_mentions || 0,
+          sharpe: item.sharpe || 0,
+          avg_ret: item.avg_ret || 0,
+          win_rate: item.win_rate || 0,
+          trades: item.trades || 0,
+          start_date: item.start_date || '',
+          end_date: item.end_date || '',
           notes: item.notes || '',
-          status: item.status === 'OPEN' ? 'Active' : 'Closed' as 'TRIGGERED' | 'Active' | 'Closed',
+          status: 'Active' as 'TRIGGERED' | 'Active' | 'Closed',
           isNew: false,
         };
       });
