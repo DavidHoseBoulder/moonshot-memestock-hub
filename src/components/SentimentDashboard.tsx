@@ -361,28 +361,41 @@ const SentimentDashboard = () => {
 
   const fetchRedditData = async () => {
     setIsLoading(true);
+    console.log('🎯 SentimentDashboard: Starting data fetch...');
     
     try {
       let usedFallback = false;
       let dataDate: Date | null = null;
       const today = todayInDenverDateString(); // YYYY-MM-DD format
 
+      console.log('📊 Fetching reddit daily signals...');
       // 1. Try today's signals first, fallback if empty
-      let { data: signalsData } = await supabase
+      let { data: signalsData, error: signalsError } = await supabase
         .from('v_reddit_daily_signals')
         .select('*')
         .order('trade_date', { ascending: false })
         .limit(20);
 
+      if (signalsError) {
+        console.error('❌ Reddit daily signals error:', signalsError);
+        throw signalsError;
+      }
+
+      console.log('📊 Reddit signals received:', signalsData?.length || 0, 'items');
+
       if (!signalsData || signalsData.length === 0) {
-        const { data: fallbackSignals } = await supabase
+        console.log('🔄 Trying fallback reddit signals...');
+        const { data: fallbackSignals, error: fallbackError } = await supabase
           .from('v_reddit_daily_signals_last_trading_day')
           .select('*')
           .limit(20);
 
-        if (fallbackSignals && fallbackSignals.length > 0) {
+        if (fallbackError) {
+          console.error('❌ Fallback reddit signals error:', fallbackError);
+        } else if (fallbackSignals && fallbackSignals.length > 0) {
           signalsData = fallbackSignals;
           usedFallback = true;
+          console.log('✅ Fallback reddit signals worked:', fallbackSignals.length, 'items');
         }
       }
 
@@ -394,25 +407,38 @@ const SentimentDashboard = () => {
 
       setRedditSignals(signalsData || []);
 
+      console.log('👀 Fetching reddit candidates...');
       // 2. Try today's candidates first, fallback if empty
-      let { data: candidatesData } = await supabase
+      let { data: candidatesData, error: candidatesError } = await supabase
         .from('v_reddit_candidates_today')
         .select('*')
         .order('used_score', { ascending: false, nullsFirst: false })
         .order('symbol', { ascending: true })
         .order('horizon', { ascending: true });
 
+      if (candidatesError) {
+        console.error('❌ Reddit candidates error:', candidatesError);
+        // Continue with empty data instead of throwing
+        candidatesData = [];
+      } else {
+        console.log('👀 Reddit candidates received:', candidatesData?.length || 0, 'items');
+      }
+
       if (!candidatesData || candidatesData.length === 0) {
-        const { data: fallbackCandidates } = await supabase
+        console.log('🔄 Trying fallback reddit candidates...');
+        const { data: fallbackCandidates, error: fallbackCandidatesError } = await supabase
           .from('v_reddit_candidates_last_trading_day')
           .select('*')
           .order('used_score', { ascending: false, nullsFirst: false })
           .order('symbol', { ascending: true })
           .order('horizon', { ascending: true });
 
-        if (fallbackCandidates && fallbackCandidates.length > 0) {
+        if (fallbackCandidatesError) {
+          console.error('❌ Fallback reddit candidates error:', fallbackCandidatesError);
+        } else if (fallbackCandidates && fallbackCandidates.length > 0) {
           candidatesData = fallbackCandidates;
           usedFallback = true;
+          console.log('✅ Fallback reddit candidates worked:', fallbackCandidates.length, 'items');
           // If we didn't get a date from signals, get it from candidates
           if (!dataDateString && fallbackCandidates.length > 0) {
             dataDateString = fallbackCandidates[0].trade_date;
@@ -441,59 +467,74 @@ const SentimentDashboard = () => {
 
       setCandidates(candidatesData || []);
 
+      console.log('📈 Processing triggered candidates for backtest stats...');
       // 3. For triggered candidates only, fetch backtest statistics
       if (candidatesData && candidatesData.length > 0) {
         const triggeredCandidates = candidatesData.filter(c => c.triggered);
+        console.log('🎯 Found', triggeredCandidates.length, 'triggered candidates');
+        
         
         if (triggeredCandidates.length > 0) {
+          console.log('📊 Fetching backtest stats for triggered candidates...');
           // Fetch backtest stats from live_sentiment_entry_rules for triggered candidates
-          const backtestPromises = triggeredCandidates.map(async (candidate) => {
-            // Try to find matching backtest data without model_version since it's not in the view
-            const { data: backtestData } = await supabase
-              .from('live_sentiment_entry_rules')
-              .select('trades, avg_ret, win_rate, sharpe, start_date, end_date')
-              .eq('symbol', candidate.symbol)
-              .eq('horizon', candidate.horizon)
-              .eq('pos_thresh', candidate.pos_thresh)
-              .eq('min_mentions', candidate.min_mentions)
-              .eq('use_weighted', candidate.use_weighted || false)
-              .maybeSingle();
-            
-            return {
-              candidateKey: `${candidate.symbol}-${candidate.horizon}`,
-              backtest: backtestData
-            };
-          });
-          
-          const backtestResults = await Promise.all(backtestPromises);
-          
-          // Enhance candidates with backtest data
-          const enhancedCandidates = candidatesData.map(candidate => {
-            if (!candidate.triggered) return candidate;
-            
-            const backtestResult = backtestResults.find(
-              result => result.candidateKey === `${candidate.symbol}-${candidate.horizon}`
-            );
-            
-            if (backtestResult?.backtest) {
+          try {
+            const backtestPromises = triggeredCandidates.map(async (candidate) => {
+              // Try to find matching backtest data without model_version since it's not in the view
+              const { data: backtestData, error: backtestError } = await supabase
+                .from('live_sentiment_entry_rules')
+                .select('trades, avg_ret, win_rate, sharpe, start_date, end_date')
+                .eq('symbol', candidate.symbol)
+                .eq('horizon', candidate.horizon)
+                .eq('pos_thresh', candidate.pos_thresh)
+                .eq('min_mentions', candidate.min_mentions)
+                .eq('use_weighted', candidate.use_weighted || false)
+                .maybeSingle();
+              
+              if (backtestError) {
+                console.error(`❌ Backtest error for ${candidate.symbol}:`, backtestError);
+              }
+              
               return {
-                ...candidate,
-                trades: backtestResult.backtest.trades,
-                avg_ret: backtestResult.backtest.avg_ret,
-                win_rate: backtestResult.backtest.win_rate,
-                sharpe: backtestResult.backtest.sharpe,
-                start_date: backtestResult.backtest.start_date,
-                end_date: backtestResult.backtest.end_date
+                candidateKey: `${candidate.symbol}-${candidate.horizon}`,
+                backtest: backtestData
               };
-            }
+            });
             
-            return candidate;
-          });
-          
-          setCandidates(enhancedCandidates);
+            const backtestResults = await Promise.all(backtestPromises);
+            console.log('📊 Backtest results received for', backtestResults.length, 'candidates');
+            
+            // Enhance candidates with backtest data
+            const enhancedCandidates = candidatesData.map(candidate => {
+              if (!candidate.triggered) return candidate;
+              
+              const backtestResult = backtestResults.find(
+                result => result.candidateKey === `${candidate.symbol}-${candidate.horizon}`
+              );
+              
+              if (backtestResult?.backtest) {
+                return {
+                  ...candidate,
+                  trades: backtestResult.backtest.trades,
+                  avg_ret: backtestResult.backtest.avg_ret,
+                  win_rate: backtestResult.backtest.win_rate,
+                  sharpe: backtestResult.backtest.sharpe,
+                  start_date: backtestResult.backtest.start_date,
+                  end_date: backtestResult.backtest.end_date
+                };
+              }
+              
+              return candidate;
+            });
+            
+            setCandidates(enhancedCandidates);
+          } catch (backtestError) {
+            console.error('❌ Error fetching backtest stats:', backtestError);
+            setCandidates(candidatesData);
+          }
         }
       }
 
+      console.log('💼 Fetching existing trades...');
       // 4. Fetch existing trades for triggered candidates (both open and closed)
       if (candidatesData && candidatesData.length > 0) {
         const triggeredSymbols = candidatesData
@@ -501,23 +542,30 @@ const SentimentDashboard = () => {
           .map(c => c.symbol);
         
         if (triggeredSymbols.length > 0) {
-          const { data: tradesData } = await supabase
-            .from('trades' as any)
-            .select('trade_id, symbol, side, horizon, mode, status, trade_date, entry_price, exit_price')
-            .in('symbol', triggeredSymbols)
-            .in('status', ['OPEN', 'open', 'CLOSED', 'closed'])
-            .order('created_at', { ascending: false });
+          try {
+            const { data: tradesData, error: tradesError } = await supabase
+              .from('trades' as any)
+              .select('trade_id, symbol, side, horizon, mode, status, trade_date, entry_price, exit_price')
+              .in('symbol', triggeredSymbols)
+              .in('status', ['OPEN', 'open', 'CLOSED', 'closed'])
+              .order('created_at', { ascending: false });
 
-          if (tradesData) {
-            const tradesMap: Record<string, ExistingTrade> = {};
-            tradesData.forEach((trade: any) => {
-              const key = `${trade.symbol}-${trade.horizon}`;
-              // Prioritize open trades over closed ones
-              if (!tradesMap[key] || ((tradesMap[key].status === 'closed' || tradesMap[key].status === 'CLOSED') && (trade.status === 'open' || trade.status === 'OPEN'))) {
-                tradesMap[key] = trade;
-              }
-            });
-            setExistingTrades(tradesMap);
+            if (tradesError) {
+              console.error('❌ Trades fetch error:', tradesError);
+            } else if (tradesData) {
+              console.log('💼 Trades received:', tradesData.length, 'items');
+              const tradesMap: Record<string, ExistingTrade> = {};
+              tradesData.forEach((trade: any) => {
+                const key = `${trade.symbol}-${trade.horizon}`;
+                // Prioritize open trades over closed ones
+                if (!tradesMap[key] || ((tradesMap[key].status === 'closed' || tradesMap[key].status === 'CLOSED') && (trade.status === 'open' || trade.status === 'OPEN'))) {
+                  tradesMap[key] = trade;
+                }
+              });
+              setExistingTrades(tradesMap);
+            }
+          } catch (tradesError) {
+            console.error('❌ Error fetching trades:', tradesError);
           }
         }
       }
@@ -527,13 +575,14 @@ const SentimentDashboard = () => {
       setAsOfDate(dataDate);
       setLastUpdate(new Date());
       
+      console.log('✅ Reddit data fetch completed successfully');
       toast({
         title: "Reddit Data Updated",
         description: `Loaded ${signalsData?.length || 0} signals, ${candidatesData?.length || 0} candidates${usedFallback ? ' (last trading day)' : ''}`,
       });
 
     } catch (error) {
-      console.error('Error:', error);
+      console.error('❌ Critical error in fetchRedditData:', error);
       toast({
         title: "Connection error",
         description: "Failed to fetch Reddit sentiment data",
@@ -541,6 +590,7 @@ const SentimentDashboard = () => {
       });
     } finally {
       setIsLoading(false);
+      console.log('🎯 SentimentDashboard: Data fetch finished');
     }
   };
 
