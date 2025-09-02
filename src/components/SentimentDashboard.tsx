@@ -15,6 +15,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import { Link } from 'react-router-dom';
 import DailyPnLWidget from './DailyPnLWidget';
+import { todayInDenverDateString, formatDateInDenver } from '@/utils/timezone';
 
 interface RedditDailySignal {
   trade_date: string;
@@ -351,7 +352,7 @@ const SentimentDashboard = () => {
       side: "LONG",
       horizon: "3d",
       mode: "paper",
-      trade_date: new Date().toISOString().split('T')[0],
+      trade_date: todayInDenverDateString(),
       qty: "1",
       fees_bps: "0",
       slippage_bps: "0",
@@ -364,7 +365,7 @@ const SentimentDashboard = () => {
     try {
       let usedFallback = false;
       let dataDate: Date | null = null;
-      const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD format
+      const today = todayInDenverDateString(); // YYYY-MM-DD format
 
       // 1. Try today's signals first, fallback if empty
       let { data: signalsData } = await supabase
@@ -592,7 +593,7 @@ const SentimentDashboard = () => {
       side: candidate.side as "LONG" | "SHORT",
       horizon: candidate.horizon as "1d" | "3d" | "5d" | "10d",
       mode: "paper",
-      trade_date: new Date().toISOString().split('T')[0],
+      trade_date: todayInDenverDateString(),
       qty: "1",
       fees_bps: "0",
       slippage_bps: "0",

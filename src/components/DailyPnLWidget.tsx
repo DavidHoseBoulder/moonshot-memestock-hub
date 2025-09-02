@@ -8,6 +8,7 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/co
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { Calendar, DollarSign, TrendingUp, TrendingDown, Activity, ArrowUpDown, ExternalLink } from 'lucide-react';
+import { todayInDenverDateString } from '@/utils/timezone';
 
 interface DailyPnLRollup {
   mark_date: string;
@@ -70,15 +71,15 @@ const DailyPnLWidget = () => {
 
       if (error) throw error;
 
-      const latest = data?.mark_date || new Date().toISOString().split('T')[0];
-      const today = new Date().toISOString().split('T')[0];
+      const latest = data?.mark_date || todayInDenverDateString();
+      const today = todayInDenverDateString();
       setLatestDate(latest);
       if (!selectedDate) {
         setSelectedDate(today); // Default to today's date instead of latest DB date
       }
     } catch (error: any) {
       console.error('Error fetching latest date:', error);
-      const fallback = new Date().toISOString().split('T')[0];
+      const fallback = todayInDenverDateString();
       setLatestDate(fallback);
       if (!selectedDate) {
         setSelectedDate(fallback); // This is already today's date, so it's correct

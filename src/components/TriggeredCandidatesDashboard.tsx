@@ -52,15 +52,7 @@ const getStrength = (gradeExplain: string): string => gradeExplain.split(':')[0]
 // Extract hold days from horizon (remove non-digits and parse)
 const getHoldDays = (horizon: string): number => parseInt(horizon.replace(/\D/g, ''), 10);
 
-// Today's date in America/Denver (yyyy-MM-dd)
-const todayInDenverDateString = (): string => {
-  const now = new Date();
-  const denverNow = new Date(now.toLocaleString('en-US', { timeZone: 'America/Denver' }));
-  const y = denverNow.getFullYear();
-  const m = String(denverNow.getMonth() + 1).padStart(2, '0');
-  const d = String(denverNow.getDate()).padStart(2, '0');
-  return `${y}-${m}-${d}`;
-};
+import { todayInDenverDateString } from '@/utils/timezone';
 
 // Form schema for trade creation
 const newTradeSchema = z.object({

@@ -18,6 +18,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Textarea } from "@/components/ui/textarea";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
+import { todayInDenverDateString } from '@/utils/timezone';
 import * as z from "zod";
 
 interface Trade {
@@ -138,14 +139,14 @@ const TradesOverview = () => {
   // Fetch latest date from trades table
   const fetchLatestDate = async () => {
     try {
-      const fallback = new Date().toISOString().split('T')[0];
+      const fallback = todayInDenverDateString();
       setLatestDate(fallback);
       if (!selectedDate) {
         setSelectedDate(fallback);
       }
     } catch (error: any) {
       console.error('Error setting date:', error);
-      const fallback = new Date().toISOString().split('T')[0];
+      const fallback = todayInDenverDateString();
       setLatestDate(fallback);
       if (!selectedDate) {
         setSelectedDate(fallback);
@@ -258,7 +259,7 @@ const TradesOverview = () => {
       side: "LONG",
       horizon: "3d",
       mode: "paper",
-      trade_date: new Date().toISOString().split('T')[0],
+      trade_date: todayInDenverDateString(),
       qty: "1",
       fees_bps: "0",
       slippage_bps: "0",

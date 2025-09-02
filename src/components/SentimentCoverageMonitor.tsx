@@ -5,6 +5,7 @@ import { Progress } from "@/components/ui/progress";
 import { CheckCircle, Clock, TrendingUp, RefreshCw } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
+import { todayInDenverDateString } from '@/utils/timezone';
 
 interface RedditCoverage {
   totalTickers: number;
@@ -37,7 +38,7 @@ export const SentimentCoverageMonitor: React.FC<SentimentCoverageProps> = ({
   const fetchCoverageData = async () => {
     setIsLoading(true);
     try {
-      const today = new Date().toISOString().split('T')[0];
+      const today = todayInDenverDateString();
       
       // First try to get universe from live_sentiment_entry_rules for stable denominator
       let totalUniverse = 0;
