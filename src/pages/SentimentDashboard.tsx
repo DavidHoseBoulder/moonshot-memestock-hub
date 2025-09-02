@@ -1,6 +1,7 @@
 import TriggeredCandidatesDashboard from "@/components/TriggeredCandidatesDashboard";
 import SentimentDashboard from "@/components/SentimentDashboard";
 import RedditSentimentDashboard from "@/components/RedditSentimentDashboard";
+import GradeConfigAdmin from "@/components/GradeConfigAdmin";
 import SentimentHistoryViewer from "@/components/SentimentHistoryViewer";
 import SentimentVelocityTracker from "@/components/SentimentVelocityTracker";
 import SentimentCoverageMonitor from "@/components/SentimentCoverageMonitor";
@@ -41,7 +42,7 @@ const SentimentDashboardPage = () => {
       </div>
 
       <Tabs defaultValue="triggered-candidates" className="space-y-6">
-        <TabsList className="grid w-full grid-cols-6">
+        <TabsList className="grid w-full grid-cols-7">
           <TabsTrigger value="triggered-candidates" className="flex items-center gap-2">
             <BarChart3 className="w-4 h-4" />
             Triggered Candidates
@@ -65,6 +66,10 @@ const SentimentDashboardPage = () => {
           <TabsTrigger value="coverage" className="flex items-center gap-2">
             <Activity className="w-4 h-4" />
             Data Coverage
+          </TabsTrigger>
+          <TabsTrigger value="grade-config" className="flex items-center gap-2">
+            <Settings className="w-4 h-4" />
+            Grade Config
           </TabsTrigger>
         </TabsList>
 
@@ -90,6 +95,10 @@ const SentimentDashboardPage = () => {
 
         <TabsContent value="coverage" className="space-y-6">
           <SentimentCoverageMonitor />
+        </TabsContent>
+
+        <TabsContent value="grade-config" className="space-y-6">
+          <GradeConfigAdmin />
         </TabsContent>
 
       </Tabs>
