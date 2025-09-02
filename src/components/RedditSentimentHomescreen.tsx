@@ -137,55 +137,97 @@ const RedditSentimentHomescreen = () => {
   };
 
   const fetchTriggeredCandidates = async () => {
+    console.log('🎯 Fetching triggered candidates...');
     try {
-      // Use direct API call since the view might not be in types
-      const response = await fetch(
-        `https://pdgjafywsxesgwukotxh.supabase.co/rest/v1/v_triggered_with_backtest?select=*&order=grade.asc,sharpe.desc`,
-        {
-          headers: {
-            'apikey': 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBkZ2phZnl3c3hlc2d3dWtvdHhoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTQ0MTU3NDMsImV4cCI6MjA2OTk5MTc0M30.41ABGjZKbgivTTlkHT2V-hJ6otFLz15dQgmsmz9ruQw',
-            'Authorization': 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBkZ2phZnl3c3hlc2d3dWtvdHhoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTQ0MTU3NDMsImV4cCI6MjA2OTk5MTc0M30.41ABGjZKbgivTTlkHT2V-hJ6otFLz15dQgmsmz9ruQw',
-            'Content-Type': 'application/json'
+      // Since triggered_candidates table doesn't exist, use recent trades as proxy for triggered candidates
+      const { data: tradesData, error: tradesError } = await supabase
+        .from('trades')
+        .select('symbol, horizon, side, entry_price, trade_date, status, notes')
+        .order('trade_date', { ascending: false })
+        .limit(20);
+
+      if (tradesError) {
+        console.error('❌ Trades query error:', tradesError);
+        throw tradesError;
+      }
+
+      console.log('🎯 Recent trades:', tradesData?.length || 0);
+
+      if (!tradesData || tradesData.length === 0) {
+        setTriggeredCandidates([]);
+        return;
+      }
+
+      // Get backtest data for these symbols
+      const symbols = [...new Set(tradesData.map(item => item.symbol))];
+      const { data: backtestData, error: backtestError } = await supabase
+        .from('backtest_sweep_results')
+        .select('symbol, horizon, side, avg_ret, win_rate, sharpe, trades, start_date, end_date')
+        .in('symbol', symbols)
+        .order('sharpe', { ascending: false });
+
+      if (backtestError) {
+        console.warn('⚠️ Backtest data query warning:', backtestError);
+      }
+
+      console.log('📊 Backtest data:', backtestData?.length || 0);
+
+      // Process trades with backtest data
+      const processed = tradesData.map((item: any) => {
+        const backtest = backtestData?.find(b => 
+          b.symbol === item.symbol && 
+          b.horizon === item.horizon && 
+          b.side === item.side
+        );
+
+        // Determine grade based on backtest performance
+        let grade: 'Strong' | 'Moderate' | 'Weak' = 'Weak';
+        if (backtest) {
+          if (backtest.sharpe >= 2.0 && backtest.trades >= 10) {
+            grade = 'Strong';
+          } else if (backtest.sharpe >= 1.0 && backtest.trades >= 5) {
+            grade = 'Moderate';
           }
         }
-      );
 
-      if (response.ok) {
-        const data = await response.json();
-        const processed = data.map((item: any) => ({
+        return {
           symbol: item.symbol,
           horizon: item.horizon,
           side: item.side,
-          grade: item.grade,
-          mentions: item.mentions || 0,
-          sharpe: item.sharpe || 0,
-          avg_ret: item.avg_ret || 0,
-          win_rate: item.win_rate || 0,
-          trades: item.trades || 0,
-          start_date: item.start_date,
-          end_date: item.end_date,
-          notes: item.notes,
-          status: 'TRIGGERED' as const,
-          isNew: false, // Would need logic to determine if first-seen today
-        }));
+          grade,
+          mentions: 0, // Not available from trades
+          sharpe: backtest?.sharpe || 0,
+          avg_ret: backtest?.avg_ret || 0,
+          win_rate: backtest?.win_rate || 0,
+          trades: backtest?.trades || 0,
+          start_date: backtest?.start_date || '',
+          end_date: backtest?.end_date || '',
+          notes: item.notes || '',
+          status: item.status === 'OPEN' ? 'Active' : 'Closed' as 'TRIGGERED' | 'Active' | 'Closed',
+          isNew: false,
+        };
+      });
 
-        setTriggeredCandidates(processed);
-      }
+      setTriggeredCandidates(processed);
+      console.log('✅ Triggered candidates processed:', processed.length);
     } catch (error) {
-      console.error('Error fetching triggered candidates:', error);
+      console.error('❌ Error fetching triggered candidates:', error);
+      setTriggeredCandidates([]);
     }
   };
 
   const fetchMonitoringCandidates = async () => {
     console.log('👀 Fetching monitoring candidates...');
     try {
+      // Use reddit_sentiment_daily table for monitoring candidates
       const { data, error } = await supabase
-        .from('v_reddit_candidates_last_trading_day')
-        .select('symbol, horizon, n_mentions, used_score')
-        .eq('triggered', false)
-        .gte('used_score', 0.1)
-        .order('used_score', { ascending: false })
-        .order('n_mentions', { ascending: false })
+        .from('reddit_sentiment_daily')
+        .select('symbol, mentions, avg_score')
+        .eq('day', tradingDate)
+        .gte('avg_score', 0.1)
+        .gte('mentions', 5)
+        .order('avg_score', { ascending: false })
+        .order('mentions', { ascending: false })
         .limit(5);
 
       if (error) {
@@ -198,9 +240,9 @@ const RedditSentimentHomescreen = () => {
       if (data) {
         const processed = data.map((item: any) => ({
           symbol: item.symbol,
-          horizon: item.horizon,
-          mentions: item.n_mentions || 0,
-          score: item.used_score || 0,
+          horizon: '1d', // Default horizon for monitoring
+          mentions: item.mentions || 0,
+          score: item.avg_score || 0,
         }));
 
         setMonitoringCandidates(processed);
@@ -217,10 +259,11 @@ const RedditSentimentHomescreen = () => {
     console.log('📈 Fetching reddit signals for date:', tradingDate);
     try {
       const { data, error } = await supabase
-        .from('v_reddit_daily_signals')
-        .select('symbol, n_mentions, used_score')
-        .eq('trade_date', tradingDate)
-        .order('used_score', { ascending: false })
+        .from('reddit_sentiment_daily')
+        .select('symbol, mentions, avg_score')
+        .eq('day', tradingDate)
+        .gte('mentions', 1)
+        .order('avg_score', { ascending: false })
         .limit(20);
 
       if (error) {
@@ -232,7 +275,7 @@ const RedditSentimentHomescreen = () => {
 
       if (data) {
         const processed = data.map((item: any) => {
-          const score = item.used_score || 0;
+          const score = item.avg_score || 0;
           let sentiment: 'Bullish' | 'Neutral' | 'Bearish';
           
           if (score > 0.1) {
@@ -245,7 +288,7 @@ const RedditSentimentHomescreen = () => {
 
           return {
             symbol: item.symbol,
-            mentions: item.n_mentions || 0,
+            mentions: item.mentions || 0,
             score: score,
             sentiment: sentiment,
           };
