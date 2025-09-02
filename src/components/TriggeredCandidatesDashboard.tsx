@@ -52,6 +52,16 @@ const getStrength = (gradeExplain: string): string => gradeExplain.split(':')[0]
 // Extract hold days from horizon (remove non-digits and parse)
 const getHoldDays = (horizon: string): number => parseInt(horizon.replace(/\D/g, ''), 10);
 
+// Today's date in America/Denver (yyyy-MM-dd)
+const todayInDenverDateString = (): string => {
+  const now = new Date();
+  const denverNow = new Date(now.toLocaleString('en-US', { timeZone: 'America/Denver' }));
+  const y = denverNow.getFullYear();
+  const m = String(denverNow.getMonth() + 1).padStart(2, '0');
+  const d = String(denverNow.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+};
+
 // Form schema for trade creation
 const newTradeSchema = z.object({
   symbol: z.string().min(1, 'Symbol is required'),
@@ -184,15 +194,34 @@ const TriggeredCandidatesDashboard: React.FC = () => {
     
     setIsSubmittingTrade(true);
     try {
+      const symbolUpper = formData.symbol.toUpperCase();
+      let entryPrice: number | null = formData.entry_price ? parseFloat(formData.entry_price) : null;
+
+      if (entryPrice == null || Number.isNaN(entryPrice)) {
+        const { data: latest, error: priceErr } = await supabase
+          .from('enhanced_market_data')
+          .select('price,timestamp')
+          .eq('symbol', symbolUpper)
+          .order('timestamp', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        if (priceErr) {
+          console.error('Error fetching market price:', priceErr);
+        }
+        if (latest && latest.price != null) {
+          entryPrice = Number(latest.price);
+        }
+      }
+
       const { error } = await supabase
         .from('trades')
         .insert({
-          symbol: formData.symbol.toUpperCase(),
+          symbol: symbolUpper,
           side: formData.side,
           horizon: formData.horizon,
           mode: formData.mode,
           trade_date: formData.trade_date,
-          entry_price: formData.entry_price ? parseFloat(formData.entry_price) : null,
+          entry_price: entryPrice,
           qty: parseFloat(formData.qty),
           notes: formData.notes || null,
           fees_total: formData.fees_bps ? parseFloat(formData.fees_bps) : 0,
@@ -204,7 +233,7 @@ const TriggeredCandidatesDashboard: React.FC = () => {
 
       toast({
         title: 'Trade Created',
-        description: `New ${formData.mode} trade for ${formData.symbol} created successfully`,
+        description: `New ${formData.mode} trade for ${symbolUpper} created${entryPrice != null ? ` at $${entryPrice.toFixed(2)}` : ' (no market price found)'}.`,
       });
 
       form.reset();
@@ -230,7 +259,7 @@ const TriggeredCandidatesDashboard: React.FC = () => {
       side: candidate.side as "LONG" | "SHORT",
       horizon: candidate.horizon as "1d" | "3d" | "5d" | "10d",
       mode: "paper",
-      trade_date: candidate.start_date || new Date().toISOString().split('T')[0],
+      trade_date: candidate.start_date || todayInDenverDateString(),
       qty: "1",
       fees_bps: "0",
       slippage_bps: "0",
@@ -403,7 +432,7 @@ const TriggeredCandidatesDashboard: React.FC = () => {
                       </div>
                       <div className="flex justify-between">
                         <span className="text-muted-foreground">Hold:</span>
-                        <span>{candidate.horizon}</span>
+                        <span>{getHoldDays(candidate.horizon)}d</span>
                       </div>
                     </div>
 
