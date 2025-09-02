@@ -5,7 +5,6 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
-import { getAllCanonicalTickers } from "@/data/stockUniverse";
 
 
 const BulkHistoricalImport = () => {
@@ -27,12 +26,12 @@ const BulkHistoricalImport = () => {
         .order('priority', { ascending: true })
         .order('symbol', { ascending: true });
       if (!active) return;
-      let loaded = (data || []).map((r: any) => String(r.symbol));
-      if (error || loaded.length === 0) {
-        if (error) console.error('Failed to load tickers from DB, using fallback list:', error);
-        loaded = getAllCanonicalTickers();
+      if (error) {
+        console.error('Failed to load tickers:', error);
+        setTickers([]);
+      } else {
+        setTickers((data || []).map((r: any) => String(r.symbol)));
       }
-      setTickers(loaded);
       setIsLoadingTickers(false);
     })();
     return () => { active = false; };
