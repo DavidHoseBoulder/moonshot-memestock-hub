@@ -3,17 +3,18 @@ import TriggeredCandidatesDashboard from "@/components/TriggeredCandidatesDashbo
 import SentimentDashboard from "@/components/SentimentDashboard";
 import RedditSentimentDashboard from "@/components/RedditSentimentDashboard";
 import RedditSentimentHomescreen from "@/components/RedditSentimentHomescreen";
+import RedditSentimentAnalysis from "@/components/RedditSentimentAnalysis";
 import GradeConfigAdmin from "@/components/GradeConfigAdmin";
 import SentimentHistoryViewer from "@/components/SentimentHistoryViewer";
 import SentimentVelocityTracker from "@/components/SentimentVelocityTracker";
 import SentimentCoverageMonitor from "@/components/SentimentCoverageMonitor";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { MessageSquare, History, Zap, Activity, Settings, BarChart3, Home } from "lucide-react";
+import { MessageSquare, History, Zap, Activity, Settings, BarChart3, Home, TrendingUp } from "lucide-react";
 import { SentimentOrchestrationDashboard } from "@/components/SentimentOrchestrationDashboard";
 
 const SentimentDashboardPage = () => {
   const [searchParams] = useSearchParams();
-  const defaultTab = searchParams.get('tab') || 'homescreen';
+  const defaultTab = searchParams.get('tab') || 'analysis';
   
   // Sample symbols for velocity tracker  
   const sampleSymbols = ['TSLA', 'AAPL', 'NVDA', 'AMD', 'GME'];
@@ -22,7 +23,11 @@ const SentimentDashboardPage = () => {
     <div className="min-h-screen">
       <Tabs defaultValue={defaultTab} className="space-y-6">
         <div className="container mx-auto px-6 pt-6">
-          <TabsList className="grid w-full grid-cols-8">
+          <TabsList className="grid w-full grid-cols-9">
+            <TabsTrigger value="analysis" className="flex items-center gap-2">
+              <TrendingUp className="w-4 h-4" />
+              Analysis
+            </TabsTrigger>
             <TabsTrigger value="homescreen" className="flex items-center gap-2">
               <Home className="w-4 h-4" />
               Home
@@ -57,6 +62,10 @@ const SentimentDashboardPage = () => {
             </TabsTrigger>
           </TabsList>
         </div>
+
+        <TabsContent value="analysis" className="space-y-6">
+          <RedditSentimentAnalysis />
+        </TabsContent>
 
         <TabsContent value="homescreen" className="space-y-6">
           <RedditSentimentHomescreen />
