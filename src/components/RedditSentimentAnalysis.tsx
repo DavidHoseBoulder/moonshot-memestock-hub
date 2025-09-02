@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { format, subDays } from 'date-fns';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -11,11 +12,10 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
+import { LineChart, Line, ResponsiveContainer } from 'recharts';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
-import { todayInDenverDateString } from '@/utils/timezone';
 import { cn } from '@/lib/utils';
-import { format } from 'date-fns';
 import { 
   RefreshCw, 
   TrendingUp, 
@@ -40,6 +40,11 @@ interface SentimentData {
   neu: number;
   neg: number;
   sentiment: 'Bullish' | 'Neutral' | 'Bearish';
+}
+
+interface TrendPoint {
+  day: string;
+  score: number;
 }
 
 interface FilterState {
@@ -200,12 +205,12 @@ const RedditSentimentAnalysis = () => {
       startDate.setDate(startDate.getDate() - 6); // 7 days total
 
       const { data, error } = await supabase
-        .from('reddit_sentiment_daily')
-        .select('symbol, day, avg_score')
+        .from('v_reddit_daily_signals')
+        .select('symbol, trade_date, avg_score')
         .in('symbol', topSymbols)
-        .gte('day', format(startDate, 'yyyy-MM-dd'))
-        .lte('day', format(endDate, 'yyyy-MM-dd'))
-        .order('day', { ascending: true });
+        .gte('trade_date', format(startDate, 'yyyy-MM-dd'))
+        .lte('trade_date', format(endDate, 'yyyy-MM-dd'))
+        .order('trade_date', { ascending: true });
 
       if (error) {
         console.error('❌ Sparkline data query error:', error);
@@ -220,7 +225,7 @@ const RedditSentimentAnalysis = () => {
           data: data
             .filter(item => item.symbol === symbol)
             .map(item => ({
-              date: item.day,
+              date: item.trade_date,
               score: item.avg_score || 0,
             }))
         }));
@@ -314,30 +319,26 @@ const RedditSentimentAnalysis = () => {
           return sortOrder === 'desc' ? bVal - aVal : aVal - bVal;
         });
 
-  // Simple sparkline component
-  const Sparkline = ({ data, symbol }: { data: { date: string; score: number }[]; symbol: string }) => {
-    if (data.length === 0) return <div className="w-24 h-8 bg-muted rounded" />;
+  // Recharts sparkline component
+  const RechartsSparkline = ({ data, symbol }: { data: { date: string; score: number }[]; symbol: string }) => {
+    if (data.length === 0) return <Skeleton className="w-24 h-8" />;
     
-    const maxScore = Math.max(...data.map(d => Math.abs(d.score)));
-    const points = data.map((d, i) => {
-      const x = (i / (data.length - 1)) * 96; // 96px width
-      const y = 16 + ((-d.score / maxScore) * 16); // 32px height, centered
-      return `${x},${y}`;
-    }).join(' ');
-
-    const lineColor = data[data.length - 1]?.score > 0 ? '#10b981' : '#ef4444';
-
+    const latestScore = data[data.length - 1]?.score || 0;
+    const strokeColor = latestScore > 0 ? '#10b981' : latestScore < 0 ? '#ef4444' : '#64748b';
+    
     return (
       <div className="w-24 h-8 cursor-pointer" onClick={() => navigate(`/sentiment-dashboard?symbol=${symbol}`)}>
-        <svg width="96" height="32" className="overflow-visible">
-          <polyline
-            points={points}
-            fill="none"
-            stroke={lineColor}
-            strokeWidth="2"
-            className="drop-shadow-sm"
-          />
-        </svg>
+        <ResponsiveContainer width="100%" height="100%">
+          <LineChart data={data}>
+            <Line 
+              type="monotone" 
+              dataKey="score" 
+              stroke={strokeColor}
+              strokeWidth={2}
+              dot={false}
+            />
+          </LineChart>
+        </ResponsiveContainer>
       </div>
     );
   };
@@ -653,7 +654,7 @@ const RedditSentimentAnalysis = () => {
                     <div className="font-bold text-lg">{sparkline.symbol}</div>
                     <div className="text-sm text-muted-foreground">7-day trend</div>
                   </div>
-                  <Sparkline data={sparkline.data} symbol={sparkline.symbol} />
+                  <RechartsSparkline data={sparkline.data} symbol={sparkline.symbol} />
                 </div>
               ))}
             </div>
