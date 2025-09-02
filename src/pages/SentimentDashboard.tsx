@@ -23,7 +23,7 @@ const SentimentDashboardPage = () => {
     <div className="min-h-screen">
       <Tabs defaultValue={defaultTab} className="space-y-6">
         <div className="container mx-auto px-6 pt-6">
-          <TabsList className="grid w-full grid-cols-9">
+          <TabsList className="grid w-full grid-cols-8">
             <TabsTrigger value="analysis" className="flex items-center gap-2">
               <TrendingUp className="w-4 h-4" />
               Analysis
@@ -39,10 +39,6 @@ const SentimentDashboardPage = () => {
             <TabsTrigger value="reddit-sentiment" className="flex items-center gap-2">
               <BarChart3 className="w-4 h-4" />
               Reddit Sentiment
-            </TabsTrigger>
-            <TabsTrigger value="dashboard" className="flex items-center gap-2">
-              <MessageSquare className="w-4 h-4" />
-              Trading Dashboard
             </TabsTrigger>
             <TabsTrigger value="history" className="flex items-center gap-2">
               <History className="w-4 h-4" />
@@ -83,11 +79,6 @@ const SentimentDashboardPage = () => {
           </div>
         </TabsContent>
 
-        <TabsContent value="dashboard" className="space-y-6">
-          <div className="container mx-auto p-6">
-            <SentimentDashboard />
-          </div>
-        </TabsContent>
 
         <TabsContent value="history" className="space-y-6">
           <div className="container mx-auto p-6">

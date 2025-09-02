@@ -139,12 +139,12 @@ const RedditSentimentHomescreen = () => {
   const fetchTriggeredCandidates = async () => {
     console.log('🎯 Fetching triggered candidates...');
     try {
+      // Use v_reddit_candidates_today view for today's triggered candidates
       const { data, error } = await supabase
-        .from('live_sentiment_entry_rules')
+        .from('v_reddit_candidates_today')
         .select('*')
-        .eq('is_enabled', true)
-        .order('priority', { ascending: true })
-        .order('sharpe', { ascending: false })
+        .eq('triggered', true)
+        .order('sharpe_display', { ascending: false })
         .limit(20);
 
       if (error) {
@@ -159,13 +159,15 @@ const RedditSentimentHomescreen = () => {
         return;
       }
 
-      // Process data from live_sentiment_entry_rules
+      // Process data from v_reddit_candidates_today
       const processed = data.map((item: any) => {
         let grade: 'Strong' | 'Moderate' | 'Weak' = 'Weak';
+        const sharpe = item.sharpe_display || 0;
+        const trades = item.trades || 0;
         
-        if (item.sharpe >= 2.0 && item.trades >= 6) {
+        if (sharpe >= 2.0 && trades >= 6) {
           grade = 'Strong';
-        } else if (item.sharpe >= 1.0 && item.trades >= 4) {
+        } else if (sharpe >= 1.0 && trades >= 4) {
           grade = 'Moderate';
         }
 
@@ -174,16 +176,16 @@ const RedditSentimentHomescreen = () => {
           horizon: item.horizon,
           side: item.side,
           grade,
-          mentions: item.min_mentions || 0,
-          sharpe: item.sharpe || 0,
-          avg_ret: item.avg_ret || 0,
-          win_rate: item.win_rate || 0,
-          trades: item.trades || 0,
-          start_date: item.start_date || '',
-          end_date: item.end_date || '',
-          notes: item.notes || '',
-          status: 'Active' as 'TRIGGERED' | 'Active' | 'Closed',
-          isNew: false,
+          mentions: item.n_mentions || 0,
+          sharpe: sharpe,
+          avg_ret: item.avg_ret_display || 0,
+          win_rate: item.win_rate_display || 0,
+          trades: trades,
+          start_date: '',
+          end_date: '',
+          notes: '',
+          status: 'TRIGGERED' as 'TRIGGERED' | 'Active' | 'Closed',
+          isNew: true,
         };
       });
 
@@ -198,16 +200,16 @@ const RedditSentimentHomescreen = () => {
   const fetchMonitoringCandidates = async () => {
     console.log('👀 Fetching monitoring candidates...');
     try {
-      // Use reddit_sentiment_daily table for monitoring candidates
+      // Use v_live_sentiment_signals for monitoring candidates
       const { data, error } = await supabase
-        .from('reddit_sentiment_daily')
-        .select('symbol, mentions, avg_score')
-        .eq('day', tradingDate)
+        .from('v_live_sentiment_signals')
+        .select('*')
+        .eq('d', tradingDate)
+        .eq('triggered', false)
         .gte('avg_score', 0.1)
-        .gte('mentions', 5)
-        .order('avg_score', { ascending: false })
-        .order('mentions', { ascending: false })
-        .limit(5);
+        .gte('n_mentions', 3)
+        .order('sig_score', { ascending: false })
+        .limit(8);
 
       if (error) {
         console.error('❌ Monitoring candidates query error:', error);
@@ -219,8 +221,8 @@ const RedditSentimentHomescreen = () => {
       if (data) {
         const processed = data.map((item: any) => ({
           symbol: item.symbol,
-          horizon: '1d', // Default horizon for monitoring
-          mentions: item.mentions || 0,
+          horizon: item.horizon,
+          mentions: item.n_mentions || 0,
           score: item.avg_score || 0,
         }));
 
@@ -237,12 +239,13 @@ const RedditSentimentHomescreen = () => {
   const fetchRedditSignals = async () => {
     console.log('📈 Fetching reddit signals for date:', tradingDate);
     try {
+      // Use v_live_sentiment_signals for today's reddit signals
       const { data, error } = await supabase
-        .from('reddit_sentiment_daily')
-        .select('symbol, mentions, avg_score')
-        .eq('day', tradingDate)
-        .gte('mentions', 1)
-        .order('avg_score', { ascending: false })
+        .from('v_live_sentiment_signals')
+        .select('*')
+        .eq('d', tradingDate)
+        .gte('n_mentions', 2)
+        .order('sig_score', { ascending: false })
         .limit(20);
 
       if (error) {
@@ -267,7 +270,7 @@ const RedditSentimentHomescreen = () => {
 
           return {
             symbol: item.symbol,
-            mentions: item.mentions || 0,
+            mentions: item.n_mentions || 0,
             score: score,
             sentiment: sentiment,
           };
