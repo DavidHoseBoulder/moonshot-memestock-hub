@@ -74,8 +74,8 @@ const TriggeredCandidatesDashboard: React.FC = () => {
   const fetchTriggeredCandidates = async () => {
     setIsLoading(true);
     try {
-      // Direct fetch to avoid TypeScript complexity
-      const response = await fetch(`https://pdgjafywsxesgwukotxh.supabase.co/rest/v1/v_reddit_candidates_today?is_enabled=eq.true&grade=in.("Strong","Moderate")&order=grade.desc,sharpe_display.desc.nullslast,trades.desc.nullslast,symbol.asc&select=*`, {
+      // Use the exact query specified for enriched fields
+      const response = await fetch(`https://pdgjafywsxesgwukotxh.supabase.co/rest/v1/v_reddit_candidates_today?is_enabled=eq.true&grade=in.("Strong","Moderate")&order=(grade="Strong").desc,sharpe_display.desc.nullslast,trades.desc.nullslast,symbol.asc&select=symbol,horizon,side,grade,trades,sharpe_display,avg_ret_display,win_rate_display,rule_threshold,mentions,min_mentions,hold_days,entry_date,exit_date,grade_explain`, {
         headers: {
           'apikey': 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBkZ2phZnl3c3hlc2d3dWtvdHhoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTQ0MTU3NDMsImV4cCI6MjA2OTk5MTc0M30.41ABGjZKbgivTTlkHT2V-hJ6otFLz15dQgmsmz9ruQw',
           'Authorization': 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBkZ2phZnl3c3hlc2d3dWtvdHhoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTQ0MTU3NDMsImV4cCI6MjA2OTk5MTc0M30.41ABGjZKbgivTTlkHT2V-hJ6otFLz15dQgmsmz9ruQw',
@@ -93,9 +93,9 @@ const TriggeredCandidatesDashboard: React.FC = () => {
         side: candidate.side || '',
         grade: candidate.grade as 'Strong' | 'Moderate',
         trades: candidate.trades || 0,
-        sharpe: candidate.sharpe_display || candidate.sharpe || 0,
-        avg_ret: candidate.avg_ret_display || candidate.avg_ret || 0,
-        win_rate: candidate.win_rate_display || candidate.win_rate || 0,
+        sharpe: candidate.sharpe_display || 0,
+        avg_ret: candidate.avg_ret_display || 0,
+        win_rate: candidate.win_rate_display || 0,
         rule_threshold: candidate.rule_threshold || 0,
         mentions: candidate.mentions || 0,
         min_mentions: candidate.min_mentions || 0,
@@ -187,12 +187,34 @@ const TriggeredCandidatesDashboard: React.FC = () => {
 
   const openNewTradeDialog = (candidate: TriggeredCandidate) => {
     setSelectedCandidate(candidate);
-    form.reset({
+    
+    // Create the complete payload as specified
+    const payload = {
       symbol: candidate.symbol,
       side: candidate.side as "LONG" | "SHORT",
       horizon: candidate.horizon as "1d" | "3d" | "5d" | "10d",
+      hold_days: candidate.hold_days,
+      entry_date: candidate.entry_date,
+      exit_date: candidate.exit_date,
+      meta: {
+        grade: candidate.grade,
+        trades: candidate.trades,
+        sharpe: candidate.sharpe,
+        avg_ret: candidate.avg_ret,
+        win_rate: candidate.win_rate,
+        rule_threshold: candidate.rule_threshold,
+        mentions: candidate.mentions,
+        min_mentions: candidate.min_mentions,
+        grade_explain: candidate.grade_explain
+      }
+    };
+    
+    form.reset({
+      symbol: payload.symbol,
+      side: payload.side,
+      horizon: payload.horizon,
       mode: "paper",
-      trade_date: candidate.entry_date || new Date().toISOString().split('T')[0],
+      trade_date: payload.entry_date || new Date().toISOString().split('T')[0],
       qty: "1",
       fees_bps: "0",
       slippage_bps: "0",
@@ -208,12 +230,13 @@ const TriggeredCandidatesDashboard: React.FC = () => {
     );
   };
 
-  const formatPercent = (value: number) => {
-    return `${value > 0 ? '+' : ''}${value.toFixed(1)}%`;
+  const formatPercent = (value: number, decimals = 1) => {
+    const percent = (value * 100).toFixed(decimals);
+    return `${value > 0 ? '+' : ''}${percent}%`;
   };
 
   const formatDate = (dateStr: string) => {
-    if (!dateStr) return 'TBD';
+    if (!dateStr) return '⏳ Waiting for today\'s market data';
     return new Date(dateStr).toLocaleDateString('en-US', { 
       month: 'short', 
       day: 'numeric'
@@ -345,7 +368,7 @@ const TriggeredCandidatesDashboard: React.FC = () => {
                   <div className="flex justify-between items-center">
                     <span className="text-muted-foreground">Sharpe:</span>
                     <span className={candidate.sharpe > 0 ? 'text-green-600 font-medium' : 'text-red-600 font-medium'}>
-                      {candidate.sharpe.toFixed(1)}
+                      {candidate.sharpe.toFixed(2)}
                     </span>
                   </div>
                   <div className="flex justify-between items-center">
@@ -356,8 +379,8 @@ const TriggeredCandidatesDashboard: React.FC = () => {
                   </div>
                   <div className="flex justify-between items-center">
                     <span className="text-muted-foreground">Win:</span>
-                    <span className={candidate.win_rate > 50 ? 'text-green-600 font-medium' : 'text-red-600 font-medium'}>
-                      {candidate.win_rate.toFixed(0)}%
+                    <span className={candidate.win_rate > 0.5 ? 'text-green-600 font-medium' : 'text-red-600 font-medium'}>
+                      {formatPercent(candidate.win_rate, 0)}
                     </span>
                   </div>
                 </div>
