@@ -74,18 +74,35 @@ const TriggeredCandidatesDashboard: React.FC = () => {
   const fetchTriggeredCandidates = async () => {
     setIsLoading(true);
     try {
-      // Use the exact query specified for enriched fields
-      const response = await fetch(`https://pdgjafywsxesgwukotxh.supabase.co/rest/v1/v_reddit_candidates_today?is_enabled=eq.true&grade=in.("Strong","Moderate")&order=(grade="Strong").desc,sharpe_display.desc.nullslast,trades.desc.nullslast,symbol.asc&select=symbol,horizon,side,grade,trades,sharpe_display,avg_ret_display,win_rate_display,rule_threshold,mentions,min_mentions,hold_days,entry_date,exit_date,grade_explain`, {
-        headers: {
-          'apikey': 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBkZ2phZnl3c3hlc2d3dWtvdHhoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTQ0MTU3NDMsImV4cCI6MjA2OTk5MTc0M30.41ABGjZKbgivTTlkHT2V-hJ6otFLz15dQgmsmz9ruQw',
-          'Authorization': 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBkZ2phZnl3c3hlc2d3dWtvdHhoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTQ0MTU3NDMsImV4cCI6MjA2OTk5MTc0M30.41ABGjZKbgivTTlkHT2V-hJ6otFLz15dQgmsmz9ruQw',
-          'Content-Type': 'application/json'
+      // Use a resilient query with wildcard select to avoid column mismatches
+      const response = await fetch(
+        `https://pdgjafywsxesgwukotxh.supabase.co/rest/v1/v_reddit_candidates_today?is_enabled=eq.true&grade=in.("Strong","Moderate")&order=symbol.asc&order=horizon.asc&select=*`,
+        {
+          headers: {
+            'apikey': 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBkZ2phZnl3c3hlc2d3dWtvdHhoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTQ0MTU3NDMsImV4cCI6MjA2OTk5MTc0M30.41ABGjZKbgivTTlkHT2V-hJ6otFLz15dQgmsmz9ruQw',
+            'Authorization': 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBkZ2phZnl3c3hlc2d3dWtvdHhoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTQ0MTU3NDMsImV4cCI6MjA2OTk5MTc0M30.41ABGjZKbgivTTlkHT2V-hJ6otFLz15dQgmsmz9ruQw',
+            'Content-Type': 'application/json'
+          }
         }
-      });
-      
-      if (!response.ok) throw new Error('Failed to fetch triggered candidates');
-      
-      const rawData = await response.json();
+      );
+
+      // If the enriched view columns are unavailable, fall back to last trading day
+      let rawData = response.ok ? await response.json() : [];
+      if ((!rawData || rawData.length === 0) && !response.ok) {
+        const fallback = await fetch(
+          `https://pdgjafywsxesgwukotxh.supabase.co/rest/v1/v_reddit_candidates_last_trading_day?is_enabled=eq.true&grade=in.("Strong","Moderate")&order=symbol.asc&order=horizon.asc&select=*`,
+          {
+            headers: {
+              'apikey': 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBkZ2phZnl3c3hlc2d3dWtvdHhoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTQ0MTU3NDMsImV4cCI6MjA2OTk5MTc0M30.41ABGjZKbgivTTlkHT2V-hJ6otFLz15dQgmsmz9ruQw',
+              'Authorization': 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBkZ2phZnl3c3hlc2d3dWtvdHhoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTQ0MTU3NDMsImV4cCI6MjA2OTk5MTc0M30.41ABGjZKbgivTTlkHT2V-hJ6otFLz15dQgmsmz9ruQw',
+              'Content-Type': 'application/json'
+            }
+          }
+        );
+        if (fallback.ok) {
+          rawData = await fallback.json();
+        }
+      }
       
       const formattedCandidates: TriggeredCandidate[] = (rawData || []).map((candidate: any) => ({
         symbol: candidate.symbol || '',
