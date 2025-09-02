@@ -101,15 +101,23 @@ const RedditSentimentHomescreen = () => {
 
   // Data fetching functions
   const fetchKPIData = async () => {
+    console.log('📊 Fetching KPI data...');
     try {
       // Fetch open positions and unrealized P&L
-      const { data: pnlData } = await supabase
+      const { data: pnlData, error } = await supabase
         .from('v_daily_pnl_rollups')
         .select('*')
         .eq('mark_date', tradingDate)
         .maybeSingle();
 
-      // Mock data for now - replace with actual queries
+      if (error) {
+        console.error('❌ KPI query error:', error);
+        throw error;
+      }
+
+      console.log('📊 KPI data received:', pnlData);
+
+      // Set KPI data with fallbacks
       setKpiData({
         openPositions: pnlData ? { count: pnlData.n_open || 0, exposure: 25000 } : null,
         unrealizedPnL: pnlData ? { amount: pnlData.unrealized_pnl || 0, percentage: 0.023 } : null,
@@ -117,7 +125,14 @@ const RedditSentimentHomescreen = () => {
         totalRealized30d: { amount: 2450, avgPercentage: 0.032 },
       });
     } catch (error) {
-      console.error('Error fetching KPI data:', error);
+      console.error('❌ Error fetching KPI data:', error);
+      // Set fallback data on error
+      setKpiData({
+        openPositions: null,
+        unrealizedPnL: null,
+        closed30d: null,
+        totalRealized30d: null,
+      });
     }
   };
 
@@ -162,8 +177,9 @@ const RedditSentimentHomescreen = () => {
   };
 
   const fetchMonitoringCandidates = async () => {
+    console.log('👀 Fetching monitoring candidates...');
     try {
-      const { data } = await supabase
+      const { data, error } = await supabase
         .from('v_reddit_candidates_last_trading_day')
         .select('symbol, horizon, n_mentions, used_score')
         .eq('triggered', false)
@@ -171,6 +187,13 @@ const RedditSentimentHomescreen = () => {
         .order('used_score', { ascending: false })
         .order('n_mentions', { ascending: false })
         .limit(5);
+
+      if (error) {
+        console.error('❌ Monitoring candidates query error:', error);
+        throw error;
+      }
+
+      console.log('👀 Monitoring candidates received:', data?.length || 0, 'items');
 
       if (data) {
         const processed = data.map((item: any) => ({
@@ -181,20 +204,31 @@ const RedditSentimentHomescreen = () => {
         }));
 
         setMonitoringCandidates(processed);
+      } else {
+        setMonitoringCandidates([]);
       }
     } catch (error) {
-      console.error('Error fetching monitoring candidates:', error);
+      console.error('❌ Error fetching monitoring candidates:', error);
+      setMonitoringCandidates([]);
     }
   };
 
   const fetchRedditSignals = async () => {
+    console.log('📈 Fetching reddit signals for date:', tradingDate);
     try {
-      const { data } = await supabase
+      const { data, error } = await supabase
         .from('v_reddit_daily_signals')
         .select('symbol, n_mentions, used_score')
         .eq('trade_date', tradingDate)
         .order('used_score', { ascending: false })
         .limit(20);
+
+      if (error) {
+        console.error('❌ Reddit signals query error:', error);
+        throw error;
+      }
+
+      console.log('📈 Reddit signals received:', data?.length || 0, 'items');
 
       if (data) {
         const processed = data.map((item: any) => {
@@ -218,22 +252,44 @@ const RedditSentimentHomescreen = () => {
         });
 
         setRedditSignals(processed);
+      } else {
+        setRedditSignals([]);
       }
     } catch (error) {
-      console.error('Error fetching reddit signals:', error);
+      console.error('❌ Error fetching reddit signals:', error);
+      setRedditSignals([]);
     }
   };
 
   const fetchAllData = async () => {
     setIsLoading(true);
-    await Promise.all([
-      fetchKPIData(),
-      fetchTriggeredCandidates(),
-      fetchMonitoringCandidates(),
-      fetchRedditSignals(),
-    ]);
-    setLastUpdated(new Date());
-    setIsLoading(false);
+    console.log('🏠 Homescreen: Starting data fetch...');
+    
+    try {
+      const results = await Promise.allSettled([
+        fetchKPIData(),
+        fetchTriggeredCandidates(),
+        fetchMonitoringCandidates(),
+        fetchRedditSignals(),
+      ]);
+      
+      // Log which queries succeeded/failed
+      const queryNames = ['KPI Data', 'Triggered Candidates', 'Monitoring Candidates', 'Reddit Signals'];
+      results.forEach((result, index) => {
+        if (result.status === 'rejected') {
+          console.error(`❌ ${queryNames[index]} failed:`, result.reason);
+        } else {
+          console.log(`✅ ${queryNames[index]} completed successfully`);
+        }
+      });
+      
+    } catch (error) {
+      console.error('🏠 Homescreen: Unexpected error in fetchAllData:', error);
+    } finally {
+      setLastUpdated(new Date());
+      setIsLoading(false);
+      console.log('🏠 Homescreen: Data fetch completed');
+    }
   };
 
   const handleRefresh = async () => {
