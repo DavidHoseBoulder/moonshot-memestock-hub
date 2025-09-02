@@ -277,10 +277,11 @@ const BacktestStats = ({ candidate }: { candidate: RedditCandidate }) => {
   const getQualityTag = () => {
     const sharpe = candidate.sharpe || 0;
     const trades = candidate.trades || 0;
+    const avgRet = candidate.avg_ret || 0;
     
-    if (sharpe >= 2 && trades >= 10) return { label: "Strong", color: "text-green-600 dark:text-green-400" };
-    if (sharpe >= 1 && trades >= 5) return { label: "Moderate", color: "text-yellow-600 dark:text-yellow-400" };
-    return { label: "Weak", color: "text-red-600 dark:text-red-400" };
+    if (sharpe >= 2.0 && trades >= 10 && avgRet > 0) return { label: "Strong", color: "text-green-600 dark:text-green-400", bgColor: "bg-green-600/20" };
+    if (sharpe >= 1.0 && trades >= 5 && avgRet > 0) return { label: "Moderate", color: "text-orange-600 dark:text-orange-400", bgColor: "bg-orange-600/20" };
+    return { label: "Weak", color: "text-red-600 dark:text-red-400", bgColor: "bg-red-600/20" };
   };
 
   const qualityTag = getQualityTag();
@@ -302,7 +303,7 @@ const BacktestStats = ({ candidate }: { candidate: RedditCandidate }) => {
     <div className="mt-2 p-2 bg-muted/30 rounded text-xs">
       <div className="flex items-center justify-between mb-1">
         <span className="text-muted-foreground">Backtest:</span>
-        <span className={`font-medium px-1.5 py-0.5 rounded text-xs ${qualityTag.color} bg-opacity-20`}>
+        <span className={`font-medium px-1.5 py-0.5 rounded text-xs ${qualityTag.color} ${qualityTag.bgColor}`}>
           [{qualityTag.label}]
         </span>
       </div>
