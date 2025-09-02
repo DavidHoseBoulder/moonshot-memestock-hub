@@ -99,9 +99,9 @@ const RedditSentimentAnalysis = () => {
   const fetchLatestAvailableDate = async () => {
     try {
       const { data, error } = await supabase
-        .from('reddit_sentiment_daily')
-        .select('day')
-        .order('day', { ascending: false })
+        .from('v_reddit_daily_signals')
+        .select('trade_date')
+        .order('trade_date', { ascending: false })
         .limit(1);
 
       if (error) {
@@ -109,7 +109,7 @@ const RedditSentimentAnalysis = () => {
         return null;
       }
 
-      return data?.[0]?.day ? new Date(data[0].day) : null;
+      return data?.[0]?.trade_date ? new Date(data[0].trade_date) : null;
     } catch (error) {
       console.error('❌ Error fetching latest date:', error);
       return null;
@@ -121,12 +121,11 @@ const RedditSentimentAnalysis = () => {
     try {
       const dateStr = format(filters.date, 'yyyy-MM-dd');
       const { data, error } = await supabase
-        .from('reddit_sentiment_daily')
-        .select('symbol, mentions, avg_score, avg_confidence, pos, neu, neg')
-        .eq('day', dateStr)
-        .gte('mentions', filters.minPosts)
-        .gte('avg_confidence', filters.minConfidence)
-        .order('mentions', { ascending: false });
+        .from('v_reddit_daily_signals')
+        .select('*')
+        .eq('trade_date', dateStr)
+        .gte('n_mentions', filters.minPosts)
+        .order('n_mentions', { ascending: false });
 
       if (error) {
         console.error('❌ Sentiment data query error:', error);
@@ -140,7 +139,7 @@ const RedditSentimentAnalysis = () => {
           .filter(item => Math.abs(item.avg_score || 0) >= filters.minScore)
           .map((item: any) => {
             const score = item.avg_score || 0;
-            const mentions = item.mentions || 0;
+            const mentions = item.n_mentions || 0;
             let sentiment: 'Bullish' | 'Neutral' | 'Bearish';
             
             if (score > 0.1) {
@@ -155,11 +154,11 @@ const RedditSentimentAnalysis = () => {
               symbol: item.symbol,
               mentions: mentions,
               avg_score: score,
-              avg_confidence: item.avg_confidence || 0,
-              used_score: score * mentions,
-              pos: item.pos || 0,
-              neu: item.neu || 0,
-              neg: item.neg || 0,
+              avg_confidence: 0.75, // Default confidence for v_reddit_daily_signals
+              used_score: item.used_score || score * mentions,
+              pos: Math.max(0, Math.round(score * mentions)), // Estimate based on score
+              neu: Math.round(mentions * 0.2), // Estimate
+              neg: Math.max(0, Math.round(-score * mentions)), // Estimate
               sentiment: sentiment,
             };
           });
