@@ -1,3 +1,4 @@
+import TriggeredCandidatesDashboard from "@/components/TriggeredCandidatesDashboard";
 import SentimentDashboard from "@/components/SentimentDashboard";
 import RedditSentimentDashboard from "@/components/RedditSentimentDashboard";
 import SentimentHistoryViewer from "@/components/SentimentHistoryViewer";
@@ -39,8 +40,12 @@ const SentimentDashboardPage = () => {
         </div>
       </div>
 
-      <Tabs defaultValue="reddit-sentiment" className="space-y-6">
-        <TabsList className="grid w-full grid-cols-5">
+      <Tabs defaultValue="triggered-candidates" className="space-y-6">
+        <TabsList className="grid w-full grid-cols-6">
+          <TabsTrigger value="triggered-candidates" className="flex items-center gap-2">
+            <BarChart3 className="w-4 h-4" />
+            Triggered Candidates
+          </TabsTrigger>
           <TabsTrigger value="reddit-sentiment" className="flex items-center gap-2">
             <BarChart3 className="w-4 h-4" />
             Reddit Sentiment
@@ -62,6 +67,10 @@ const SentimentDashboardPage = () => {
             Data Coverage
           </TabsTrigger>
         </TabsList>
+
+        <TabsContent value="triggered-candidates" className="space-y-6">
+          <TriggeredCandidatesDashboard />
+        </TabsContent>
 
         <TabsContent value="reddit-sentiment" className="space-y-6">
           <RedditSentimentDashboard />
