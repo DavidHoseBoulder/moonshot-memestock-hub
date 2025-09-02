@@ -361,7 +361,7 @@ const RedditSentimentHomescreen = () => {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold text-foreground">Reddit Sentiment Dashboard</h1>
+          <h1 className="text-3xl font-bold text-foreground">Meme Trading Homepage</h1>
           <p className="text-muted-foreground">
             Last updated {lastUpdated.toLocaleTimeString()} • Market closed — showing last trading day ({formatDate(tradingDate)})
           </p>
