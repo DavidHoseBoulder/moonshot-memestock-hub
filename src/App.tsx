@@ -1,8 +1,6 @@
 
 import React, { useEffect, useState } from "react";
-import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
-import { TooltipProvider } from "@/components/ui/tooltip";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import Index from "./pages/Index";
@@ -41,8 +39,7 @@ const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) =
 
 const App: React.FC = () => {
   return (
-    <TooltipProvider>
-      <Toaster />
+    <>
       <Sonner />
       <BrowserRouter>
         <Routes>
@@ -58,7 +55,7 @@ const App: React.FC = () => {
           <Route path="*" element={<NotFound />} />
         </Routes>
       </BrowserRouter>
-    </TooltipProvider>
+    </>
   );
 };
 
