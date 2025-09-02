@@ -66,7 +66,7 @@ const RedditSentimentAnalysis = () => {
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
   
   const [filters, setFilters] = useState<FilterState>({
-    date: new Date(),
+    date: new Date('2025-07-31'), // Default to a date that has data
     contentType: 'all',
     minPosts: 5,
     minScore: 0.1,
@@ -96,6 +96,26 @@ const RedditSentimentAnalysis = () => {
   };
 
   // Data fetching functions
+  const fetchLatestAvailableDate = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('reddit_sentiment_daily')
+        .select('day')
+        .order('day', { ascending: false })
+        .limit(1);
+
+      if (error) {
+        console.error('❌ Error fetching latest date:', error);
+        return null;
+      }
+
+      return data?.[0]?.day ? new Date(data[0].day) : null;
+    } catch (error) {
+      console.error('❌ Error fetching latest date:', error);
+      return null;
+    }
+  };
+
   const fetchSentimentData = async () => {
     console.log('📊 Fetching sentiment data for date:', formatDate(filters.date));
     try {
@@ -145,12 +165,24 @@ const RedditSentimentAnalysis = () => {
           });
 
         setSentimentData(processed);
+        
+        if (processed.length === 0) {
+          toast({
+            title: 'No Data Found',
+            description: `No sentiment data available for ${formatDate(filters.date)} with current filters. Try adjusting the date or filter settings.`,
+          });
+        }
       } else {
         setSentimentData([]);
       }
     } catch (error) {
       console.error('❌ Error fetching sentiment data:', error);
       setSentimentData([]);
+      toast({
+        title: 'Data Fetch Error',
+        description: 'Failed to load sentiment data. Please try again.',
+        variant: 'destructive',
+      });
     }
   };
 
@@ -238,7 +270,23 @@ const RedditSentimentAnalysis = () => {
 
   // Effects
   useEffect(() => {
-    fetchAllData();
+    const initializeDate = async () => {
+      const latestDate = await fetchLatestAvailableDate();
+      if (latestDate && filters.date.getTime() === new Date('2025-07-31').getTime()) {
+        // Only update if we're still on the default date
+        setFilters(prev => ({ ...prev, date: latestDate }));
+      } else {
+        fetchAllData();
+      }
+    };
+    
+    initializeDate();
+  }, []);
+
+  useEffect(() => {
+    if (filters.date.getTime() !== new Date('2025-07-31').getTime()) {
+      fetchAllData();
+    }
   }, [filters]);
 
   useEffect(() => {
