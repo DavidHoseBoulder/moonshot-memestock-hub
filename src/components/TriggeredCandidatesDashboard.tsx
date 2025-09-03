@@ -228,7 +228,7 @@ const TriggeredCandidatesDashboard = () => {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold text-foreground">Triggered Candidates</h1>
+          <h1 className="text-3xl font-bold text-foreground">Recommended Trades</h1>
           <p className="text-muted-foreground">
             Backtest-validated trading signals triggered on {formatDate(tradingDate)}
           </p>
