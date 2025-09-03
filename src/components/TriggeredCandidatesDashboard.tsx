@@ -90,13 +90,12 @@ const TriggeredCandidatesDashboard = () => {
 
   // Data fetching
   const fetchTriggeredCandidates = async () => {
-    console.log('🎯 Fetching triggered candidates...');
+    console.log('🎯 Fetching recommended trades...');
     try {
       const { data, error } = await supabase
-        .from('live_sentiment_entry_rules')
+        .from('v_recommended_trades_today' as any)
         .select('*')
-        .eq('is_enabled', true)
-        .order('priority', { ascending: true });
+        .order('sharpe', { ascending: false });
 
       if (error) {
         console.error('❌ Triggered candidates query error:', error);
@@ -106,34 +105,24 @@ const TriggeredCandidatesDashboard = () => {
       console.log('🎯 Triggered candidates received:', data?.length || 0, 'items');
 
       if (data) {
-        const processed = data.map((item: any) => {
-          let grade: 'Strong' | 'Moderate' | 'Weak' = 'Weak';
-          
-          if (item.sharpe >= 2.0 && item.trades >= 6) {
-            grade = 'Strong';
-          } else if (item.sharpe >= 1.0 && item.trades >= 4) {
-            grade = 'Moderate';
-          }
-
-          return {
-            symbol: item.symbol,
-            horizon: item.horizon,
-            side: item.side,
-            grade,
-            mentions: item.min_mentions || 0, // Current mentions placeholder
-            min_mentions: item.min_mentions || 0,
-            pos_thresh: item.pos_thresh || 0,
-            sharpe: item.sharpe || 0,
-            avg_ret: item.avg_ret || 0,
-            win_rate: item.win_rate || 0,
-            trades: item.trades || 0,
-            start_date: item.start_date || '',
-            end_date: item.end_date || '',
-            notes: item.notes || '',
-            is_enabled: item.is_enabled,
-            priority: item.priority || 100,
-          };
-        });
+        const processed = data.map((item: any) => ({
+          symbol: item.symbol,
+          horizon: item.horizon,
+          side: item.side,
+          grade: item.grade || 'Weak',
+          mentions: item.mentions || 0,
+          min_mentions: item.min_mentions || 0,
+          pos_thresh: item.rule_threshold || 0,
+          sharpe: item.sharpe || 0,
+          avg_ret: item.avg_ret || 0,
+          win_rate: item.win_rate || 0,
+          trades: item.trades || 0,
+          start_date: item.start_date || '',
+          end_date: item.end_date || '',
+          notes: item.grade_explain || '',
+          is_enabled: true, // All items from this view are triggered
+          priority: 100,
+        }));
 
         setCandidates(processed);
 
