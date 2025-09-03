@@ -15,6 +15,7 @@ interface VelocitySpike {
   delta_mentions: number | null;
   n_mentions: number | null;
   avg_score: number | null;
+  trailing_count?: number | null;
 }
 
 interface RedditVelocitySpikesProps {
@@ -60,6 +61,7 @@ export default function RedditVelocitySpikes({
       let query = supabase
         .from('v_today_velocity_ranked' as any)
         .select('*')
+        .gte('trailing_count', 3) // Guard against sketchy baselines
         .lte('rank', limit)
         .order('rank', { ascending: true });
 
@@ -78,7 +80,8 @@ export default function RedditVelocitySpikes({
         z_score_score: item.z_score_score,
         delta_mentions: item.delta_mentions,
         n_mentions: item.n_mentions,
-        avg_score: item.avg_score
+        avg_score: item.avg_score,
+        trailing_count: item.trailing_count
       }));
 
       return transformedData;
@@ -129,13 +132,13 @@ export default function RedditVelocitySpikes({
   const formatZScore = (zScore: number | null) => {
     if (zScore === null || zScore === undefined) return "—";
     const sign = zScore >= 0 ? "+" : "";
-    return `${sign}${zScore.toFixed(1)}σ`;
+    return `σ: ${sign}${zScore.toFixed(2)}σ`;
   };
 
   const formatDeltaMentions = (delta: number | null) => {
     if (delta === null || delta === undefined) return "—";
     const sign = delta >= 0 ? "+" : "";
-    return `${sign}${delta} vs 7d avg`;
+    return `Delta: ${sign}${delta.toFixed(2)} vs 7d avg`;
   };
 
   const formatMentions = (count: number | null) => {
@@ -244,7 +247,7 @@ export default function RedditVelocitySpikes({
                         {formatMentions(spike.n_mentions)}
                       </span>
                       <span className="text-xs text-muted-foreground">
-                        Score: {spike.avg_score?.toFixed(2) || "—"}
+                        Avg: {spike.avg_score?.toFixed(2) || "—"}
                       </span>
                     </div>
                   </div>

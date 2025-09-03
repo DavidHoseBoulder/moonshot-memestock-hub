@@ -157,14 +157,14 @@ const SymbolSentimentHistory: React.FC<SymbolSentimentHistoryProps> = ({
             <div className="space-y-1 pt-1 border-t border-border">
               {data.z_score_score !== null && (
                 <p className="text-sm">
-                  <span className="text-muted-foreground">Δscore z:</span>{' '}
-                  <span className="font-medium">{data.z_score_score.toFixed(1)}σ</span>
+                  <span className="text-muted-foreground">σ:</span>{' '}
+                  <span className="font-medium">{data.z_score_score >= 0 ? '+' : ''}{data.z_score_score.toFixed(2)}σ</span>
                 </p>
               )}
               {data.delta_mentions !== null && (
                 <p className="text-sm">
-                  <span className="text-muted-foreground">Δmentions:</span>{' '}
-                  <span className="font-medium">{data.delta_mentions}</span>
+                  <span className="text-muted-foreground">Delta:</span>{' '}
+                  <span className="font-medium">{data.delta_mentions >= 0 ? '+' : ''}{data.delta_mentions.toFixed(2)} vs 7d avg</span>
                 </p>
               )}
               {isSpike && (
