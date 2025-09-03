@@ -8,6 +8,7 @@ import GradeConfigAdmin from "@/components/GradeConfigAdmin";
 import SentimentHistoryViewer from "@/components/SentimentHistoryViewer";
 import SentimentVelocityTracker from "@/components/SentimentVelocityTracker";
 import SentimentCoverageMonitor from "@/components/SentimentCoverageMonitor";
+import RedditVelocitySpikes from "@/components/RedditVelocitySpikes";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { MessageSquare, History, Zap, Activity, Settings, TrendingUp } from "lucide-react";
 import { SentimentOrchestrationDashboard } from "@/components/SentimentOrchestrationDashboard";
@@ -76,7 +77,11 @@ const SentimentDashboardPage = () => {
         </TabsContent>
 
         <TabsContent value="velocity" className="space-y-6">
-          <div className="container mx-auto p-6">
+          <div className="container mx-auto p-6 space-y-6">
+            <RedditVelocitySpikes 
+              limit={10}
+              onSymbolClick={(symbol) => console.log('Clicked symbol:', symbol)}
+            />
             <SentimentVelocityTracker symbols={sampleSymbols} />
           </div>
         </TabsContent>
