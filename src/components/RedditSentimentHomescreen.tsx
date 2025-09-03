@@ -52,6 +52,8 @@ interface TriggeredCandidate {
   notes: string | null;
   status: 'TRIGGERED' | 'Active' | 'Closed';
   isNew?: boolean;
+  hasOpenPosition?: boolean;
+  gradeExplain?: string;
 }
 
 interface MonitoringCandidate {
@@ -66,6 +68,7 @@ interface RedditSignal {
   mentions: number;
   score: number;
   sentiment: 'Bullish' | 'Neutral' | 'Bearish';
+  ruleStatus?: 'Enabled - Meets rule' | 'Enabled - Below rule' | 'Disabled' | 'Not configured';
 }
 
 const RedditSentimentHomescreen = () => {
@@ -127,7 +130,7 @@ const RedditSentimentHomescreen = () => {
   };
 
   const fetchTriggeredCandidates = async () => {
-    console.log('🎯 Fetching triggered candidates from v_triggered_with_backtest...');
+    console.log('🎯 Fetching recommended trades from v_triggered_with_backtest...');
     try {
       const { data, error } = await supabase
         .from('v_triggered_with_backtest' as any)
@@ -136,15 +139,35 @@ const RedditSentimentHomescreen = () => {
         .limit(20);
 
       if (error) {
-        console.error('❌ Triggered candidates query error:', error);
+        console.error('❌ Recommended trades query error:', error);
         throw error;
       }
 
-      console.log('🎯 Triggered candidates received:', data?.length || 0, 'items');
+      console.log('🎯 Recommended trades received:', data?.length || 0, 'items');
 
       if (!data || data.length === 0) {
         setTriggeredCandidates([]);
         return;
+      }
+
+      // Check for existing open positions for each candidate
+      let existingTrades: any[] = [];
+      if (data && data.length > 0) {
+        try {
+          const symbolHorizons = data.map((item: any) => ({ symbol: item.symbol, horizon: item.horizon }));
+          
+          const { data: tradesData, error: tradesError } = await supabase
+            .from('trades')
+            .select('symbol, horizon')
+            .eq('status', 'OPEN')
+            .in('symbol', symbolHorizons.map(sh => sh.symbol));
+            
+          if (!tradesError) {
+            existingTrades = tradesData || [];
+          }
+        } catch (err) {
+          console.error('❌ Error fetching existing trades:', err);
+        }
       }
 
       const processed = data.map((item: any) => {
@@ -157,6 +180,11 @@ const RedditSentimentHomescreen = () => {
         } else if (sharpe >= 1.0 && trades >= 4) {
           grade = 'Moderate';
         }
+
+        // Check if there's an open position for this symbol/horizon combination
+        const hasOpenPosition = existingTrades.some(trade => 
+          trade.symbol === item.symbol && trade.horizon === item.horizon
+        );
 
         return {
           symbol: item.symbol,
@@ -173,13 +201,15 @@ const RedditSentimentHomescreen = () => {
           notes: item.notes,
           status: 'TRIGGERED' as 'TRIGGERED' | 'Active' | 'Closed',
           isNew: true,
+          hasOpenPosition: hasOpenPosition || false,
+          gradeExplain: item.grade_explain || `${grade} based on Sharpe ${sharpe.toFixed(1)} and ${trades} trades`
         };
       });
 
       setTriggeredCandidates(processed);
-      console.log('✅ Triggered candidates processed:', processed.length);
+      console.log('✅ Recommended trades processed:', processed.length);
     } catch (error) {
-      console.error('❌ Error fetching triggered candidates:', error);
+      console.error('❌ Error fetching recommended trades:', error);
       setTriggeredCandidates([]);
     }
   };
@@ -251,6 +281,13 @@ const RedditSentimentHomescreen = () => {
       console.log('📈 Reddit signals received:', data?.length || 0, 'items');
 
       if (data) {
+        // Get rule status for each symbol
+        const symbols = (data as any[]).map(item => item.symbol);
+        const { data: rulesData } = await supabase
+          .from('live_sentiment_entry_rules')
+          .select('symbol, horizon, is_enabled, pos_thresh')
+          .in('symbol', symbols);
+
         const processed = data.map((item: any) => {
           const score = item.avg_score || 0;
           let sentiment: 'Bullish' | 'Neutral' | 'Bearish';
@@ -263,11 +300,30 @@ const RedditSentimentHomescreen = () => {
             sentiment = 'Neutral';
           }
 
+          // Determine rule status
+          const symbolRules = rulesData?.filter(rule => rule.symbol === item.symbol);
+          let ruleStatus: 'Enabled - Meets rule' | 'Enabled - Below rule' | 'Disabled' | 'Not configured' = 'Not configured';
+          
+          if (symbolRules && symbolRules.length > 0) {
+            const enabledRules = symbolRules.filter(rule => rule.is_enabled);
+            if (enabledRules.length > 0) {
+              // Check if any enabled rule meets the threshold
+              const meetsRule = enabledRules.some(rule => {
+                const threshold = rule.pos_thresh || 0;
+                return score >= threshold;
+              });
+              ruleStatus = meetsRule ? 'Enabled - Meets rule' : 'Enabled - Below rule';
+            } else {
+              ruleStatus = 'Disabled';
+            }
+          }
+
           return {
             symbol: item.symbol,
             mentions: item.n_mentions || 0,
             score: score,
             sentiment: sentiment,
+            ruleStatus: ruleStatus
           };
         });
 
@@ -489,7 +545,7 @@ const RedditSentimentHomescreen = () => {
             <div>
               <CardTitle className="flex items-center gap-2">
                 <Target className="w-5 h-5" />
-                Today's Triggered Candidates
+                 Recommended Trades
               </CardTitle>
               {kpiData && (
                 <p className="text-sm text-muted-foreground mt-1">
@@ -523,7 +579,7 @@ const RedditSentimentHomescreen = () => {
           ) : sortedSymbols.length === 0 ? (
             <div className="text-center py-8 text-muted-foreground">
               <Target className="w-12 h-12 mx-auto mb-4 opacity-50" />
-              <p>No triggered candidates today</p>
+              <p>No recommended trades today</p>
             </div>
           ) : (
             <div className="space-y-4">
@@ -533,24 +589,43 @@ const RedditSentimentHomescreen = () => {
                 
                 return (
                   <div key={symbol} className="border rounded-lg p-4">
-                    <div className="flex items-center justify-between mb-3">
-                      <div className="flex items-center gap-3">
-                        <h3 className="text-lg font-bold">{symbol}</h3>
-                        <Badge variant={bestCandidate.status === 'TRIGGERED' ? 'default' : 'outline'}>
-                          {bestCandidate.status}
-                        </Badge>
-                        {bestCandidate.isNew && (
-                          <Badge variant="secondary" className="text-xs">New</Badge>
-                        )}
-                      </div>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => navigate(`/sentiment-dashboard?symbol=${symbol}`)}
-                      >
-                        View
-                      </Button>
-                    </div>
+                     <div className="flex items-center justify-between mb-3">
+                       <div className="flex items-center gap-3">
+                         <h3 className="text-lg font-bold">{symbol}</h3>
+                         <Badge 
+                           variant={bestCandidate.grade === 'Strong' ? 'default' : 
+                                   bestCandidate.grade === 'Moderate' ? 'outline' : 'secondary'}
+                           className="text-xs"
+                         >
+                           {bestCandidate.grade}
+                         </Badge>
+                         {bestCandidate.hasOpenPosition ? (
+                           <Badge variant="secondary" className="text-xs">Already Open</Badge>
+                         ) : (
+                           <Badge variant="outline" className="text-xs">Eligible</Badge>
+                         )}
+                         {bestCandidate.isNew && (
+                           <Badge variant="secondary" className="text-xs">New</Badge>
+                         )}
+                       </div>
+                       <div className="flex items-center gap-2">
+                         <Button
+                           variant="outline"
+                           size="sm"
+                           onClick={() => navigate(`/sentiment-dashboard?symbol=${symbol}`)}
+                         >
+                           View
+                         </Button>
+                         <Button
+                           size="sm"
+                           disabled={bestCandidate.hasOpenPosition}
+                           title={bestCandidate.hasOpenPosition ? 'Position already open for this horizon' : 'Open new trade'}
+                           onClick={() => navigate(`/trading-pipeline?symbol=${symbol}&horizon=${bestCandidate.horizon}`)}
+                         >
+                           New Trade
+                         </Button>
+                       </div>
+                     </div>
                     
                     {/* Horizons */}
                     <div className="space-y-2">
@@ -569,10 +644,11 @@ const RedditSentimentHomescreen = () => {
                                 {candidate.grade}
                               </Badge>
                             </div>
-                            <div className="text-xs text-muted-foreground">
-                              Trades={candidate.trades} • Avg {formatPercent(candidate.avg_ret)} • 
-                              Win {formatPercent(candidate.win_rate)} • Sharpe {candidate.sharpe.toFixed(1)} ({formatDate(candidate.start_date)}—{formatDate(candidate.end_date)})
-                            </div>
+                             <div className="text-xs text-muted-foreground">
+                               {candidate.gradeExplain} • 
+                               Trades={candidate.trades} • Avg {formatPercent(candidate.avg_ret)} • 
+                               Win {formatPercent(candidate.win_rate)} • Sharpe {candidate.sharpe.toFixed(1)}
+                             </div>
                           </div>
                         );
                       })}
@@ -689,16 +765,21 @@ const RedditSentimentHomescreen = () => {
                     className="flex-shrink-0 p-3 border rounded-lg cursor-pointer hover:shadow-md transition-shadow min-w-[120px]"
                     onClick={() => navigate(`/sentiment-dashboard?symbol=${signal.symbol}`)}
                   >
-                    <div className="font-medium text-sm">{signal.symbol}</div>
-                    <div className="text-xs text-muted-foreground">{signal.mentions} mentions</div>
-                    <div className="text-xs font-medium">{signal.score.toFixed(2)}</div>
-                    <Badge 
-                      variant={signal.sentiment === 'Bullish' ? 'default' : 
-                              signal.sentiment === 'Bearish' ? 'destructive' : 'outline'}
-                      className="text-xs mt-1"
-                    >
-                      {signal.sentiment}
-                    </Badge>
+                     <div className="font-medium text-sm">{signal.symbol}</div>
+                     <div className="text-xs text-muted-foreground">{signal.mentions} mentions</div>
+                     <div className="text-xs font-medium">{signal.score.toFixed(2)}</div>
+                     <Badge 
+                       variant={signal.sentiment === 'Bullish' ? 'default' : 
+                               signal.sentiment === 'Bearish' ? 'destructive' : 'outline'}
+                       className="text-xs mt-1"
+                     >
+                       {signal.sentiment}
+                     </Badge>
+                     {signal.ruleStatus && (
+                       <div className="text-xs text-muted-foreground mt-1 border-t pt-1">
+                         Rule: {signal.ruleStatus}
+                       </div>
+                     )}
                   </div>
                 ))}
               </div>
