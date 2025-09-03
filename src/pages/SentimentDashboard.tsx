@@ -22,8 +22,8 @@ const SentimentDashboardPage = () => {
   // Sample symbols for velocity tracker  
   const sampleSymbols = ['TSLA', 'AAPL', 'NVDA', 'AMD', 'GME'];
   
-  // State for selected symbol from velocity spikes
-  const [selectedSymbol, setSelectedSymbol] = useState('TSLA');
+  // State for selected symbol - starts with most active symbol from spikes
+  const [selectedSymbol, setSelectedSymbol] = useState<string | null>(null);
   
   const handleSymbolClick = (symbol: string) => {
     setSelectedSymbol(symbol);
@@ -91,12 +91,14 @@ const SentimentDashboardPage = () => {
               limit={10}
               onSymbolClick={handleSymbolClick}
             />
+            {selectedSymbol && (
+              <SymbolSentimentHistory 
+                symbol={selectedSymbol} 
+                days={30} 
+                withVelocity={true} 
+              />
+            )}
             <SentimentVelocityTracker symbols={sampleSymbols} />
-            <SymbolSentimentHistory 
-              symbol={selectedSymbol} 
-              days={30} 
-              withVelocity={true} 
-            />
           </div>
         </TabsContent>
 
