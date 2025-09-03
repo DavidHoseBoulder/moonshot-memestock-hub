@@ -10,13 +10,11 @@ import { useToast } from "@/hooks/use-toast";
 interface VelocitySpike {
   data_date: string;
   symbol: string;
-  avg_score: number;
-  used_score: number;
-  n_mentions: number;
-  delta_score: number;
-  z_score_score: number;
-  delta_mentions: number;
   rank: number;
+  z_score_score: number | null;
+  delta_mentions: number | null;
+  n_mentions: number | null;
+  avg_score: number | null;
 }
 
 interface RedditVelocitySpikesProps {
@@ -35,81 +33,102 @@ export default function RedditVelocitySpikes({
   const [spikes, setSpikes] = useState<VelocitySpike[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isFallback, setIsFallback] = useState(false);
+  const [headerDate, setHeaderDate] = useState<string | null>(null);
   const { toast } = useToast();
+
+  const fetchHeaderDate = async (): Promise<string | null> => {
+    try {
+      // TODO: Replace with actual query when v_latest_reddit_trade_date view is available
+      // SELECT data_date FROM public.v_latest_reddit_trade_date;
+      
+      // For now, use a mock date that would come from the database
+      const mockDate = new Date().toISOString().split('T')[0]; // Today's date as YYYY-MM-DD
+      return mockDate;
+    } catch (error) {
+      console.error('Error fetching header date:', error);
+      return null;
+    }
+  };
 
   const fetchVelocitySpikes = async (useThresholds = true): Promise<VelocitySpike[]> => {
     try {
-      // For now, return real data structure from the actual query
-      // This will be replaced with proper Supabase query once view is typed
-      const baseData: VelocitySpike[] = [
+      // TODO: Replace with actual query when v_today_velocity_ranked view is available
+      // The actual query should be:
+      /*
+        SELECT
+          data_date,
+          symbol,
+          rank,
+          z_score_score,
+          delta_mentions,
+          n_mentions,
+          avg_score
+        FROM public.v_today_velocity_ranked
+        WHERE rank <= :limit
+        [AND (coalesce(z_score_score,0) >= :min_z OR coalesce(delta_mentions,0) >= :min_delta_mentions)]
+        ORDER BY rank
+      */
+      
+      // Mock data that matches the expected API structure
+      const mockData: VelocitySpike[] = [
         {
-          data_date: "2025-09-02",
+          data_date: new Date().toISOString().split('T')[0],
           symbol: "ASTS",
-          avg_score: 0.70,
-          used_score: 0.70,
+          rank: 1,
+          z_score_score: 5.6,
+          delta_mentions: -6,
           n_mentions: 1,
-          delta_score: 0.459,
-          z_score_score: 5.59,
-          delta_mentions: -6.14,
-          rank: 1
+          avg_score: 0.70
         },
         {
-          data_date: "2025-09-02",
-          symbol: "AAPL",
-          avg_score: 0.70,
-          used_score: 0.70,
+          data_date: new Date().toISOString().split('T')[0],
+          symbol: "AAPL", 
+          rank: 2,
+          z_score_score: 4.8,
+          delta_mentions: -9,
           n_mentions: 1,
-          delta_score: 0.597,
-          z_score_score: 4.76,
-          delta_mentions: -9.0,
-          rank: 2
+          avg_score: 0.70
         },
         {
-          data_date: "2025-09-02",
+          data_date: new Date().toISOString().split('T')[0],
           symbol: "GME",
-          avg_score: 0.50,
-          used_score: 0.50,
+          rank: 3,
+          z_score_score: 3.8,
+          delta_mentions: -15,
           n_mentions: 13,
-          delta_score: 0.355,
-          z_score_score: 3.84,
-          delta_mentions: -15.0,
-          rank: 3
+          avg_score: 0.50
         },
         {
-          data_date: "2025-09-02",
+          data_date: new Date().toISOString().split('T')[0],
           symbol: "TTD",
-          avg_score: 0.40,
-          used_score: 0.40,
-          n_mentions: 2,
-          delta_score: 0.498,
-          z_score_score: 3.79,
-          delta_mentions: 0.43,
-          rank: 4
+          rank: 4,
+          z_score_score: 3.8,
+          delta_mentions: 0,
+          n_mentions: 2,  
+          avg_score: 0.40
         },
         {
-          data_date: "2025-09-02",
+          data_date: new Date().toISOString().split('T')[0],
           symbol: "AMZN",
-          avg_score: 0.413,
-          used_score: 0.413,
+          rank: 5,
+          z_score_score: 2.8,
+          delta_mentions: -4,
           n_mentions: 8,
-          delta_score: 0.388,
-          z_score_score: 2.77,
-          delta_mentions: -4.0,
-          rank: 5
+          avg_score: 0.41
         }
       ];
 
       // Apply filtering logic if thresholds are provided and useThresholds is true
       if (useThresholds && (min_z !== undefined || min_delta_mentions !== undefined)) {
-        const filtered = baseData.filter(spike => {
-          if (min_z !== undefined && spike.z_score_score >= min_z) return true;
-          if (min_delta_mentions !== undefined && spike.delta_mentions >= min_delta_mentions) return true;
+        const filtered = mockData.filter(spike => {
+          if (min_z !== undefined && (spike.z_score_score || 0) >= min_z) return true;
+          if (min_delta_mentions !== undefined && (spike.delta_mentions || 0) >= min_delta_mentions) return true;
           return false;
         });
         return filtered.slice(0, limit);
       }
 
-      return baseData.slice(0, limit);
+      return mockData.slice(0, limit);
     } catch (error) {
       console.error('Error fetching velocity spikes:', error);
       return [];
@@ -121,16 +140,22 @@ export default function RedditVelocitySpikes({
     setIsFallback(false);
 
     try {
-      // Try with thresholds first if they exist
-      let data = await fetchVelocitySpikes(true);
+      // Fetch header date and velocity spikes
+      const [dateResult, spikesResult] = await Promise.all([
+        fetchHeaderDate(),
+        fetchVelocitySpikes(true)
+      ]);
+
+      setHeaderDate(dateResult);
 
       // If no results and we have thresholds, try without thresholds
-      if (data.length === 0 && (min_z !== undefined || min_delta_mentions !== undefined)) {
-        data = await fetchVelocitySpikes(false);
+      let finalSpikes = spikesResult;
+      if (finalSpikes.length === 0 && (min_z !== undefined || min_delta_mentions !== undefined)) {
+        finalSpikes = await fetchVelocitySpikes(false);
         setIsFallback(true);
       }
 
-      setSpikes(data);
+      setSpikes(finalSpikes);
     } catch (error) {
       toast({
         title: "Error loading velocity spikes",
@@ -138,6 +163,7 @@ export default function RedditVelocitySpikes({
         variant: "destructive",
       });
       setSpikes([]);
+      setHeaderDate(null);
     } finally {
       setIsLoading(false);
     }
@@ -159,12 +185,9 @@ export default function RedditVelocitySpikes({
     return `${sign}${delta} vs 7d avg`;
   };
 
-  const formatDate = (dateStr: string) => {
-    return new Date(dateStr).toLocaleDateString('en-US', {
-      month: 'short',
-      day: 'numeric',
-      year: 'numeric'
-    });
+  const formatMentions = (count: number | null) => {
+    if (count === null || count === undefined) return "0 mentions";
+    return `${count} ${count === 1 ? 'mention' : 'mentions'}`;
   };
 
   const handleSymbolClick = (symbol: string) => {
@@ -173,14 +196,34 @@ export default function RedditVelocitySpikes({
     }
   };
 
+  // Show empty state if no header date (no data available)
+  if (!isLoading && !headerDate) {
+    return (
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-lg font-semibold">Today's Sentiment Spikes</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="text-center py-6 text-muted-foreground">
+            <p>No Reddit data available for the latest trading day.</p>
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
+
   return (
     <Card>
       <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
         <div>
           <CardTitle className="text-lg font-semibold">Today's Sentiment Spikes</CardTitle>
-          {spikes.length > 0 && (
+          {headerDate && (
             <p className="text-sm text-muted-foreground">
-              {formatDate(spikes[0].data_date)}
+              {new Date(headerDate).toLocaleDateString('en-US', {
+                month: 'short',
+                day: 'numeric',
+                year: 'numeric'
+              })}
             </p>
           )}
         </div>
@@ -217,7 +260,7 @@ export default function RedditVelocitySpikes({
           </div>
         ) : spikes.length === 0 ? (
           <div className="text-center py-6 text-muted-foreground">
-            <p>No Reddit data available for latest trading day.</p>
+            <p>No spikes detected today.</p>
           </div>
         ) : (
           <div className="space-y-3">
@@ -228,9 +271,11 @@ export default function RedditVelocitySpikes({
                 onClick={() => handleSymbolClick(spike.symbol)}
               >
                 <div className="flex items-center space-x-3">
-                  <div className="flex items-center space-x-1">
+                  <div className="flex items-center space-x-2">
                     <span className="font-mono font-medium">{spike.symbol}</span>
-                    <span className="text-xs text-muted-foreground">#{spike.rank}</span>
+                    <Badge variant="outline" className="text-xs">
+                      #{spike.rank}
+                    </Badge>
                   </div>
                   <div className="space-y-1">
                     <div className="flex items-center space-x-2">
@@ -242,9 +287,9 @@ export default function RedditVelocitySpikes({
                       </span>
                     </div>
                     <div className="flex items-center space-x-2">
-                      <Badge variant="secondary" className="text-xs">
-                        {spike.n_mentions} mentions
-                      </Badge>
+                      <span className="text-xs text-muted-foreground">
+                        {formatMentions(spike.n_mentions)}
+                      </span>
                       <span className="text-xs text-muted-foreground">
                         Score: {spike.avg_score?.toFixed(2) || "—"}
                       </span>
@@ -252,7 +297,7 @@ export default function RedditVelocitySpikes({
                   </div>
                 </div>
                 <div className="flex items-center">
-                  {spike.z_score_score > 0 ? (
+                  {(spike.z_score_score || 0) > 0 ? (
                     <TrendingUp className="h-4 w-4 text-green-500" />
                   ) : (
                     <TrendingDown className="h-4 w-4 text-red-500" />
