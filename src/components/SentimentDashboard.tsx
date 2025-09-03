@@ -409,7 +409,7 @@ const SentimentDashboard = () => {
 
       console.log('👀 Fetching reddit candidates...');
       // 2. Try today's candidates first, fallback if empty
-      let { data: candidatesData, error: candidatesError } = await supabase
+      let { data: candidatesData, error: candidatesError }: { data: any[] | null, error: any } = await supabase
         .from('v_reddit_candidates_today')
         .select('*')
         .order('used_score', { ascending: false, nullsFirst: false })
@@ -436,17 +436,17 @@ const SentimentDashboard = () => {
         if (fallbackCandidatesError) {
           console.error('❌ Fallback reddit candidates error:', fallbackCandidatesError);
         } else if (fallbackCandidates && fallbackCandidates.length > 0) {
-          candidatesData = fallbackCandidates;
+          candidatesData = fallbackCandidates as unknown as RedditCandidate[];
           usedFallback = true;
           console.log('✅ Fallback reddit candidates worked:', fallbackCandidates.length, 'items');
           // If we didn't get a date from signals, get it from candidates
           if (!dataDateString && fallbackCandidates.length > 0) {
-            dataDateString = fallbackCandidates[0].trade_date;
+            dataDateString = (fallbackCandidates[0] as any).trade_date;
           }
         }
       } else if (candidatesData.length > 0) {
         // Check if candidates are for today
-        const candidateDate = candidatesData[0].trade_date;
+        const candidateDate = (candidatesData[0] as any).trade_date;
         
         // If candidate date matches today, we're not using fallback
         if (candidateDate === today) {
@@ -465,12 +465,12 @@ const SentimentDashboard = () => {
       // Convert to display format (MM/DD/YYYY)
       dataDate = dataDateString ? new Date(dataDateString + 'T12:00:00') : null;
 
-      setCandidates(candidatesData || []);
+      setCandidates((candidatesData || []) as unknown as RedditCandidate[]);
 
       console.log('📈 Processing triggered candidates for backtest stats...');
       // 3. For triggered candidates only, fetch backtest statistics
-      if (candidatesData && candidatesData.length > 0) {
-        const triggeredCandidates = candidatesData.filter(c => c.triggered);
+        if (candidatesData && candidatesData.length > 0) {
+        const triggeredCandidates = (candidatesData as unknown as RedditCandidate[]).filter(c => c.triggered);
         console.log('🎯 Found', triggeredCandidates.length, 'triggered candidates');
         
         
@@ -485,8 +485,8 @@ const SentimentDashboard = () => {
                 .select('trades, avg_ret, win_rate, sharpe, start_date, end_date')
                 .eq('symbol', candidate.symbol)
                 .eq('horizon', candidate.horizon)
-                .eq('pos_thresh', candidate.pos_thresh)
-                .eq('min_mentions', candidate.min_mentions)
+                .eq('pos_thresh', (candidate as any).pos_thresh ?? 0)
+                .eq('min_mentions', (candidate as any).min_mentions ?? 0)
                 .eq('use_weighted', candidate.use_weighted || false)
                 .maybeSingle();
               
@@ -504,7 +504,7 @@ const SentimentDashboard = () => {
             console.log('📊 Backtest results received for', backtestResults.length, 'candidates');
             
             // Enhance candidates with backtest data
-            const enhancedCandidates = candidatesData.map(candidate => {
+            const enhancedCandidates = (candidatesData as unknown as RedditCandidate[]).map(candidate => {
               if (!candidate.triggered) return candidate;
               
               const backtestResult = backtestResults.find(
@@ -526,10 +526,10 @@ const SentimentDashboard = () => {
               return candidate;
             });
             
-            setCandidates(enhancedCandidates);
+            setCandidates(enhancedCandidates as RedditCandidate[]);
           } catch (backtestError) {
             console.error('❌ Error fetching backtest stats:', backtestError);
-            setCandidates(candidatesData);
+            setCandidates(candidatesData as unknown as RedditCandidate[]);
           }
         }
       }
@@ -537,8 +537,8 @@ const SentimentDashboard = () => {
       console.log('💼 Fetching existing trades...');
       // 4. Fetch existing trades for triggered candidates (both open and closed)
       if (candidatesData && candidatesData.length > 0) {
-        const triggeredSymbols = candidatesData
-          .filter(c => c.triggered)
+        const triggeredSymbols = (candidatesData as RedditCandidate[])
+          .filter(c => (c as any).triggered)
           .map(c => c.symbol);
         
         if (triggeredSymbols.length > 0) {

@@ -15,9 +15,8 @@ interface RedditSentimentData {
   n_scored: number;
   avg_score: number;
   avg_confidence: number;
-  n_pos: number;
-  n_neg: number;
-  n_neu: number;
+  n_mentions: number;
+  label: string;
 }
 
 interface SymbolDetailData extends RedditSentimentData {
@@ -162,10 +161,8 @@ const RedditSentimentDashboard = () => {
           <div className="font-semibold text-foreground">{(data.avg_confidence * 100).toFixed(1)}%</div>
         </div>
         <div>
-          <div className="text-muted-foreground">Pos/Neu/Neg</div>
-          <div className="font-semibold text-foreground">
-            {data.n_pos}/{data.n_neu}/{data.n_neg}
-          </div>
+          <div className="text-muted-foreground">Mentions</div>
+          <div className="font-semibold text-foreground">{data.n_mentions || 0}</div>
         </div>
         <div>
           <div className="text-muted-foreground">Score</div>
@@ -224,10 +221,8 @@ const RedditSentimentDashboard = () => {
                   <span className="font-medium text-foreground">{(item.avg_confidence * 100).toFixed(1)}%</span>
                 </div>
                 <div>
-                  <span className="text-muted-foreground">+/-/=: </span>
-                  <span className="font-medium text-foreground">
-                    {item.n_pos}/{item.n_neg}/{item.n_neu}
-                  </span>
+                  <span className="text-muted-foreground">Mentions: </span>
+                  <span className="font-medium text-foreground">{item.n_mentions || 0}</span>
                 </div>
               </div>
             </div>

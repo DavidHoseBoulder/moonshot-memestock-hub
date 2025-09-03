@@ -52,15 +52,15 @@ export const SentimentCoverageMonitor: React.FC<SentimentCoverageProps> = ({
         const uniquePairs = new Set(rulesData.map(r => `${r.symbol}:${r.horizon}`));
         totalUniverse = uniquePairs.size;
       } else {
-        // Fallback to daily_sentiment_candidates for today
+        // Fallback to v_reddit_daily_signals for today
         const { data: candidatesData } = await supabase
-          .from('daily_sentiment_candidates')
-          .select('symbol, horizon')
-          .eq('d', today);
+          .from('v_reddit_daily_signals')
+          .select('symbol')
+          .eq('trade_date', today);
         
         if (candidatesData) {
-          const uniquePairs = new Set(candidatesData.map(c => `${c.symbol}:${c.horizon}`));
-          totalUniverse = uniquePairs.size;
+          const uniqueSymbols = new Set(candidatesData.map(c => c.symbol));
+          totalUniverse = uniqueSymbols.size;
         }
       }
 
