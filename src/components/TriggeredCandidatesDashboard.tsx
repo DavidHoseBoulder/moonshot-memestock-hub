@@ -479,7 +479,7 @@ const TriggeredCandidatesDashboard = () => {
           <div className="flex flex-col sm:flex-row gap-3">
             <Button 
               variant="outline" 
-              onClick={() => navigate('/sentiment-dashboard')}
+              onClick={() => navigate('/sentiment')}
               className="flex items-center gap-2"
             >
               <BarChart3 className="w-4 h-4" />
@@ -487,7 +487,7 @@ const TriggeredCandidatesDashboard = () => {
             </Button>
             <Button 
               variant="outline" 
-              onClick={() => navigate('/sentiment-dashboard')}
+              onClick={() => navigate('/sentiment')}
               className="flex items-center gap-2"
             >
               <Activity className="w-4 h-4" />

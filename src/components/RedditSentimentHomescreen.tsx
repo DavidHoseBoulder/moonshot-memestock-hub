@@ -594,21 +594,21 @@ const RedditSentimentHomescreen = () => {
                          )}
                        </div>
                        <div className="flex items-center gap-2">
-                         <Button
-                           variant="outline"
-                           size="sm"
-                           onClick={() => navigate(`/sentiment-dashboard?symbol=${symbol}`)}
-                         >
-                           View
-                         </Button>
-                         <Button
-                           size="sm"
-                           disabled={bestCandidate.hasOpenPosition}
-                           title={bestCandidate.hasOpenPosition ? 'Position already open for this horizon' : 'Open new trade'}
-                           onClick={() => navigate(`/trading-pipeline?symbol=${symbol}&horizon=${bestCandidate.horizon}`)}
-                         >
-                           New Trade
-                         </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => navigate(`/sentiment?symbol=${symbol}`)}
+                          >
+                            View
+                          </Button>
+                          <Button
+                            size="sm"
+                            disabled={bestCandidate.hasOpenPosition}
+                            title={bestCandidate.hasOpenPosition ? 'Position already open for this horizon' : 'View sentiment details'}
+                            onClick={() => navigate(`/sentiment?symbol=${symbol}`)}
+                          >
+                            View Details
+                          </Button>
                        </div>
                      </div>
                     
@@ -691,7 +691,7 @@ const RedditSentimentHomescreen = () => {
                   <div 
                     key={idx} 
                     className="flex items-center justify-between cursor-pointer hover:bg-muted/50 p-2 rounded"
-                    onClick={() => navigate(`/sentiment-dashboard?symbol=${candidate.symbol}`)}
+                    onClick={() => navigate(`/sentiment?symbol=${candidate.symbol}`)}
                   >
                     <div className="flex items-center gap-2">
                       <span className="font-medium">{candidate.symbol}</span>
@@ -748,7 +748,7 @@ const RedditSentimentHomescreen = () => {
                   <div 
                     key={idx}
                     className="flex-shrink-0 p-3 border rounded-lg cursor-pointer hover:shadow-md transition-shadow min-w-[120px]"
-                    onClick={() => navigate(`/sentiment-dashboard?symbol=${signal.symbol}`)}
+                    onClick={() => navigate(`/sentiment?symbol=${signal.symbol}`)}
                   >
                      <div className="font-medium text-sm">{signal.symbol}</div>
                      <div className="text-xs text-muted-foreground">{signal.mentions} mentions</div>

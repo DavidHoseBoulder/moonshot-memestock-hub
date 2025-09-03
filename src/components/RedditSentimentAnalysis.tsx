@@ -327,7 +327,7 @@ const RedditSentimentAnalysis = () => {
     const strokeColor = latestScore > 0 ? '#10b981' : latestScore < 0 ? '#ef4444' : '#64748b';
     
     return (
-      <div className="w-24 h-8 cursor-pointer" onClick={() => navigate(`/sentiment-dashboard?symbol=${symbol}`)}>
+      <div className="w-24 h-8 cursor-pointer" onClick={() => navigate(`/sentiment?symbol=${symbol}`)}>
         <ResponsiveContainer width="100%" height="100%">
           <LineChart data={data}>
             <Line 
@@ -532,7 +532,7 @@ const RedditSentimentAnalysis = () => {
                           variant="outline" 
                           size="sm" 
                           className="w-full mt-2"
-                          onClick={() => navigate(`/sentiment-dashboard?symbol=${item.symbol}`)}
+                          onClick={() => navigate(`/sentiment?symbol=${item.symbol}`)}
                         >
                           View History
                         </Button>
@@ -623,7 +623,7 @@ const RedditSentimentAnalysis = () => {
                           variant="outline" 
                           size="sm" 
                           className="w-full mt-2"
-                          onClick={() => navigate(`/sentiment-dashboard?symbol=${item.symbol}`)}
+                          onClick={() => navigate(`/sentiment?symbol=${item.symbol}`)}
                         >
                           View History
                         </Button>
@@ -732,7 +732,7 @@ const RedditSentimentAnalysis = () => {
                     <TableRow 
                       key={item.symbol}
                       className="cursor-pointer hover:bg-muted/50"
-                      onClick={() => navigate(`/sentiment-dashboard?symbol=${item.symbol}`)}
+                      onClick={() => navigate(`/sentiment?symbol=${item.symbol}`)}
                     >
                       <TableCell className="font-medium">{item.symbol}</TableCell>
                       <TableCell>{item.mentions}</TableCell>
@@ -757,7 +757,7 @@ const RedditSentimentAnalysis = () => {
       <div className="flex flex-col sm:flex-row gap-4 justify-center">
         <Button 
           variant="outline" 
-          onClick={() => navigate('/sentiment-dashboard?tab=velocity')}
+          onClick={() => navigate('/sentiment?tab=velocity')}
           className="flex items-center gap-2"
         >
           <Zap className="w-4 h-4" />
@@ -765,7 +765,7 @@ const RedditSentimentAnalysis = () => {
         </Button>
         <Button 
           variant="outline" 
-          onClick={() => navigate('/sentiment-dashboard?tab=history')}
+          onClick={() => navigate('/sentiment?tab=history')}
           className="flex items-center gap-2"
         >
           <History className="w-4 h-4" />
