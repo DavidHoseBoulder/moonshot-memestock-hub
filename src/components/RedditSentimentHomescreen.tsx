@@ -200,7 +200,7 @@ const RedditSentimentHomescreen = () => {
         .select('*')
         .gte('avg_score', 0.1)
         .gte('n_mentions', 3)
-        .order('sig_score', { ascending: false })
+        .order('avg_score', { ascending: false })
         .limit(8);
 
       if (triggeredSymbols.length > 0) {
@@ -241,7 +241,7 @@ const RedditSentimentHomescreen = () => {
         .from('v_reddit_daily_signals' as any)
         .select('*')
         .gte('n_mentions', 2)
-        .order('sig_score', { ascending: false })
+        .order('avg_score', { ascending: false })
         .limit(20);
 
       if (error) {
