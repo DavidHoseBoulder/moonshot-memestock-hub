@@ -6,6 +6,7 @@ import RedditSentimentDashboard from "@/components/RedditSentimentDashboard";
 import RedditSentimentAnalysis from "@/components/RedditSentimentAnalysis";
 import GradeConfigAdmin from "@/components/GradeConfigAdmin";
 import SentimentHistoryViewer from "@/components/SentimentHistoryViewer";
+import SymbolSentimentHistory from "@/components/SymbolSentimentHistory";
 import SentimentVelocityTracker from "@/components/SentimentVelocityTracker";
 import SentimentCoverageMonitor from "@/components/SentimentCoverageMonitor";
 import RedditVelocitySpikes from "@/components/RedditVelocitySpikes";
@@ -71,8 +72,13 @@ const SentimentDashboardPage = () => {
 
 
         <TabsContent value="history" className="space-y-6">
-          <div className="container mx-auto p-6">
+          <div className="container mx-auto p-6 space-y-6">
             <SentimentHistoryViewer />
+            <SymbolSentimentHistory 
+              symbol="TSLA" 
+              days={30} 
+              withVelocity={true} 
+            />
           </div>
         </TabsContent>
 
