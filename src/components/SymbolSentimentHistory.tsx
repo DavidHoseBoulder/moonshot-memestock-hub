@@ -48,13 +48,19 @@ const SymbolSentimentHistory: React.FC<SymbolSentimentHistoryProps> = ({
     try {
       // 1) Get the latest trade date
       const { data: latestDateData, error: dateError } = await supabase
-        .from('v_latest_reddit_trade_date' as any)
-        .select('data_date')
-        .single();
+        .from('v_reddit_daily_signals' as any)
+        .select('trade_date')
+        .order('trade_date', { ascending: false })
+        .limit(1)
+        .maybeSingle();
 
       if (dateError) throw dateError;
+      if (!(latestDateData as any)?.trade_date) {
+        setHistoryData([]);
+        return;
+      }
 
-      const endDate = ((latestDateData as any).data_date) as string;
+      const endDate = (latestDateData as any).trade_date;
       const endDateObj = new Date(endDate);
       const startDateObj = new Date(endDateObj);
       startDateObj.setDate(startDateObj.getDate() - (days - 1));
@@ -65,19 +71,30 @@ const SymbolSentimentHistory: React.FC<SymbolSentimentHistoryProps> = ({
         end_date: endDate
       });
 
-      // 2) Query sentiment history with case-folding
-      const viewName = withVelocity ? 'v_sentiment_velocity_lite' : 'v_sentiment_history';
+      // 2) Query sentiment history data
       const { data: historyData, error: historyError } = await supabase
-        .from(viewName as any)
+        .from('v_reddit_daily_signals' as any)
         .select('*')
         .ilike('symbol', symbol) // Case-insensitive matching
-        .gte('data_date', startDate)
-        .lte('data_date', endDate)
-        .order('data_date', { ascending: true });
+        .gte('trade_date', startDate)
+        .lte('trade_date', endDate)
+        .order('trade_date', { ascending: true });
 
       if (historyError) throw historyError;
 
-      setHistoryData((historyData || [] as unknown) as SentimentHistoryData[]);
+      // Transform the data to match our interface
+      const transformedData = (historyData || []).map((item: any) => ({
+        data_date: item.trade_date,
+        symbol: item.symbol,
+        avg_score: item.avg_score,
+        used_score: item.used_score || item.avg_score,
+        n_mentions: item.n_mentions,
+        // Velocity data not available in this view
+        z_score_score: withVelocity ? null : undefined,
+        delta_mentions: withVelocity ? null : undefined
+      }));
+
+      setHistoryData(transformedData as SentimentHistoryData[]);
     } catch (error) {
       console.error('Error fetching sentiment history:', error);
       setError('Failed to load sentiment history data');
