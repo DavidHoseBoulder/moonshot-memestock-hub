@@ -39,10 +39,8 @@ export default function RedditVelocitySpikes({
   const fetchHeaderDate = async (): Promise<string | null> => {
     try {
       const { data, error } = await supabase
-        .from('v_reddit_daily_signals' as any)
-        .select('trade_date')
-        .order('trade_date', { ascending: false })
-        .limit(1)
+        .from('v_latest_reddit_trade_date' as any)
+        .select('data_date')
         .maybeSingle();
 
       if (error) {
@@ -50,7 +48,7 @@ export default function RedditVelocitySpikes({
         return null;
       }
 
-      return (data as any)?.trade_date || null;
+      return (data as any)?.data_date || null;
     } catch (error) {
       console.error('Error fetching header date:', error);
       return null;
@@ -59,27 +57,11 @@ export default function RedditVelocitySpikes({
 
   const fetchVelocitySpikes = async (useThresholds = true): Promise<VelocitySpike[]> => {
     try {
-      // Get the latest trade date first
-      const { data: latestData } = await supabase
-        .from('v_reddit_daily_signals' as any)
-        .select('trade_date')
-        .order('trade_date', { ascending: false })
-        .limit(1)
-        .maybeSingle();
-
-      if (!(latestData as any)?.trade_date) return [];
-
-      // Query for today's data, ranked by mentions
       let query = supabase
-        .from('v_reddit_daily_signals' as any)
+        .from('v_today_velocity_ranked' as any)
         .select('*')
-        .eq('trade_date', (latestData as any).trade_date)
-        .gte('n_mentions', 5)
-        .order('n_mentions', { ascending: false });
-
-      if (limit) {
-        query = query.limit(limit);
-      }
+        .lte('rank', limit)
+        .order('rank', { ascending: true });
 
       const { data, error } = await query;
 
@@ -89,12 +71,12 @@ export default function RedditVelocitySpikes({
       }
 
       // Transform the data to match our interface
-      const transformedData: VelocitySpike[] = (data || []).map((item: any, index: number) => ({
-        data_date: item.trade_date,
+      const transformedData: VelocitySpike[] = (data || []).map((item: any) => ({
+        data_date: item.data_date,
         symbol: item.symbol,
-        rank: index + 1,
-        z_score_score: null, // Not available in this view
-        delta_mentions: null, // Not available in this view  
+        rank: item.rank,
+        z_score_score: item.z_score_score,
+        delta_mentions: item.delta_mentions,
         n_mentions: item.n_mentions,
         avg_score: item.avg_score
       }));

@@ -46,21 +46,20 @@ const SymbolSentimentHistory: React.FC<SymbolSentimentHistoryProps> = ({
     setError(null);
 
     try {
-      // 1) Get the latest trade date
-      const { data: latestDateData, error: dateError } = await supabase
-        .from('v_reddit_daily_signals' as any)
-        .select('trade_date')
-        .order('trade_date', { ascending: false })
+      // Get max date from sentiment history for date range calculation
+      const { data: maxDateData } = await supabase
+        .from('v_sentiment_history' as any)
+        .select('data_date')
+        .order('data_date', { ascending: false })
         .limit(1)
         .maybeSingle();
 
-      if (dateError) throw dateError;
-      if (!(latestDateData as any)?.trade_date) {
+      if (!(maxDateData as any)?.data_date) {
         setHistoryData([]);
         return;
       }
 
-      const endDate = (latestDateData as any).trade_date;
+      const endDate = (maxDateData as any).data_date;
       const endDateObj = new Date(endDate);
       const startDateObj = new Date(endDateObj);
       startDateObj.setDate(startDateObj.getDate() - (days - 1));
@@ -71,28 +70,48 @@ const SymbolSentimentHistory: React.FC<SymbolSentimentHistoryProps> = ({
         end_date: endDate
       });
 
-      // 2) Query sentiment history data
+      // Query sentiment history data
       const { data: historyData, error: historyError } = await supabase
-        .from('v_reddit_daily_signals' as any)
+        .from('v_sentiment_history' as any)
         .select('*')
-        .ilike('symbol', symbol) // Case-insensitive matching
-        .gte('trade_date', startDate)
-        .lte('trade_date', endDate)
-        .order('trade_date', { ascending: true });
+        .ilike('symbol', symbol)
+        .gte('data_date', startDate)
+        .lte('data_date', endDate)
+        .order('data_date', { ascending: true });
 
       if (historyError) throw historyError;
 
-      // Transform the data to match our interface
-      const transformedData = (historyData || []).map((item: any) => ({
-        data_date: item.trade_date,
-        symbol: item.symbol,
-        avg_score: item.avg_score,
-        used_score: item.used_score || item.avg_score,
-        n_mentions: item.n_mentions,
-        // Velocity data not available in this view
-        z_score_score: withVelocity ? null : undefined,
-        delta_mentions: withVelocity ? null : undefined
-      }));
+      let velocityData: any[] = [];
+      
+      if (withVelocity) {
+        // Query velocity data separately
+        const { data: velocityResults } = await supabase
+          .from('v_sentiment_velocity_lite' as any)
+          .select('*')
+          .ilike('symbol', symbol)
+          .gte('data_date', startDate)
+          .lte('data_date', endDate);
+        
+        velocityData = velocityResults || [];
+      }
+
+      // Transform and merge the data
+      const transformedData = (historyData || []).map((item: any) => {
+        const velocityItem = velocityData.find(v => 
+          v.data_date === item.data_date && 
+          v.symbol.toLowerCase() === item.symbol.toLowerCase()
+        );
+
+        return {
+          data_date: item.data_date,
+          symbol: item.symbol,
+          avg_score: item.avg_score,
+          used_score: item.used_score || item.avg_score,
+          n_mentions: item.n_mentions,
+          z_score_score: withVelocity ? velocityItem?.z_score_score : undefined,
+          delta_mentions: withVelocity ? velocityItem?.delta_mentions : undefined
+        };
+      });
 
       setHistoryData(transformedData as SentimentHistoryData[]);
     } catch (error) {
