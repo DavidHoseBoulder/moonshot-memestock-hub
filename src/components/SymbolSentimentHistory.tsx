@@ -46,10 +46,8 @@ const SymbolSentimentHistory: React.FC<SymbolSentimentHistoryProps> = ({
     setError(null);
 
     try {
-      // For now, use mock data since the view doesn't exist yet
-      // This matches the expected data structure for when the views are created
-      
-      // Mock date range
+      // Mock implementation - will be replaced with real queries when views are available
+      // 1) Get the date range for the header using max(data_date) logic
       const endDate = new Date().toISOString().split('T')[0];
       const startDate = new Date(Date.now() - (days - 1) * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
       
@@ -58,8 +56,12 @@ const SymbolSentimentHistory: React.FC<SymbolSentimentHistoryProps> = ({
         end_date: endDate
       });
 
-      // Mock history data
+      // 2A/2B) Mock history data with proper case-folding simulation
       const mockData: SentimentHistoryData[] = [];
+      
+      // Simulate case-insensitive matching: normalize symbol to uppercase
+      const normalizedSymbol = symbol.toUpperCase();
+      
       for (let i = 0; i < days; i++) {
         const date = new Date(Date.now() - i * 24 * 60 * 60 * 1000);
         const dateStr = date.toISOString().split('T')[0];
@@ -70,7 +72,7 @@ const SymbolSentimentHistory: React.FC<SymbolSentimentHistoryProps> = ({
         
         const dataPoint: SentimentHistoryData = {
           data_date: dateStr,
-          symbol: symbol.toUpperCase(),
+          symbol: normalizedSymbol, // Always uppercase
           avg_score: baseScore + (Math.random() - 0.5) * 0.2,
           used_score: baseScore,
           n_mentions: mentions

@@ -1,3 +1,4 @@
+import React, { useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { NavigationSidebar } from "@/components/Navigation";
 import { SidebarProvider, SidebarTrigger, SidebarInset } from "@/components/ui/sidebar";
@@ -20,6 +21,13 @@ const SentimentDashboardPage = () => {
   
   // Sample symbols for velocity tracker  
   const sampleSymbols = ['TSLA', 'AAPL', 'NVDA', 'AMD', 'GME'];
+  
+  // State for selected symbol from velocity spikes
+  const [selectedSymbol, setSelectedSymbol] = useState('TSLA');
+  
+  const handleSymbolClick = (symbol: string) => {
+    setSelectedSymbol(symbol);
+  };
 
   return (
     <SidebarProvider>
@@ -81,11 +89,11 @@ const SentimentDashboardPage = () => {
           <div className="container mx-auto p-6 space-y-6">
             <RedditVelocitySpikes 
               limit={10}
-              onSymbolClick={(symbol) => console.log('Clicked symbol:', symbol)}
+              onSymbolClick={handleSymbolClick}
             />
             <SentimentVelocityTracker symbols={sampleSymbols} />
             <SymbolSentimentHistory 
-              symbol="TSLA" 
+              symbol={selectedSymbol} 
               days={30} 
               withVelocity={true} 
             />
