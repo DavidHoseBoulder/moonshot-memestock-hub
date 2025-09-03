@@ -41,7 +41,9 @@ interface TriggeredCandidate {
   symbol: string;
   horizon: string;
   side: string;
-  grade: 'Strong' | 'Moderate' | 'Weak';
+  grade: string;
+  confidence_label: string;
+  confidence_score: number;
   mentions: number;
   sharpe: number;
   avg_ret: number;
@@ -130,12 +132,12 @@ const RedditSentimentHomescreen = () => {
   };
 
   const fetchTriggeredCandidates = async () => {
-    console.log('🎯 Fetching recommended trades from v_triggered_with_backtest...');
+    console.log('🎯 Fetching recommended trades from v_recommended_trades_today_conf...');
     try {
       const { data, error } = await supabase
-        .from('v_triggered_with_backtest' as any)
+        .from('v_recommended_trades_today_conf' as any)
         .select('*')
-        .order('sharpe', { ascending: false })
+        .order('confidence_score', { ascending: false })
         .limit(20);
 
       if (error) {
@@ -150,59 +152,36 @@ const RedditSentimentHomescreen = () => {
         return;
       }
 
-      // Check for existing open positions for each candidate
-      let existingTrades: any[] = [];
-      if (data && data.length > 0) {
-        try {
-          const symbolHorizons = data.map((item: any) => ({ symbol: item.symbol, horizon: item.horizon }));
-          
-          const { data: tradesData, error: tradesError } = await supabase
-            .from('trades')
-            .select('symbol, horizon')
-            .eq('status', 'OPEN')
-            .in('symbol', symbolHorizons.map(sh => sh.symbol));
-            
-          if (!tradesError) {
-            existingTrades = tradesData || [];
-          }
-        } catch (err) {
-          console.error('❌ Error fetching existing trades:', err);
-        }
-      }
-
       const processed = data.map((item: any) => {
-        let grade: 'Strong' | 'Moderate' | 'Weak' = 'Weak';
-        const sharpe = item.sharpe || 0;
-        const trades = item.trades || 0;
-        
-        if (sharpe >= 2.0 && trades >= 6) {
-          grade = 'Strong';
-        } else if (sharpe >= 1.0 && trades >= 4) {
-          grade = 'Moderate';
+        // Determine open position status based on trading mode
+        let hasOpenPosition = false;
+        if (tradingMode === 'all') {
+          hasOpenPosition = item.has_open_any || false;
+        } else if (tradingMode === 'paper') {
+          hasOpenPosition = item.has_open_paper || false;
+        } else if (tradingMode === 'real') {
+          hasOpenPosition = item.has_open_real || false;
         }
-
-        // Check if there's an open position for this symbol/horizon combination
-        const hasOpenPosition = existingTrades.some(trade => 
-          trade.symbol === item.symbol && trade.horizon === item.horizon
-        );
 
         return {
           symbol: item.symbol,
           horizon: item.horizon || '',
           side: item.side || 'LONG',
-          grade,
+          grade: item.grade || 'Weak',
+          confidence_label: item.confidence_label || 'Low',
+          confidence_score: item.confidence_score || 0,
           mentions: item.mentions || 0,
-          sharpe: sharpe,
+          sharpe: item.sharpe || 0,
           avg_ret: item.avg_ret || 0,
           win_rate: item.win_rate || 0,
-          trades: trades,
+          trades: item.trades || 0,
           start_date: item.start_date || '',
           end_date: item.end_date || '',
           notes: item.notes,
           status: 'TRIGGERED' as 'TRIGGERED' | 'Active' | 'Closed',
           isNew: true,
-          hasOpenPosition: hasOpenPosition || false,
-          gradeExplain: item.grade_explain || `${grade} based on Sharpe ${sharpe.toFixed(1)} and ${trades} trades`
+          hasOpenPosition: hasOpenPosition,
+          gradeExplain: item.grade_explain || `${item.grade} confidence based on ${item.trades} trades`
         };
       });
 
@@ -219,7 +198,7 @@ const RedditSentimentHomescreen = () => {
     try {
       // Get triggered symbols first
       const { data: triggeredData } = await supabase
-        .from('v_triggered_with_backtest' as any)
+        .from('v_recommended_trades_today_conf' as any)
         .select('symbol');
       
       const triggeredSymbols = triggeredData?.map((item: any) => item.symbol) || [];
@@ -592,13 +571,19 @@ const RedditSentimentHomescreen = () => {
                      <div className="flex items-center justify-between mb-3">
                        <div className="flex items-center gap-3">
                          <h3 className="text-lg font-bold">{symbol}</h3>
-                         <Badge 
-                           variant={bestCandidate.grade === 'Strong' ? 'default' : 
-                                   bestCandidate.grade === 'Moderate' ? 'outline' : 'secondary'}
-                           className="text-xs"
-                         >
-                           {bestCandidate.grade}
-                         </Badge>
+                          <Badge 
+                            variant={bestCandidate.grade === 'Strong' ? 'default' : 
+                                    bestCandidate.grade === 'Moderate' ? 'outline' : 'secondary'}
+                            className="text-xs"
+                          >
+                            {bestCandidate.grade}
+                          </Badge>
+                          <Badge 
+                            variant="outline"
+                            className="text-xs"
+                          >
+                            {bestCandidate.confidence_label}
+                          </Badge>
                          {bestCandidate.hasOpenPosition ? (
                            <Badge variant="secondary" className="text-xs">Already Open</Badge>
                          ) : (
