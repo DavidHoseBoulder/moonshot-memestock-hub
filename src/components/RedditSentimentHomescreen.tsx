@@ -22,7 +22,10 @@ import {
 
 // Types
 interface HomeKPIs {
-  as_of_date: string;
+  header_as_of_date: string;
+  kpi_as_of_date: string;
+  candidates_as_of_date: string;
+  signals_as_of_date: string;
   mode: string;
   open_positions: number;
   exposure_usd: number;
@@ -356,7 +359,7 @@ const RedditSentimentHomescreen = () => {
         <div>
           <h1 className="text-3xl font-bold text-foreground">Meme Trading Homepage</h1>
           <p className="text-muted-foreground">
-            Last updated {lastUpdated.toLocaleTimeString()} • Market closed — showing last trading day ({kpiData ? formatDate(kpiData.as_of_date) : '...'})
+            Last updated {lastUpdated.toLocaleTimeString()} • Market closed — showing last trading day ({kpiData ? formatDate(kpiData.header_as_of_date) : '...'})
           </p>
         </div>
         <Button onClick={handleRefresh} disabled={isRefreshing}>
@@ -370,6 +373,7 @@ const RedditSentimentHomescreen = () => {
         <Card 
           className="cursor-pointer hover:shadow-md transition-shadow"
           onClick={() => navigate('/trades')}
+          title={kpiData ? `KPIs as of ${formatDate(kpiData.kpi_as_of_date)}` : undefined}
         >
           <CardContent className="p-4">
             <div className="flex items-center justify-between">
@@ -396,6 +400,7 @@ const RedditSentimentHomescreen = () => {
         <Card 
           className="cursor-pointer hover:shadow-md transition-shadow"
           onClick={() => navigate('/trades')}
+          title={kpiData ? `KPIs as of ${formatDate(kpiData.kpi_as_of_date)}` : undefined}
         >
           <CardContent className="p-4">
             <div className="flex items-center justify-between">
@@ -424,6 +429,7 @@ const RedditSentimentHomescreen = () => {
         <Card 
           className="cursor-pointer hover:shadow-md transition-shadow"
           onClick={() => navigate('/trades')}
+          title={kpiData ? `KPIs as of ${formatDate(kpiData.kpi_as_of_date)}` : undefined}
         >
           <CardContent className="p-4">
             <div className="flex items-center justify-between">
@@ -450,6 +456,7 @@ const RedditSentimentHomescreen = () => {
         <Card 
           className="cursor-pointer hover:shadow-md transition-shadow"
           onClick={() => navigate('/trades')}
+          title={kpiData ? `KPIs as of ${formatDate(kpiData.kpi_as_of_date)}` : undefined}
         >
           <CardContent className="p-4">
             <div className="flex items-center justify-between">
@@ -480,10 +487,17 @@ const RedditSentimentHomescreen = () => {
       <Card>
         <CardHeader>
           <div className="flex items-center justify-between">
-            <CardTitle className="flex items-center gap-2">
-              <Target className="w-5 h-5" />
-              Today's Triggered Candidates
-            </CardTitle>
+            <div>
+              <CardTitle className="flex items-center gap-2">
+                <Target className="w-5 h-5" />
+                Today's Triggered Candidates
+              </CardTitle>
+              {kpiData && (
+                <p className="text-sm text-muted-foreground mt-1">
+                  Candidates as of {formatDate(kpiData.candidates_as_of_date)}
+                </p>
+              )}
+            </div>
             <Button 
               variant="outline" 
               size="sm"
@@ -584,10 +598,17 @@ const RedditSentimentHomescreen = () => {
         {/* Monitoring */}
         <Card>
           <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Eye className="w-5 h-5" />
-              Monitoring
-            </CardTitle>
+            <div>
+              <CardTitle className="flex items-center gap-2">
+                <Eye className="w-5 h-5" />
+                Monitoring
+              </CardTitle>
+              {kpiData && (
+                <p className="text-sm text-muted-foreground mt-1">
+                  Signals as of {formatDate(kpiData.signals_as_of_date)}
+                </p>
+              )}
+            </div>
           </CardHeader>
           <CardContent>
             {isLoading ? (
@@ -631,10 +652,17 @@ const RedditSentimentHomescreen = () => {
         {/* Today's Reddit Signals */}
         <Card>
           <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <BarChart3 className="w-5 h-5" />
-              Today's Reddit Signals
-            </CardTitle>
+            <div>
+              <CardTitle className="flex items-center gap-2">
+                <BarChart3 className="w-5 h-5" />
+                Today's Reddit Signals
+              </CardTitle>
+              {kpiData && (
+                <p className="text-sm text-muted-foreground mt-1">
+                  Signals as of {formatDate(kpiData.signals_as_of_date)}
+                </p>
+              )}
+            </div>
           </CardHeader>
           <CardContent>
             {isLoading ? (
