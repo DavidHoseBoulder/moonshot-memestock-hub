@@ -433,6 +433,7 @@ export type Database = {
           horizon: string
           is_enabled: boolean
           median_ret: number | null
+          min_conf: number
           min_mentions: number
           model_version: string
           notes: string | null
@@ -453,6 +454,7 @@ export type Database = {
           horizon: string
           is_enabled?: boolean
           median_ret?: number | null
+          min_conf?: number
           min_mentions: number
           model_version: string
           notes?: string | null
@@ -473,6 +475,7 @@ export type Database = {
           horizon?: string
           is_enabled?: boolean
           median_ret?: number | null
+          min_conf?: number
           min_mentions?: number
           model_version?: string
           notes?: string | null
@@ -530,6 +533,21 @@ export type Database = {
           post_id?: string
           score?: number | null
           subreddit?: string
+        }
+        Relationships: []
+      }
+      reddit_comments_raw: {
+        Row: {
+          ingested_at: string
+          src_line: string
+        }
+        Insert: {
+          ingested_at?: string
+          src_line: string
+        }
+        Update: {
+          ingested_at?: string
+          src_line?: string
         }
         Relationships: []
       }
@@ -671,6 +689,18 @@ export type Database = {
             referencedColumns: ["post_id"]
           },
         ]
+      }
+      reddit_posts_stage: {
+        Row: {
+          line: string | null
+        }
+        Insert: {
+          line?: string | null
+        }
+        Update: {
+          line?: string | null
+        }
+        Relationships: []
       }
       reddit_raw_aug: {
         Row: {
@@ -858,6 +888,42 @@ export type Database = {
           subreddit?: string
           symbols_mentioned?: string[] | null
           title?: string
+        }
+        Relationships: []
+      }
+      sentiment_grade_config: {
+        Row: {
+          horizon: string
+          model_version: string
+          moderate_sharpe: number
+          moderate_trades: number
+          require_pos_avg: boolean
+          side: string
+          strong_sharpe: number
+          strong_trades: number
+          updated_at: string
+        }
+        Insert: {
+          horizon: string
+          model_version: string
+          moderate_sharpe?: number
+          moderate_trades?: number
+          require_pos_avg?: boolean
+          side: string
+          strong_sharpe?: number
+          strong_trades?: number
+          updated_at?: string
+        }
+        Update: {
+          horizon?: string
+          model_version?: string
+          moderate_sharpe?: number
+          moderate_trades?: number
+          require_pos_avg?: boolean
+          side?: string
+          strong_sharpe?: number
+          strong_trades?: number
+          updated_at?: string
         }
         Relationships: []
       }
@@ -1278,44 +1344,44 @@ export type Database = {
         }
         Relationships: []
       }
+      triggered_candidates: {
+        Row: {
+          horizon: string
+          mentions: number
+          min_mentions: number
+          model_version: string
+          pos_thresh: number
+          score: number
+          side: string
+          symbol: string
+          triggered_at: string
+        }
+        Insert: {
+          horizon: string
+          mentions: number
+          min_mentions: number
+          model_version: string
+          pos_thresh: number
+          score: number
+          side: string
+          symbol: string
+          triggered_at?: string
+        }
+        Update: {
+          horizon?: string
+          mentions?: number
+          min_mentions?: number
+          model_version?: string
+          pos_thresh?: number
+          score?: number
+          side?: string
+          symbol?: string
+          triggered_at?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
-      daily_sentiment_candidates: {
-        Row: {
-          avg_score: number | null
-          d: string | null
-          horizon: string | null
-          min_mentions: number | null
-          model_version: string | null
-          n_mentions: number | null
-          pos_thresh: number | null
-          side: string | null
-          sig_score: number | null
-          symbol: string | null
-          triggered: boolean | null
-          use_weighted: boolean | null
-          wt_score: number | null
-        }
-        Relationships: []
-      }
-      live_sentiment_candidates: {
-        Row: {
-          avg_score: number | null
-          d: string | null
-          horizon: string | null
-          min_mentions: number | null
-          model_version: string | null
-          n_mentions: number | null
-          pos_thresh: number | null
-          side: string | null
-          sig_score: number | null
-          symbol: string | null
-          triggered: boolean | null
-          use_weighted: boolean | null
-          wt_score: number | null
-        }
-        Relationships: []
-      }
       prices_daily: {
         Row: {
           close: number | null
@@ -1325,15 +1391,30 @@ export type Database = {
         }
         Relationships: []
       }
+      reddit_comments_clean: {
+        Row: {
+          author: string | null
+          body: string | null
+          comment_id: string | null
+          created_utc: string | null
+          depth: number | null
+          is_submitter: boolean | null
+          parent_id: string | null
+          permalink: string | null
+          post_id: string | null
+          score: number | null
+          subreddit: string | null
+        }
+        Relationships: []
+      }
       reddit_daily_sentiment_v1: {
         Row: {
           avg_confidence: number | null
           avg_score: number | null
           day: string | null
           doc_type: string | null
-          n_neg: number | null
-          n_neu: number | null
-          n_pos: number | null
+          label: string | null
+          n_mentions: number | null
           n_scored: number | null
           symbol: string | null
         }
@@ -1464,15 +1545,21 @@ export type Database = {
         }
         Relationships: []
       }
-      v_daily_scores: {
+      v_home_kpis: {
         Row: {
-          avg_score: number | null
-          data_date: string | null
-          generated_at: string | null
-          n_mentions: number | null
-          symbol: string | null
-          used_score: number | null
-          velocity: number | null
+          avg_realized_pct: number | null
+          candidates_as_of_date: string | null
+          closed_30d: number | null
+          exposure_usd: number | null
+          header_as_of_date: string | null
+          hit_rate: number | null
+          kpi_as_of_date: string | null
+          mode: string | null
+          open_positions: number | null
+          realized_30d_usd: number | null
+          signals_as_of_date: string | null
+          unrealized_pct: number | null
+          unrealized_usd: number | null
         }
         Relationships: []
       }
@@ -1556,11 +1643,31 @@ export type Database = {
       }
       v_reddit_candidates_last_trading_day: {
         Row: {
+          avg_confidence: number | null
           horizon: string | null
+          min_conf: number | null
           min_mentions: number | null
+          model_version: string | null
           n_mentions: number | null
           pos_thresh: number | null
-          reference_date: string | null
+          side: string | null
+          symbol: string | null
+          trade_date: string | null
+          triggered: boolean | null
+          use_weighted: boolean | null
+          used_score: number | null
+        }
+        Relationships: []
+      }
+      v_reddit_candidates_raw: {
+        Row: {
+          avg_confidence: number | null
+          horizon: string | null
+          min_conf: number | null
+          min_mentions: number | null
+          model_version: string | null
+          n_mentions: number | null
+          pos_thresh: number | null
           side: string | null
           symbol: string | null
           trade_date: string | null
@@ -1572,16 +1679,36 @@ export type Database = {
       }
       v_reddit_candidates_today: {
         Row: {
+          avg_ret: number | null
+          avg_ret_display: number | null
+          end_date: string | null
+          entry_date: string | null
+          exit_date: string | null
+          grade: string | null
+          grade_explain: string | null
+          hold_days: number | null
           horizon: string | null
+          is_enabled: boolean | null
+          mentions: number | null
           min_mentions: number | null
-          n_mentions: number | null
-          pos_thresh: number | null
+          model_version: string | null
+          moderate_sharpe: number | null
+          moderate_trades: number | null
+          priority: number | null
+          rule_threshold: number | null
+          score: number | null
+          sharpe: number | null
+          sharpe_display: number | null
           side: string | null
+          start_date: string | null
+          strong_sharpe: number | null
+          strong_trades: number | null
           symbol: string | null
-          trade_date: string | null
-          triggered: boolean | null
+          trades: number | null
+          triggered_at: string | null
           use_weighted: boolean | null
-          used_score: number | null
+          win_rate: number | null
+          win_rate_display: number | null
         }
         Relationships: []
       }
@@ -1758,6 +1885,18 @@ export type Database = {
           },
         ]
       }
+      v_reddit_monitoring_signals: {
+        Row: {
+          avg_score: number | null
+          n_mentions: number | null
+          sentiment: string | null
+          sig_score: number | null
+          symbol: string | null
+          trade_date: string | null
+          used_score: number | null
+        }
+        Relationships: []
+      }
       v_scoring_posts: {
         Row: {
           created_utc: string | null
@@ -1780,16 +1919,34 @@ export type Database = {
         }
         Relationships: []
       }
-      v_today_live_entries: {
+      v_triggered_with_backtest: {
         Row: {
-          d: string | null
+          avg_ret: number | null
+          end_date: string | null
+          grade: string | null
+          grade_explain: string | null
           horizon: string | null
+          is_enabled: boolean | null
+          mentions: number | null
           min_mentions: number | null
-          n_mentions: number | null
-          pos_thresh: number | null
+          model_version: string | null
+          moderate_sharpe: number | null
+          moderate_trades: number | null
+          notes: string | null
+          priority: number | null
+          require_pos_avg: boolean | null
+          rule_threshold: number | null
+          score: number | null
+          sharpe: number | null
+          side: string | null
+          start_date: string | null
+          strong_sharpe: number | null
+          strong_trades: number | null
           symbol: string | null
-          triggered: boolean | null
-          used_score: number | null
+          trades: number | null
+          triggered_at: string | null
+          use_weighted: boolean | null
+          win_rate: number | null
         }
         Relationships: []
       }
@@ -1847,6 +2004,10 @@ export type Database = {
       try_parse_jsonb: {
         Args: { txt: string }
         Returns: Json
+      }
+      upsert_daily_marks: {
+        Args: { p_mark_date: string }
+        Returns: undefined
       }
       upsert_reddit_sentiment: {
         Args: {

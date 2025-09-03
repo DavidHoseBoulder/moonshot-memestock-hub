@@ -185,7 +185,7 @@ const RedditSentimentHomescreen = () => {
   };
 
   const fetchMonitoringCandidates = async () => {
-    console.log('👀 Fetching monitoring candidates from v_reddit_daily_signals...');
+    console.log('👀 Fetching monitoring candidates from v_reddit_monitoring_signals...');
     try {
       // Get triggered symbols first
       const { data: triggeredData } = await supabase
@@ -194,20 +194,19 @@ const RedditSentimentHomescreen = () => {
       
       const triggeredSymbols = triggeredData?.map((item: any) => item.symbol) || [];
 
-      // Get reddit signals excluding triggered symbols
+      // Get monitoring signals excluding triggered symbols
       let query = supabase
-        .from('v_reddit_daily_signals' as any)
+        .from('v_reddit_monitoring_signals' as any)
         .select('*')
-        .gte('avg_score', 0.1)
-        .gte('n_mentions', 3)
-        .order('avg_score', { ascending: false })
-        .limit(8);
+        .gte('n_mentions', 3);
 
       if (triggeredSymbols.length > 0) {
         query = query.not('symbol', 'in', `(${triggeredSymbols.join(',')})`);
       }
 
-      const { data, error } = await query;
+      const { data, error } = await query
+        .order('sig_score', { ascending: false })
+        .limit(8);
 
       if (error) {
         console.error('❌ Monitoring candidates query error:', error);
@@ -219,9 +218,9 @@ const RedditSentimentHomescreen = () => {
       if (data) {
         const processed = data.map((item: any) => ({
           symbol: item.symbol,
-          horizon: item.horizon || '',
+          horizon: '', // No horizon in monitoring view
           mentions: item.n_mentions || 0,
-          score: item.avg_score || 0,
+          score: item.used_score || 0,
         }));
 
         setMonitoringCandidates(processed);
@@ -637,11 +636,18 @@ const RedditSentimentHomescreen = () => {
                       <span className="font-medium">{candidate.symbol}</span>
                       <span className="text-sm text-muted-foreground">{candidate.horizon}</span>
                     </div>
-                    <div className="flex items-center gap-2">
-                      <span className="text-sm">{candidate.mentions} mentions</span>
-                      <span className="text-sm font-medium">{candidate.score.toFixed(2)}</span>
-                      <Badge variant="outline" className="text-xs">Bullish</Badge>
-                    </div>
+                     <div className="flex items-center gap-2">
+                       <span className="text-sm">{candidate.mentions} mentions</span>
+                       <span className="text-sm font-medium">{candidate.score.toFixed(2)}</span>
+                       <Badge 
+                         variant={candidate.score >= 0.15 ? 'default' : 
+                                 candidate.score <= -0.15 ? 'destructive' : 'outline'}
+                         className="text-xs"
+                       >
+                         {candidate.score >= 0.15 ? 'Bullish' : 
+                          candidate.score <= -0.15 ? 'Bearish' : 'Neutral'}
+                       </Badge>
+                     </div>
                   </div>
                 ))}
               </div>
