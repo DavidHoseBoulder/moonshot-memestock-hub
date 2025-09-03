@@ -46,50 +46,41 @@ const SymbolSentimentHistory: React.FC<SymbolSentimentHistoryProps> = ({
     setError(null);
 
     try {
-      // Mock implementation - will be replaced with real queries when views are available
-      // 1) Get the date range for the header using max(data_date) logic
-      const endDate = new Date().toISOString().split('T')[0];
-      const startDate = new Date(Date.now() - (days - 1) * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
-      
+      // 1) Get the latest trade date
+      const { data: latestDateData, error: dateError } = await supabase
+        .from('v_latest_reddit_trade_date' as any)
+        .select('data_date')
+        .single();
+
+      if (dateError) throw dateError;
+
+      const endDate = ((latestDateData as any).data_date) as string;
+      const endDateObj = new Date(endDate);
+      const startDateObj = new Date(endDateObj);
+      startDateObj.setDate(startDateObj.getDate() - (days - 1));
+      const startDate = startDateObj.toISOString().split('T')[0];
+
       setDateRange({
         start_date: startDate,
         end_date: endDate
       });
 
-      // 2A/2B) Mock history data with proper case-folding simulation
-      const mockData: SentimentHistoryData[] = [];
-      
-      // Simulate case-insensitive matching: normalize symbol to uppercase
-      const normalizedSymbol = symbol.toUpperCase();
-      
-      for (let i = 0; i < days; i++) {
-        const date = new Date(Date.now() - i * 24 * 60 * 60 * 1000);
-        const dateStr = date.toISOString().split('T')[0];
-        
-        // Generate realistic-looking data
-        const baseScore = 0.1 + Math.sin(i * 0.3) * 0.4;
-        const mentions = Math.max(1, Math.floor(5 + Math.random() * 15));
-        
-        const dataPoint: SentimentHistoryData = {
-          data_date: dateStr,
-          symbol: normalizedSymbol, // Always uppercase
-          avg_score: baseScore + (Math.random() - 0.5) * 0.2,
-          used_score: baseScore,
-          n_mentions: mentions
-        };
+      // 2) Query sentiment history with case-folding
+      const viewName = withVelocity ? 'v_sentiment_velocity_lite' : 'v_sentiment_history';
+      const { data: historyData, error: historyError } = await supabase
+        .from(viewName as any)
+        .select('*')
+        .ilike('symbol', symbol) // Case-insensitive matching
+        .gte('data_date', startDate)
+        .lte('data_date', endDate)
+        .order('data_date', { ascending: true });
 
-        if (withVelocity) {
-          dataPoint.z_score_score = (Math.random() - 0.5) * 4;
-          dataPoint.delta_mentions = Math.floor((Math.random() - 0.5) * 10);
-        }
+      if (historyError) throw historyError;
 
-        mockData.unshift(dataPoint);
-      }
-
-      setHistoryData(mockData);
-    } catch (err) {
-      console.error('Error fetching sentiment history:', err);
-      setError('Failed to load sentiment history');
+      setHistoryData((historyData || [] as unknown) as SentimentHistoryData[]);
+    } catch (error) {
+      console.error('Error fetching sentiment history:', error);
+      setError('Failed to load sentiment history data');
     } finally {
       setIsLoading(false);
     }

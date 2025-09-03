@@ -38,12 +38,17 @@ export default function RedditVelocitySpikes({
 
   const fetchHeaderDate = async (): Promise<string | null> => {
     try {
-      // TODO: Replace with actual query when v_latest_reddit_trade_date view is available
-      // SELECT data_date FROM public.v_latest_reddit_trade_date;
-      
-      // For now, use a mock date that would come from the database
-      const mockDate = new Date().toISOString().split('T')[0]; // Today's date as YYYY-MM-DD
-      return mockDate;
+      const { data, error } = await supabase
+        .from('v_latest_reddit_trade_date' as any)
+        .select('data_date')
+        .single();
+
+      if (error) {
+        console.error('Error fetching header date:', error);
+        return null;
+      }
+
+      return ((data as any).data_date) as string;
     } catch (error) {
       console.error('Error fetching header date:', error);
       return null;
@@ -52,83 +57,30 @@ export default function RedditVelocitySpikes({
 
   const fetchVelocitySpikes = async (useThresholds = true): Promise<VelocitySpike[]> => {
     try {
-      // TODO: Replace with actual query when v_today_velocity_ranked view is available
-      // The actual query should be:
-      /*
-        SELECT
-          data_date,
-          symbol,
-          rank,
-          z_score_score,
-          delta_mentions,
-          n_mentions,
-          avg_score
-        FROM public.v_today_velocity_ranked
-        WHERE rank <= :limit
-        [AND (coalesce(z_score_score,0) >= :min_z OR coalesce(delta_mentions,0) >= :min_delta_mentions)]
-        ORDER BY rank
-      */
-      
-      // Mock data that matches the expected API structure
-      const mockData: VelocitySpike[] = [
-        {
-          data_date: new Date().toISOString().split('T')[0],
-          symbol: "ASTS",
-          rank: 1,
-          z_score_score: 5.6,
-          delta_mentions: -6,
-          n_mentions: 1,
-          avg_score: 0.70
-        },
-        {
-          data_date: new Date().toISOString().split('T')[0],
-          symbol: "AAPL", 
-          rank: 2,
-          z_score_score: 4.8,
-          delta_mentions: -9,
-          n_mentions: 1,
-          avg_score: 0.70
-        },
-        {
-          data_date: new Date().toISOString().split('T')[0],
-          symbol: "GME",
-          rank: 3,
-          z_score_score: 3.8,
-          delta_mentions: -15,
-          n_mentions: 13,
-          avg_score: 0.50
-        },
-        {
-          data_date: new Date().toISOString().split('T')[0],
-          symbol: "TTD",
-          rank: 4,
-          z_score_score: 3.8,
-          delta_mentions: 0,
-          n_mentions: 2,  
-          avg_score: 0.40
-        },
-        {
-          data_date: new Date().toISOString().split('T')[0],
-          symbol: "AMZN",
-          rank: 5,
-          z_score_score: 2.8,
-          delta_mentions: -4,
-          n_mentions: 8,
-          avg_score: 0.41
-        }
-      ];
+      let query = supabase
+        .from('v_today_velocity_ranked' as any)
+        .select('*')
+        .order('rank', { ascending: true });
 
-      // Apply filtering logic if thresholds are provided and useThresholds is true
-      if (useThresholds && (min_z !== undefined || min_delta_mentions !== undefined)) {
-        const filtered = mockData.filter(spike => {
-          if (min_z !== undefined && (spike.z_score_score || 0) >= min_z) return true;
-          if (min_delta_mentions !== undefined && (spike.delta_mentions || 0) >= min_delta_mentions) return true;
-          return false;
-        });
-        return filtered.slice(0, limit);
+      // Apply thresholds if requested
+      if (useThresholds && min_z !== undefined && min_delta_mentions !== undefined) {
+        query = query
+          .gte('z_score_score', min_z)
+          .gte('delta_mentions', min_delta_mentions);
       }
 
-      return mockData.slice(0, limit);
+      if (limit) {
+        query = query.limit(limit);
+      }
+
+      const { data, error } = await query;
+
+      if (error) {
+        console.error('Error fetching velocity spikes:', error);
+        throw error;
+      }
+
+      return (data || [] as unknown) as VelocitySpike[];
     } catch (error) {
       console.error('Error fetching velocity spikes:', error);
       return [];
