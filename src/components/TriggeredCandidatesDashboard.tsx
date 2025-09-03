@@ -92,8 +92,8 @@ const TriggeredCandidatesDashboard = () => {
   const fetchTriggeredCandidates = async () => {
     console.log('🎯 Fetching recommended trades...');
     try {
-      const { data, error } = await supabase
-        .from('v_recommended_trades_today' as any)
+    const { data, error } = await supabase
+        .from('v_recommended_trades_today_conf' as any)
         .select('*')
         .order('sharpe', { ascending: false });
 
