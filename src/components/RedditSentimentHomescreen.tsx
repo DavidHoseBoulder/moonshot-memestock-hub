@@ -21,11 +21,17 @@ import {
 } from 'lucide-react';
 
 // Types
-interface KPIData {
-  openPositions: { count: number; exposure: number } | null;
-  unrealizedPnL: { amount: number; percentage: number } | null;
-  closed30d: { count: number; hitRate: number } | null;
-  totalRealized30d: { amount: number; avgPercentage: number } | null;
+interface HomeKPIs {
+  as_of_date: string;
+  mode: string;
+  open_positions: number;
+  exposure_usd: number;
+  unrealized_usd: number;
+  unrealized_pct: number;
+  closed_30d: number;
+  hit_rate: number;
+  realized_30d_usd: number;
+  avg_realized_pct: number;
 }
 
 interface TriggeredCandidate {
@@ -61,13 +67,8 @@ interface RedditSignal {
 
 const RedditSentimentHomescreen = () => {
   const [lastUpdated, setLastUpdated] = useState<Date>(new Date());
-  const [tradingDate, setTradingDate] = useState<string>(todayInDenverDateString());
-  const [kpiData, setKpiData] = useState<KPIData>({
-    openPositions: null,
-    unrealizedPnL: null,
-    closed30d: null,
-    totalRealized30d: null,
-  });
+  const [tradingMode, setTradingMode] = useState<string>('paper'); // 'paper' | 'real' | 'all'
+  const [kpiData, setKpiData] = useState<HomeKPIs | null>(null);
   const [triggeredCandidates, setTriggeredCandidates] = useState<TriggeredCandidate[]>([]);
   const [monitoringCandidates, setMonitoringCandidates] = useState<MonitoringCandidate[]>([]);
   const [redditSignals, setRedditSignals] = useState<RedditSignal[]>([]);
@@ -101,13 +102,12 @@ const RedditSentimentHomescreen = () => {
 
   // Data fetching functions
   const fetchKPIData = async () => {
-    console.log('📊 Fetching KPI data...');
+    console.log('📊 Fetching KPI data from v_home_kpis...');
     try {
-      // Fetch open positions and unrealized P&L
-      const { data: pnlData, error } = await supabase
-        .from('v_daily_pnl_rollups')
+      const { data, error } = await supabase
+        .from('v_home_kpis' as any)
         .select('*')
-        .eq('mark_date', tradingDate)
+        .eq('mode', tradingMode)
         .maybeSingle();
 
       if (error) {
@@ -115,36 +115,21 @@ const RedditSentimentHomescreen = () => {
         throw error;
       }
 
-      console.log('📊 KPI data received:', pnlData);
-
-      // Set KPI data with fallbacks
-      setKpiData({
-        openPositions: pnlData ? { count: pnlData.n_open || 0, exposure: 25000 } : null,
-        unrealizedPnL: pnlData ? { amount: pnlData.unrealized_pnl || 0, percentage: 0.023 } : null,
-        closed30d: { count: 12, hitRate: 0.75 },
-        totalRealized30d: { amount: 2450, avgPercentage: 0.032 },
-      });
+      console.log('📊 KPI data received:', data);
+      setKpiData(data as unknown as HomeKPIs | null);
     } catch (error) {
       console.error('❌ Error fetching KPI data:', error);
-      // Set fallback data on error
-      setKpiData({
-        openPositions: null,
-        unrealizedPnL: null,
-        closed30d: null,
-        totalRealized30d: null,
-      });
+      setKpiData(null);
     }
   };
 
   const fetchTriggeredCandidates = async () => {
-    console.log('🎯 Fetching triggered candidates...');
+    console.log('🎯 Fetching triggered candidates from v_triggered_with_backtest...');
     try {
-      // Use v_reddit_candidates_today view for today's triggered candidates
       const { data, error } = await supabase
-        .from('v_reddit_candidates_today')
+        .from('v_triggered_with_backtest' as any)
         .select('*')
-        .eq('triggered', true)
-        .order('sharpe_display', { ascending: false })
+        .order('sharpe', { ascending: false })
         .limit(20);
 
       if (error) {
@@ -159,10 +144,9 @@ const RedditSentimentHomescreen = () => {
         return;
       }
 
-      // Process data from v_reddit_candidates_today
       const processed = data.map((item: any) => {
         let grade: 'Strong' | 'Moderate' | 'Weak' = 'Weak';
-        const sharpe = item.sharpe_display || 0;
+        const sharpe = item.sharpe || 0;
         const trades = item.trades || 0;
         
         if (sharpe >= 2.0 && trades >= 6) {
@@ -173,17 +157,17 @@ const RedditSentimentHomescreen = () => {
 
         return {
           symbol: item.symbol,
-          horizon: item.horizon,
-          side: item.side,
+          horizon: item.horizon || '',
+          side: item.side || 'LONG',
           grade,
-          mentions: item.n_mentions || 0,
+          mentions: item.mentions || 0,
           sharpe: sharpe,
-          avg_ret: item.avg_ret_display || 0,
-          win_rate: item.win_rate_display || 0,
+          avg_ret: item.avg_ret || 0,
+          win_rate: item.win_rate || 0,
           trades: trades,
-          start_date: '',
-          end_date: '',
-          notes: '',
+          start_date: item.start_date || '',
+          end_date: item.end_date || '',
+          notes: item.notes,
           status: 'TRIGGERED' as 'TRIGGERED' | 'Active' | 'Closed',
           isNew: true,
         };
@@ -198,18 +182,29 @@ const RedditSentimentHomescreen = () => {
   };
 
   const fetchMonitoringCandidates = async () => {
-    console.log('👀 Fetching monitoring candidates...');
+    console.log('👀 Fetching monitoring candidates from v_reddit_daily_signals...');
     try {
-      // Use v_live_sentiment_signals for monitoring candidates
-      const { data, error } = await supabase
-        .from('v_live_sentiment_signals')
+      // Get triggered symbols first
+      const { data: triggeredData } = await supabase
+        .from('v_triggered_with_backtest' as any)
+        .select('symbol');
+      
+      const triggeredSymbols = triggeredData?.map((item: any) => item.symbol) || [];
+
+      // Get reddit signals excluding triggered symbols
+      let query = supabase
+        .from('v_reddit_daily_signals' as any)
         .select('*')
-        .eq('d', tradingDate)
-        .eq('triggered', false)
         .gte('avg_score', 0.1)
         .gte('n_mentions', 3)
         .order('sig_score', { ascending: false })
         .limit(8);
+
+      if (triggeredSymbols.length > 0) {
+        query = query.not('symbol', 'in', `(${triggeredSymbols.join(',')})`);
+      }
+
+      const { data, error } = await query;
 
       if (error) {
         console.error('❌ Monitoring candidates query error:', error);
@@ -221,7 +216,7 @@ const RedditSentimentHomescreen = () => {
       if (data) {
         const processed = data.map((item: any) => ({
           symbol: item.symbol,
-          horizon: item.horizon,
+          horizon: item.horizon || '',
           mentions: item.n_mentions || 0,
           score: item.avg_score || 0,
         }));
@@ -237,13 +232,11 @@ const RedditSentimentHomescreen = () => {
   };
 
   const fetchRedditSignals = async () => {
-    console.log('📈 Fetching reddit signals for date:', tradingDate);
+    console.log('📈 Fetching reddit signals from v_reddit_daily_signals...');
     try {
-      // Use v_live_sentiment_signals for today's reddit signals
       const { data, error } = await supabase
-        .from('v_live_sentiment_signals')
+        .from('v_reddit_daily_signals' as any)
         .select('*')
-        .eq('d', tradingDate)
         .gte('n_mentions', 2)
         .order('sig_score', { ascending: false })
         .limit(20);
@@ -363,7 +356,7 @@ const RedditSentimentHomescreen = () => {
         <div>
           <h1 className="text-3xl font-bold text-foreground">Meme Trading Homepage</h1>
           <p className="text-muted-foreground">
-            Last updated {lastUpdated.toLocaleTimeString()} • Market closed — showing last trading day ({formatDate(tradingDate)})
+            Last updated {lastUpdated.toLocaleTimeString()} • Market closed — showing last trading day ({kpiData ? formatDate(kpiData.as_of_date) : '...'})
           </p>
         </div>
         <Button onClick={handleRefresh} disabled={isRefreshing}>
@@ -383,11 +376,11 @@ const RedditSentimentHomescreen = () => {
               <div>
                 <p className="text-sm text-muted-foreground">Open Positions</p>
                 <div className="flex items-baseline gap-2">
-                  {kpiData.openPositions ? (
+                  {kpiData ? (
                     <>
-                      <p className="text-2xl font-bold">{kpiData.openPositions.count}</p>
+                      <p className="text-2xl font-bold">{kpiData.open_positions}</p>
                       <p className="text-sm text-muted-foreground">
-                        {formatCurrency(kpiData.openPositions.exposure)}
+                        {formatCurrency(kpiData.exposure_usd)}
                       </p>
                     </>
                   ) : (
@@ -408,15 +401,15 @@ const RedditSentimentHomescreen = () => {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-muted-foreground">Unrealized P&L</p>
-                {kpiData.unrealizedPnL ? (
+                {kpiData ? (
                   <>
                     <p className={`text-2xl font-bold ${
-                      kpiData.unrealizedPnL.amount >= 0 ? 'text-green-600' : 'text-red-600'
+                      kpiData.unrealized_usd >= 0 ? 'text-green-600' : 'text-red-600'
                     }`}>
-                      {formatCurrency(kpiData.unrealizedPnL.amount)}
+                      {formatCurrency(kpiData.unrealized_usd)}
                     </p>
                     <p className="text-sm text-muted-foreground">
-                      {formatPercent(kpiData.unrealizedPnL.percentage)}
+                      {formatPercent(kpiData.unrealized_pct)}
                     </p>
                   </>
                 ) : (
@@ -437,11 +430,11 @@ const RedditSentimentHomescreen = () => {
               <div>
                 <p className="text-sm text-muted-foreground">Closed (30d)</p>
                 <div className="flex items-baseline gap-2">
-                  {kpiData.closed30d ? (
+                  {kpiData ? (
                     <>
-                      <p className="text-2xl font-bold">{kpiData.closed30d.count}</p>
+                      <p className="text-2xl font-bold">{kpiData.closed_30d}</p>
                       <p className="text-sm text-muted-foreground">
-                        {formatPercent(kpiData.closed30d.hitRate)} hit
+                        {formatPercent(kpiData.hit_rate)} hit
                       </p>
                     </>
                   ) : (
@@ -462,15 +455,15 @@ const RedditSentimentHomescreen = () => {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-muted-foreground">Total Realized (30d)</p>
-                {kpiData.totalRealized30d ? (
+                {kpiData ? (
                   <>
                     <p className={`text-2xl font-bold ${
-                      kpiData.totalRealized30d.amount >= 0 ? 'text-green-600' : 'text-red-600'
+                      kpiData.realized_30d_usd >= 0 ? 'text-green-600' : 'text-red-600'
                     }`}>
-                      {formatCurrency(kpiData.totalRealized30d.amount)}
+                      {formatCurrency(kpiData.realized_30d_usd)}
                     </p>
                     <p className="text-sm text-muted-foreground">
-                      avg {formatPercent(kpiData.totalRealized30d.avgPercentage)}
+                      avg {formatPercent(kpiData.avg_realized_pct)}
                     </p>
                   </>
                 ) : (
