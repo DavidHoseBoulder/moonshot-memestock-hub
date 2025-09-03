@@ -113,6 +113,9 @@ export const STOCK_UNIVERSE: Stock[] = [
   { ticker: 'HBAN', category: 'Banking' },
   { ticker: 'USB', category: 'Banking' },
   
+  // ETFs & Indices
+  { ticker: 'SPY', category: 'ETFs & Indices' },
+  
   // SPAC & Penny
   { ticker: 'HYMC', category: 'SPAC & Penny' },
   { ticker: 'MULN', category: 'SPAC & Penny' },
@@ -136,6 +139,7 @@ export const CATEGORIES = [
   'Media & Internet',
   'Consumer Buzz',
   'Banking',
+  'ETFs & Indices',
   'SPAC & Penny'
 ];
 
