@@ -156,6 +156,7 @@ const SymbolSentimentHistory: React.FC<SymbolSentimentHistoryProps> = ({
         <ReferenceLine
           key={`spike-${index}`}
           x={spike.data_date}
+          yAxisId="sentiment"
           stroke="hsl(var(--destructive))"
           strokeDasharray="2 2"
           strokeWidth={1}
