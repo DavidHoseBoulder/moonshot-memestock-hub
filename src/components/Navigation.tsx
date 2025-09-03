@@ -25,7 +25,7 @@ import {
 
 const navItems = [
   { path: "/", icon: TrendingUp, label: "Home" },
-  { path: "/candidates", icon: Target, label: "Triggered Candidates" },
+  { path: "/candidates", icon: Target, label: "Recommended Trades" },
   { path: "/sentiment", icon: MessageSquare, label: "Sentiment" },
   { path: "/portfolio", icon: DollarSign, label: "Portfolio & Trades" },
   { path: "/backtesting", icon: BarChart3, label: "Backtesting" },
