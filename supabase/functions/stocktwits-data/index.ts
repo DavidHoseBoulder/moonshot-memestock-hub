@@ -221,18 +221,22 @@ Deno.serve(async (req) => {
       }
     }
 
-    // If no data from API, return empty results
+    // If no data from API, return empty results (but successful response)
     if (allMessages.length === 0) {
-      console.log('No StockTwits data available - API may be down or rate limited')
+      console.log('No StockTwits data available - returning empty results')
+      
+      const result = { 
+        messages: [],
+        totalResults: 0,
+        source: 'StockTwits API',
+        fromDatabase: recentData.length,
+        fromAPI: symbolsToFetch.length,
+        ticker_counts: {}
+      };
       
       return new Response(
-        JSON.stringify({ 
-          messages: [],
-          totalResults: 0,
-          error: 'StockTwits API unavailable',
-          source: 'StockTwits API'
-        }),
-        { status: 503, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        JSON.stringify(result),
+        { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       )
     }
 
