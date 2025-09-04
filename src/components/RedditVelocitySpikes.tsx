@@ -61,7 +61,6 @@ export default function RedditVelocitySpikes({
       let query = supabase
         .from('v_today_velocity_ranked' as any)
         .select('*')
-        .gte('trailing_count', 3) // Guard against sketchy baselines
         .lte('rank', limit)
         .order('rank', { ascending: true });
 
@@ -81,7 +80,7 @@ export default function RedditVelocitySpikes({
         delta_mentions: item.delta_mentions,
         n_mentions: item.n_mentions,
         avg_score: item.avg_score,
-        trailing_count: item.trailing_count
+        trailing_count: 0 // Not available in this view
       }));
 
       return transformedData;
