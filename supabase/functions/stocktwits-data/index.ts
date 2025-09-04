@@ -93,16 +93,16 @@ const supabaseUrl = Deno.env.get('SUPABASE_URL')!
 const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
 const supabase = createClient(supabaseUrl, supabaseKey)
 
-// Check database for recent data (last 30 minutes)
+// Check database for recent data (last 24 hours)
 async function getRecentSentimentData(symbols: string[]): Promise<{ symbol: string; data: any }[]> {
-  const thirtyMinutesAgo = new Date(Date.now() - 30 * 60 * 1000).toISOString()
+  const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()
   
   const { data, error } = await supabase
     .from('sentiment_history')
     .select('symbol, sentiment_score, confidence_score, metadata, collected_at')
     .in('symbol', symbols)
     .eq('source', 'stocktwits')
-    .gte('collected_at', thirtyMinutesAgo)
+    .gte('collected_at', twentyFourHoursAgo)
     .order('collected_at', { ascending: false })
   
   if (error) {
