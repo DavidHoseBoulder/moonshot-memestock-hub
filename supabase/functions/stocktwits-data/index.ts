@@ -7,34 +7,24 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
-// Category-based prioritization for social sentiment
-function prioritizeSymbolsByCategory(symbols: string[]): string[] {
-  const categoryPriority = {
-    'Meme & Retail': 5,        // Highest social sentiment
-    'Tech & Momentum': 4,
-    'Fintech & Crypto': 4,
-    'AI & Data': 3,
-    'EV & Alt-Tech': 3,
-    'Consumer Buzz': 3,
-    'Media & Internet': 2,
-    'Biotech & Pharma': 2,
-    'Banking': 1,
-    'SPAC & Penny': 1          // Lower priority
-  };
-
-  const stockCategories: Record<string, string> = {
-    'GME': 'Meme & Retail', 'AMC': 'Meme & Retail', 'BB': 'Meme & Retail',
-    'TSLA': 'Tech & Momentum', 'AAPL': 'Tech & Momentum', 'NVDA': 'Tech & Momentum',
-    'COIN': 'Fintech & Crypto', 'RIOT': 'Fintech & Crypto', 'HOOD': 'Fintech & Crypto'
-  };
-
-  return symbols.sort((a, b) => {
-    const categoryA = stockCategories[a] || 'Banking';
-    const categoryB = stockCategories[b] || 'Banking';
-    const priorityA = categoryPriority[categoryA] || 1;
-    const priorityB = categoryPriority[categoryB] || 1;
-    return priorityB - priorityA;
-  });
+// Load symbols from symbol_disambig for broader coverage
+async function loadSymbolsFromDatabase(): Promise<string[]> {
+  try {
+    const { data, error } = await supabase
+      .from('symbol_disambig')
+      .select('symbol')
+      .order('symbol')
+    
+    if (error) {
+      console.warn('Failed to load symbols from symbol_disambig:', error)
+      return ['AAPL', 'TSLA', 'NVDA'] // fallback
+    }
+    
+    return data.map(row => row.symbol)
+  } catch (e) {
+    console.warn('Error loading symbols:', e)
+    return ['AAPL', 'TSLA', 'NVDA'] // fallback
+  }
 }
 
 // Canonical tickers derived from Supabase ticker_universe (cold start)
@@ -143,14 +133,11 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const { symbols, limit = 30 } = await req.json()
+    const { limit = 30 } = await req.json()
     
-    if (!symbols || !Array.isArray(symbols)) {
-      return new Response(
-        JSON.stringify({ error: 'Missing or invalid symbols array' }),
-        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      )
-    }
+    // Load symbols from symbol_disambig table for broader coverage
+    const symbols = await loadSymbolsFromDatabase()
+    console.log(`Loaded ${symbols.length} symbols from symbol_disambig table`)
 
     console.log(`Checking database for recent StockTwits data for ${symbols.length} symbols`)
     
@@ -177,14 +164,11 @@ Deno.serve(async (req) => {
       }
     })
     
-    // Only fetch missing symbols from API
+    // Only fetch missing symbols from API - take first 10 for broader coverage
     if (symbolsToFetch.length > 0) {
-      console.log(`Fetching fresh StockTwits data for ${symbolsToFetch.length} symbols`)
+      console.log(`Fetching fresh StockTwits data for ${Math.min(symbolsToFetch.length, 10)} symbols`)
       
-      // Smart prioritization by category (social sentiment focus)
-      const prioritizedSymbols = prioritizeSymbolsByCategory(symbolsToFetch)
-      
-      for (const symbol of prioritizedSymbols.slice(0, 5)) { // Reduced to 5 to minimize API calls
+      for (const symbol of symbolsToFetch.slice(0, 10)) { // Increased to 10 for broader coverage
         try {
           const stocktwitsUrl = `https://api.stocktwits.com/api/2/streams/symbol/${symbol}.json?limit=${Math.min(limit, 25)}`
           
