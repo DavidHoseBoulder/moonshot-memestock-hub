@@ -45,11 +45,37 @@ const ExtractionTester: React.FC = () => {
   }, []);
 
   const run = useCallback(async (key: string, fn: () => Promise<any>) => {
+    const getCount = (k: string, data: any) => {
+      try {
+        switch (k) {
+          case "twitter":
+            return Array.isArray(data)
+              ? data.length
+              : (Array.isArray(data?.sentiment_data) ? data.sentiment_data.length : 0);
+          case "stocktwits":
+            if (Array.isArray(data?.messages)) return data.messages.length;
+            if (data?.ticker_counts && typeof data.ticker_counts === 'object') return Object.keys(data.ticker_counts).length;
+            return Array.isArray(data) ? data.length : 0;
+          case "financial-news":
+            return Array.isArray(data)
+              ? data.length
+              : (Array.isArray(data?.articles) ? data.articles.length : 0);
+          case "youtube":
+            return Array.isArray(data)
+              ? data.length
+              : (Array.isArray(data?.youtube_sentiment) ? data.youtube_sentiment.length : 0);
+          default:
+            return Array.isArray(data) ? data.length : 0;
+        }
+      } catch { return 0; }
+    };
+
     setLoading(l => ({ ...l, [key]: true }));
     try {
       const data = await fn();
       setResults(r => ({ ...r, [key]: data }));
-      toast({ title: `${key} complete`, description: `Got ${Array.isArray(data) ? data.length : Object.keys(data||{}).length} items` });
+      const cnt = getCount(key, data);
+      toast({ title: `${key} complete`, description: `Got ${cnt} ${cnt === 1 ? 'item' : 'items'}` });
     } catch (e: any) {
       console.error(e);
       toast({ title: `${key} failed`, description: e?.message || "Unknown error" });
@@ -129,7 +155,9 @@ const ExtractionTester: React.FC = () => {
     ytItems.forEach(item => item?.symbol && set.add(item.symbol));
 
     const twData = results["twitter"] as any;
-    const twItems: any[] = Array.isArray(twData) ? twData : asArray(twData?.items || twData?.tweets || twData?.twitter_sentiment);
+    const twItems: any[] = Array.isArray(twData)
+      ? twData
+      : asArray(twData?.items || twData?.tweets || twData?.twitter_sentiment || twData?.sentiment_data);
     twItems.forEach(item => item?.symbol && set.add(item.symbol));
 
     return Array.from(set).sort();
@@ -169,7 +197,7 @@ const ExtractionTester: React.FC = () => {
     const twData = results["twitter"] as any;
     const twItems: any[] = Array.isArray(twData)
       ? twData
-      : asArray(twData?.items || twData?.tweets || twData?.twitter_sentiment);
+      : asArray(twData?.items || twData?.tweets || twData?.twitter_sentiment || twData?.sentiment_data);
     twItems.forEach((item) => item?.symbol && twSet.add(item.symbol));
 
     return {
