@@ -156,16 +156,23 @@ Deno.serve(async (req) => {
     
     // First, check database for recent data
     const recentData = await getRecentSentimentData(symbols)
-    const symbolsWithData = new Set(recentData.map(d => d.symbol))
-    const symbolsToFetch = symbols.filter(symbol => !symbolsWithData.has(symbol))
+
+    // Only consider symbols "covered" if the DB row actually contains cached messages
+    const symbolsWithMessages = new Set(
+      recentData
+        .filter(({ data }) => Array.isArray(data?.metadata?.messages) && data.metadata.messages.length > 0)
+        .map(d => d.symbol)
+    )
+
+    const symbolsToFetch = symbols.filter(symbol => !symbolsWithMessages.has(symbol))
     
-    console.log(`Found ${recentData.length} symbols with recent data, need to fetch ${symbolsToFetch.length} symbols`)
+    console.log(`Found ${recentData.length} symbols with recent rows; ${symbolsWithMessages.size} with messages, need to fetch ${symbolsToFetch.length} symbols`)
     
     let allMessages: StockTwitsMessage[] = []
     
-    // Convert database data to StockTwits message format
-    recentData.forEach(({ symbol, data }) => {
-      if (data.metadata?.messages) {
+    // Convert database data to StockTwits message format (only if messages present)
+    recentData.forEach(({ data }) => {
+      if (Array.isArray(data?.metadata?.messages) && data.metadata.messages.length > 0) {
         allMessages.push(...data.metadata.messages)
       }
     })
