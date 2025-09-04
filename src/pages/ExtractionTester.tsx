@@ -75,7 +75,17 @@ const ExtractionTester: React.FC = () => {
       const data = await fn();
       setResults(r => ({ ...r, [key]: data }));
       const cnt = getCount(key, data);
-      toast({ title: `${key} complete`, description: `Got ${cnt} ${cnt === 1 ? 'item' : 'items'}` });
+      if (key === "twitter") {
+        const total = Number((data as any)?.total_processed ?? 0);
+        const fromAPI = Number((data as any)?.fromAPI ?? 0);
+        const fromDB = Number((data as any)?.fromDatabase ?? 0);
+        const desc = total > 0
+          ? `Processed ${total} (${fromAPI} API, ${fromDB} cache), produced ${cnt}`
+          : `Got ${cnt} ${cnt === 1 ? 'item' : 'items'}`;
+        toast({ title: `${key} complete`, description: desc });
+      } else {
+        toast({ title: `${key} complete`, description: `Got ${cnt} ${cnt === 1 ? 'item' : 'items'}` });
+      }
     } catch (e: any) {
       console.error(e);
       toast({ title: `${key} failed`, description: e?.message || "Unknown error" });
@@ -392,6 +402,24 @@ const ExtractionTester: React.FC = () => {
               <CardTitle>Twitter Result</CardTitle>
             </CardHeader>
             <CardContent>
+              {/* Meta summary for Twitter response */}
+              {results["twitter"] && (
+                <div className="flex flex-wrap items-center gap-2 mb-3">
+                  <Badge variant="secondary">
+                    Produced: {Array.isArray((results["twitter"] as any)?.sentiment_data) ? (results["twitter"] as any).sentiment_data.length : 0}
+                  </Badge>
+                  <Badge variant="secondary">
+                    Processed: {(results["twitter"] as any)?.total_processed ?? 0}
+                  </Badge>
+                  <Badge variant="secondary">
+                    From API: {(results["twitter"] as any)?.fromAPI ?? 0}
+                  </Badge>
+                  <Badge variant="secondary">
+                    From DB: {(results["twitter"] as any)?.fromDatabase ?? 0}
+                  </Badge>
+                </div>
+              )}
+
               <Collapsible>
                 <div className="flex items-center justify-between">
                   <div className="text-sm text-muted-foreground">Raw JSON output</div>
