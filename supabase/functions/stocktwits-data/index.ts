@@ -186,7 +186,7 @@ Deno.serve(async (req) => {
       
       for (const symbol of prioritizedSymbols.slice(0, 5)) { // Reduced to 5 to minimize API calls
         try {
-          const stocktwitsUrl = `https://api.stocktwits.com/api/2/streams/symbol/${symbol}.json?limit=${Math.min(limit, 20)}`
+          const stocktwitsUrl = `https://api.stocktwits.com/api/2/streams/symbol/${symbol}.json?limit=${Math.min(limit, 25)}`
           
           const response = await fetchWithBackoff(stocktwitsUrl, {
             headers: {
