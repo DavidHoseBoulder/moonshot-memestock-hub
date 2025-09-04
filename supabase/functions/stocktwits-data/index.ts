@@ -78,21 +78,73 @@ async function fetchWithBackoff(url: string, init: RequestInit = {}, maxRetries 
   }
 }
 
+// Fetch messages for a symbol within the last N days, with pagination and per-day cap
+async function fetchSymbolMessagesForWindow(symbol: string, perDay: number, days: number): Promise<StockTwitsMessage[]> {
+  const cutoffTs = Date.now() - days * 24 * 60 * 60 * 1000;
+  const maxTotal = Math.min(perDay * days, 200); // hard cap per symbol to be safe
+  const batchSize = Math.min(perDay, 25);
+  let results: StockTwitsMessage[] = [];
+  let nextMaxId: number | undefined;
+
+  while (results.length < maxTotal) {
+    const url = `https://api.stocktwits.com/api/2/streams/symbol/${symbol}.json?limit=${batchSize}` + (nextMaxId ? `&max=${nextMaxId}` : '');
+    const response = await fetchWithBackoff(url, {
+      headers: { 'User-Agent': 'Financial-Pipeline/1.0' }
+    }, 3, 1000);
+
+    if (!response.ok) {
+      if (response.status === 429) console.warn(`Rate limited while paginating ${symbol}`);
+      else console.warn(`Failed page for ${symbol}: ${response.status}`);
+      break;
+    }
+
+    const data = await response.json();
+    const page: StockTwitsMessage[] = Array.isArray(data?.messages) ? data.messages : [];
+    if (page.length === 0) break;
+
+    // Keep only messages within the window
+    for (const m of page) {
+      const t = new Date(m.created_at).getTime();
+      if (!Number.isFinite(t)) continue;
+      if (t >= cutoffTs) results.push(m);
+    }
+
+    const oldest = page[page.length - 1];
+    nextMaxId = oldest?.id ? oldest.id - 1 : undefined;
+    const oldestTs = oldest ? new Date(oldest.created_at).getTime() : 0;
+    if (!nextMaxId || oldestTs < cutoffTs) break;
+
+    // short pause between pages
+    await new Promise(r => setTimeout(r, 800));
+  }
+
+  // Dedupe by id
+  const seen = new Set<number>();
+  const deduped: StockTwitsMessage[] = [];
+  for (const m of results) {
+    if (seen.has(m.id)) continue;
+    seen.add(m.id);
+    deduped.push(m);
+  }
+
+  return deduped;
+}
+
 // Initialize Supabase client
 const supabaseUrl = Deno.env.get('SUPABASE_URL')!
 const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
 const supabase = createClient(supabaseUrl, supabaseKey)
 
-// Check database for recent data (last 24 hours)
-async function getRecentSentimentData(symbols: string[]): Promise<{ symbol: string; data: any }[]> {
-  const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()
+// Check database for recent data within a window (last N days)
+async function getRecentSentimentData(symbols: string[], days: number): Promise<{ symbol: string; data: any }[]> {
+  const windowStart = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString()
   
   const { data, error } = await supabase
     .from('sentiment_history')
     .select('symbol, sentiment_score, confidence_score, metadata, collected_at')
     .in('symbol', symbols)
     .eq('source', 'stocktwits')
-    .gte('collected_at', twentyFourHoursAgo)
+    .gte('collected_at', windowStart)
     .order('collected_at', { ascending: false })
   
   if (error) {
@@ -133,16 +185,20 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const { limit = 30 } = await req.json()
-    
-    // Load symbols from symbol_disambig table for broader coverage
-    const symbols = await loadSymbolsFromDatabase()
-    console.log(`Loaded ${symbols.length} symbols from symbol_disambig table`)
+let body: any = {};
+try {
+  body = await req.json();
+} catch {}
+const { limitPerDay = 25, days = 7 } = body as { limitPerDay?: number; days?: number };
+
+// Load symbols from symbol_disambig table for broader coverage
+const symbols = await loadSymbolsFromDatabase()
+console.log(`Loaded ${symbols.length} symbols from symbol_disambig table; window=${days}d, perDay=${limitPerDay}`)
 
     console.log(`Checking database for recent StockTwits data for ${symbols.length} symbols`)
     
     // First, check database for recent data
-    const recentData = await getRecentSentimentData(symbols)
+    const recentData = await getRecentSentimentData(symbols, days)
 
     // Only consider symbols "covered" if the DB row actually contains cached messages
     const symbolsWithMessages = new Set(
@@ -166,49 +222,33 @@ Deno.serve(async (req) => {
     
     // Only fetch missing symbols from API - take first 10 for broader coverage
     if (symbolsToFetch.length > 0) {
-      console.log(`Fetching fresh StockTwits data for ${Math.min(symbolsToFetch.length, 10)} symbols`)
+      console.log(`Fetching fresh StockTwits data for ${Math.min(symbolsToFetch.length, 15)} symbols`)
       
-      for (const symbol of symbolsToFetch.slice(0, 10)) { // Increased to 10 for broader coverage
+      for (const symbol of symbolsToFetch.slice(0, 15)) { // paginate within each symbol for last N days
         try {
-          const stocktwitsUrl = `https://api.stocktwits.com/api/2/streams/symbol/${symbol}.json?limit=${Math.min(limit, 25)}`
-          
-          const response = await fetchWithBackoff(stocktwitsUrl, {
-            headers: {
-              'User-Agent': 'Financial-Pipeline/1.0'
-            }
-          }, 3, 1000)
+          const messages = await fetchSymbolMessagesForWindow(symbol, limitPerDay, days)
+          if (messages.length > 0) {
+            allMessages.push(...messages)
 
-          if (response.ok) {
-            const data = await response.json()
-            if (data.messages && Array.isArray(data.messages)) {
-              allMessages.push(...data.messages)
-              
-              // Store in database for future use
-              await supabase
-                .from('sentiment_history')
-                .insert({
-                  symbol,
-                  source: 'stocktwits',
-                  sentiment_score: 0, // We'll calculate this from messages
-                  confidence_score: data.messages.length > 0 ? 0.7 : 0,
-                  metadata: { messages: data.messages },
-                  collected_at: new Date().toISOString(),
-                  data_timestamp: new Date().toISOString()
-                })
-            }
-          } else if (response.status === 429) {
-            console.warn(`Rate limited for symbol ${symbol}`)
-            break // Stop processing to preserve quota
-          } else {
-            console.warn(`Failed to fetch ${symbol}: ${response.status}`)
+            // Store in database for future use
+            await supabase
+              .from('sentiment_history')
+              .insert({
+                symbol,
+                source: 'stocktwits',
+                sentiment_score: 0,
+                confidence_score: messages.length > 0 ? 0.7 : 0,
+                metadata: { messages },
+                collected_at: new Date().toISOString(),
+                data_timestamp: new Date().toISOString()
+              })
           }
-          
-          await new Promise(resolve => setTimeout(resolve, 1200)) // Pacing between requests
-          
-        } catch (error) {
-          console.warn(`Error fetching ${symbol}:`, error.message)
+        } catch (error: any) {
+          console.warn(`Error fetching ${symbol}:`, error?.message || error)
           continue
         }
+        
+        await new Promise(resolve => setTimeout(resolve, 1200)) // Pacing between symbols
       }
     }
 
