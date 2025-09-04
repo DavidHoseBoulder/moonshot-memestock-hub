@@ -5,9 +5,12 @@ import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
+import { Slider } from '@/components/ui/slider';
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
-import { History, RefreshCw, TrendingUp, TrendingDown } from 'lucide-react';
+import { History, RefreshCw, TrendingUp, TrendingDown, Check, ChevronsUpDown } from 'lucide-react';
 import { format, subDays } from 'date-fns';
 import {
   ComposedChart,
@@ -42,6 +45,8 @@ const SentimentHistoryPage = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [availableSymbols, setAvailableSymbols] = useState<string[]>([]);
+  const [symbolSearchOpen, setSymbolSearchOpen] = useState(false);
+  const [chartMode, setChartMode] = useState<'both' | 'score' | 'mentions'>('both');
 
   const { toast } = useToast();
 
@@ -51,18 +56,32 @@ const SentimentHistoryPage = () => {
     setSearchParams({ symbol, tab: 'history' });
   };
 
-  // Fetch available symbols
+  // Fetch available symbols from multiple sources
   const fetchAvailableSymbols = async () => {
     try {
-      const { data, error } = await supabase
+      // Get symbols from ticker_universe (more comprehensive)
+      const { data: tickerData, error: tickerError } = await supabase
+        .from('ticker_universe')
+        .select('symbol')
+        .eq('active', true)
+        .order('symbol');
+
+      // Also get symbols that have recent sentiment data
+      const { data: sentimentData, error: sentimentError } = await supabase
         .from('v_reddit_daily_signals')
         .select('symbol')
         .order('symbol');
 
-      if (error) throw error;
+      if (tickerError && sentimentError) {
+        throw new Error('Failed to fetch symbols from both sources');
+      }
 
-      const uniqueSymbols = [...new Set(data?.map(item => item.symbol) || [])];
-      setAvailableSymbols(uniqueSymbols);
+      // Combine both sources and remove duplicates
+      const tickerSymbols = tickerData?.map(item => item.symbol) || [];
+      const sentimentSymbols = sentimentData?.map(item => item.symbol) || [];
+      const allSymbols = [...new Set([...tickerSymbols, ...sentimentSymbols])];
+      
+      setAvailableSymbols(allSymbols.sort());
     } catch (error) {
       console.error('Error fetching symbols:', error);
     }
@@ -286,22 +305,50 @@ const SentimentHistoryPage = () => {
       {/* Controls */}
       <Card>
         <CardContent className="p-4">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-end">
-            {/* Symbol Picker */}
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
+            {/* Symbol Picker with Search */}
             <div className="space-y-2">
               <label className="text-sm font-medium">Symbol</label>
-              <Select value={selectedSymbol} onValueChange={handleSymbolChange}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Select a symbol" />
-                </SelectTrigger>
-                <SelectContent>
-                  {availableSymbols.map((symbol) => (
-                    <SelectItem key={symbol} value={symbol}>
-                      {symbol}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <Popover open={symbolSearchOpen} onOpenChange={setSymbolSearchOpen}>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant="outline"
+                    role="combobox"
+                    aria-expanded={symbolSearchOpen}
+                    className="w-full justify-between"
+                  >
+                    {selectedSymbol || "Select symbol..."}
+                    <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-[200px] p-0">
+                  <Command>
+                    <CommandInput placeholder="Search symbol..." />
+                    <CommandList>
+                      <CommandEmpty>No symbol found.</CommandEmpty>
+                      <CommandGroup>
+                        {availableSymbols.map((symbol) => (
+                          <CommandItem
+                            key={symbol}
+                            value={symbol}
+                            onSelect={(currentValue) => {
+                              handleSymbolChange(currentValue.toUpperCase());
+                              setSymbolSearchOpen(false);
+                            }}
+                          >
+                            <Check
+                              className={`mr-2 h-4 w-4 ${
+                                selectedSymbol === symbol ? "opacity-100" : "opacity-0"
+                              }`}
+                            />
+                            {symbol}
+                          </CommandItem>
+                        ))}
+                      </CommandGroup>
+                    </CommandList>
+                  </Command>
+                </PopoverContent>
+              </Popover>
             </div>
 
             {/* Time Window */}
@@ -317,6 +364,21 @@ const SentimentHistoryPage = () => {
                   <SelectItem value="30">30 days</SelectItem>
                   <SelectItem value="60">60 days</SelectItem>
                   <SelectItem value="90">90 days</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Chart Display Mode */}
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Chart Display</label>
+              <Select value={chartMode} onValueChange={(value: 'both' | 'score' | 'mentions') => setChartMode(value)}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="both">Score + Mentions</SelectItem>
+                  <SelectItem value="score">Score Only</SelectItem>
+                  <SelectItem value="mentions">Mentions Only</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -367,7 +429,7 @@ const SentimentHistoryPage = () => {
               <ResponsiveContainer width="100%" height="100%">
                 <ComposedChart
                   data={historyData}
-                  margin={{ top: 20, right: 30, left: 20, bottom: 5 }}
+                  margin={{ top: 20, right: chartMode === 'both' ? 30 : 20, left: 20, bottom: 5 }}
                 >
                   <CartesianGrid strokeDasharray="3 3" className="opacity-30" />
                   <XAxis 
@@ -375,41 +437,60 @@ const SentimentHistoryPage = () => {
                     tickFormatter={formatDate}
                     className="text-xs"
                   />
-                  <YAxis 
-                    yAxisId="score"
-                    orientation="left"
-                    domain={[-1, 1]}
-                    className="text-xs"
-                  />
-                  <YAxis 
-                    yAxisId="mentions"
-                    orientation="right"
-                    className="text-xs"
-                  />
+                  
+                  {/* Score Y-Axis (left) */}
+                  {(chartMode === 'both' || chartMode === 'score') && (
+                    <YAxis 
+                      yAxisId="score"
+                      orientation="left"
+                      domain={[-1, 1]}
+                      className="text-xs"
+                      label={{ value: 'Sentiment Score', angle: -90, position: 'insideLeft' }}
+                    />
+                  )}
+                  
+                  {/* Mentions Y-Axis (right) */}
+                  {(chartMode === 'both' || chartMode === 'mentions') && (
+                    <YAxis 
+                      yAxisId="mentions"
+                      orientation={chartMode === 'both' ? 'right' : 'left'}
+                      className="text-xs"
+                      label={{ value: 'Mentions', angle: 90, position: chartMode === 'both' ? 'insideRight' : 'insideLeft' }}
+                    />
+                  )}
+                  
                   <Tooltip content={<CustomTooltip />} />
                   
                   {/* Zero line for sentiment score */}
-                  <ReferenceLine y={0} yAxisId="score" stroke="#64748b" strokeDasharray="2 2" />
+                  {(chartMode === 'both' || chartMode === 'score') && (
+                    <ReferenceLine y={0} yAxisId="score" stroke="#64748b" strokeDasharray="2 2" />
+                  )}
                   
                   {/* Mention bars */}
-                  <Bar
-                    yAxisId="mentions"
-                    dataKey="n_mentions"
-                    fill="hsl(var(--muted))"
-                    fillOpacity={0.3}
-                    radius={[2, 2, 0, 0]}
-                  />
+                  {(chartMode === 'both' || chartMode === 'mentions') && (
+                    <Bar
+                      yAxisId="mentions"
+                      dataKey="n_mentions"
+                      fill="hsl(var(--chart-2))"
+                      fillOpacity={chartMode === 'mentions' ? 0.8 : 0.3}
+                      radius={[2, 2, 0, 0]}
+                      name="Mentions"
+                    />
+                  )}
                   
                   {/* Sentiment score line */}
-                  <Line
-                    yAxisId="score"
-                    type="monotone"
-                    dataKey="avg_score"
-                    stroke="hsl(var(--primary))"
-                    strokeWidth={2}
-                    dot={{ fill: 'hsl(var(--primary))', strokeWidth: 2, r: 3 }}
-                    activeDot={{ r: 5, stroke: 'hsl(var(--primary))', strokeWidth: 2 }}
-                  />
+                  {(chartMode === 'both' || chartMode === 'score') && (
+                    <Line
+                      yAxisId="score"
+                      type="monotone"
+                      dataKey="avg_score"
+                      stroke="hsl(var(--chart-1))"
+                      strokeWidth={chartMode === 'score' ? 3 : 2}
+                      dot={{ fill: 'hsl(var(--chart-1))', strokeWidth: 2, r: chartMode === 'score' ? 4 : 3 }}
+                      activeDot={{ r: 6, stroke: 'hsl(var(--chart-1))', strokeWidth: 2 }}
+                      name="Sentiment Score"
+                    />
+                  )}
                   
                   {/* Velocity spike indicators */}
                   {renderSpikeDots()}
