@@ -5,6 +5,8 @@ import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/components/ui/use-toast";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { TwitterVolumeTest } from "@/components/TwitterVolumeTest";
 
 // Dev-only utility page to validate unified ticker extraction across edge functions
 const ExtractionTester: React.FC = () => {
@@ -234,11 +236,18 @@ const ExtractionTester: React.FC = () => {
   return (
     <div className="container mx-auto px-4 py-6">
       <header className="mb-6">
-        <h1 className="text-2xl font-semibold">Unified Ticker Extraction Tester</h1>
-        <p className="text-sm opacity-80 mt-1">Short tickers require the $ prefix (e.g., $AI); long names rely on word boundaries.</p>
+        <h1 className="text-2xl font-semibold">Sentiment Data Testing Tools</h1>
+        <p className="text-sm opacity-80 mt-1">Test ticker extraction, Twitter volumes, and other sentiment data sources.</p>
       </header>
 
       <main>
+        <Tabs defaultValue="extraction" className="w-full">
+          <TabsList className="grid w-full grid-cols-2">
+            <TabsTrigger value="extraction">Ticker Extraction</TabsTrigger>
+            <TabsTrigger value="twitter-volume">Twitter Volume Test</TabsTrigger>
+          </TabsList>
+          
+          <TabsContent value="extraction" className="space-y-6">
         <section className="mb-6">
           <Card>
             <CardHeader>
@@ -328,6 +337,12 @@ const ExtractionTester: React.FC = () => {
             </CardContent>
           </Card>
         </section>
+          </TabsContent>
+
+          <TabsContent value="twitter-volume">
+            <TwitterVolumeTest />
+          </TabsContent>
+        </Tabs>
       </main>
     </div>
   );
