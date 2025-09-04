@@ -49,12 +49,12 @@ Deno.serve(async (req) => {
         const startTime = new Date(endTime.getTime() - (hours * 60 * 60 * 1000))
         
         // Build Twitter search query - looking for cashtag and mentions
-        const query = `($${symbol} OR ${symbol}) -is:retweet lang:en`
+        const query = `$${symbol} OR ${symbol} -is:retweet lang:en`
         
         const params = new URLSearchParams({
           query,
           'tweet.fields': 'created_at,public_metrics',
-          'max_results': '100',
+          'max_results': '10',
           'start_time': startTime.toISOString(),
           'end_time': endTime.toISOString()
         })
