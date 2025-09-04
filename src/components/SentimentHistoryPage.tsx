@@ -153,6 +153,8 @@ const SentimentHistoryPage = () => {
       });
 
       console.log('📊 Processed data points:', processedData.length);
+      console.log('📊 Sample data:', processedData.slice(0, 3));
+      console.log('📊 Chart mode:', chartMode);
       setHistoryData(processedData);
 
       if (processedData.length === 0) {
@@ -471,7 +473,7 @@ const SentimentHistoryPage = () => {
                     <Bar
                       yAxisId="mentions"
                       dataKey="n_mentions"
-                      fill="hsl(var(--chart-2))"
+                      fill="#8884d8"
                       fillOpacity={chartMode === 'mentions' ? 0.8 : 0.3}
                       radius={[2, 2, 0, 0]}
                       name="Mentions"
@@ -484,10 +486,10 @@ const SentimentHistoryPage = () => {
                       yAxisId="score"
                       type="monotone"
                       dataKey="avg_score"
-                      stroke="hsl(var(--chart-1))"
+                      stroke="#82ca9d"
                       strokeWidth={chartMode === 'score' ? 3 : 2}
-                      dot={{ fill: 'hsl(var(--chart-1))', strokeWidth: 2, r: chartMode === 'score' ? 4 : 3 }}
-                      activeDot={{ r: 6, stroke: 'hsl(var(--chart-1))', strokeWidth: 2 }}
+                      dot={{ fill: '#82ca9d', strokeWidth: 2, r: chartMode === 'score' ? 4 : 3 }}
+                      activeDot={{ r: 6, stroke: '#82ca9d', strokeWidth: 2 }}
                       name="Sentiment Score"
                     />
                   )}
