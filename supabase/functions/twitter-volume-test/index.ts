@@ -28,9 +28,65 @@ Deno.serve(async (req) => {
     return new Response(null, { headers: corsHeaders })
   }
 
+  // Helpers
+  function sleep(ms: number) {
+    return new Promise((resolve) => setTimeout(resolve, ms));
+  }
+  function sanitizeSymbols(input: string[]): string[] {
+    const cleaned = input
+      .map((s) => (s || '').toString().trim().toUpperCase())
+      .map((s) => s.replace(/[^A-Z0-9]/g, ''))
+      .filter((s) => s.length > 0);
+    return Array.from(new Set(cleaned));
+  }
+  type RateLimitInfo = { limit?: number; remaining?: number; reset?: number; retry_after?: number };
+  type RateLimitMap = Record<string, RateLimitInfo>;
+  function parseRateLimitHeaders(resp: Response): RateLimitInfo {
+    const limitRaw = resp.headers.get('x-rate-limit-limit');
+    const remainingRaw = resp.headers.get('x-rate-limit-remaining');
+    const resetRaw = resp.headers.get('x-rate-limit-reset');
+    const retryAfterRaw = resp.headers.get('retry-after');
+    const limit = limitRaw ? Number(limitRaw) : undefined;
+    const remaining = remainingRaw ? Number(remainingRaw) : undefined;
+    const reset = resetRaw ? Number(resetRaw) : undefined;
+    const retry_after = retryAfterRaw ? Number(retryAfterRaw) : undefined;
+    return {
+      limit: Number.isFinite(limit as number) ? (limit as number) : undefined,
+      remaining: Number.isFinite(remaining as number) ? (remaining as number) : undefined,
+      reset: Number.isFinite(reset as number) ? (reset as number) : undefined,
+      retry_after: Number.isFinite(retry_after as number) ? (retry_after as number) : undefined,
+    };
+  }
+
+  async function fetchWithRetry(url: string, headers: Record<string, string>, symbol: string, maxRetries = 1) {
+    let attempt = 0;
+    while (true) {
+      const resp = await fetch(url, { headers });
+      const rl = parseRateLimitHeaders(resp);
+      if (resp.status === 429) {
+        const nowSec = Math.floor(Date.now() / 1000);
+        const resetSec = rl.reset && rl.reset > nowSec ? rl.reset - nowSec : undefined;
+        const retrySec = rl.retry_after && rl.retry_after > 0 ? rl.retry_after : resetSec;
+        console.warn(`Rate limited for ${symbol}. remaining=${rl.remaining ?? 'n/a'} resetIn=${retrySec ?? 'n/a'}s`);
+        if (attempt < maxRetries && retrySec && retrySec <= 20) {
+          console.log(`Backing off ${retrySec}s and retrying ${symbol} (attempt ${attempt + 1})...`);
+          await sleep(retrySec * 1000);
+          attempt++;
+          continue;
+        }
+      }
+      return { resp, rl };
+    }
+  }
+
   try {
-    const { symbols = ['TSLA', 'PLTR', 'AAPL'], hours = 24 } = await req.json()
-    
+    // Parse JSON body safely with defaults
+    const body = await req.json().catch(() => ({}));
+    const rawSymbols = Array.isArray(body?.symbols) ? body.symbols : ['TSLA', 'PLTR', 'AAPL'];
+    const hours = typeof body?.hours === 'number' ? body.hours : 24;
+
+    const symbols = sanitizeSymbols(rawSymbols);
+
     const twitterBearerToken = Deno.env.get('TWITTER_BEARER_TOKEN')
     
     if (!twitterBearerToken) {
@@ -40,7 +96,9 @@ Deno.serve(async (req) => {
       )
     }
 
-    const results = []
+    const results: any[] = []
+    const rateLimitPerSymbol: RateLimitMap = {}
+    let lastRateLimit: RateLimitInfo | undefined
     
     for (const symbol of symbols) {
       try {
@@ -61,32 +119,37 @@ Deno.serve(async (req) => {
         })
 
         console.log(`🔍 Searching Twitter for ${symbol}: ${query}`)
-        
-        const response = await fetch(
-          `https://api.twitter.com/2/tweets/search/recent?${params}`,
-          {
-            headers: {
-              'Authorization': `Bearer ${twitterBearerToken}`,
-              'Content-Type': 'application/json',
-            },
-          }
-        )
+        const url = `https://api.twitter.com/2/tweets/search/recent?${params}`
+        const { resp, rl } = await fetchWithRetry(url, {
+          'Authorization': `Bearer ${twitterBearerToken}`,
+          'Content-Type': 'application/json',
+        }, symbol, 1)
 
-        if (!response.ok) {
-          console.error(`Twitter API error for ${symbol}:`, response.status, response.statusText)
-          const errorText = await response.text()
+        // capture rate limit
+        rateLimitPerSymbol[symbol] = rl
+        lastRateLimit = rl
+
+        if (!resp.ok) {
+          console.error(`Twitter API error for ${symbol}:`, resp.status, resp.statusText)
+          const errorText = await resp.text()
           console.error('Error details:', errorText)
           
           results.push({
             symbol,
-            error: `Twitter API error: ${response.status} - ${response.statusText}`,
+            error: `Twitter API error: ${resp.status} - ${resp.statusText}`,
             volume: 0,
-            timeframe_hours: hours
+            timeframe_hours: hours,
+            rate_limit: rl,
           })
+          // If rate limited, avoid hammering remaining symbols in this run
+          if (resp.status === 429) {
+            console.warn('Hit 429 - stopping further symbol requests in this run to respect rate limits')
+            break
+          }
           continue
         }
 
-        const data: TwitterSearchResponse = await response.json()
+        const data: TwitterSearchResponse = await resp.json()
         
         const volume = data.meta?.result_count || 0
         const tweets = data.data || []
@@ -115,18 +178,18 @@ Deno.serve(async (req) => {
           total_engagement: totalEngagement,
           sample_tweets: sampleTweets,
           volume_per_hour: Math.round(volume / hours * 10) / 10,
-          estimated_daily_volume: Math.round(volume / hours * 24)
+          estimated_daily_volume: Math.round(volume / hours * 24),
+          rate_limit: rl,
         })
 
-        console.log(`📊 ${symbol}: ${volume} tweets in ${hours} hours (${Math.round(volume/hours*24)} daily estimate)`)
-        
-        // Add delay between requests to avoid rate limiting (wait 2 seconds between each API call)
+        console.log(`📊 ${symbol}: ${volume} tweets in ${hours} hours (${Math.round(volume/hours*24)} daily estimate)`)        
+        // Add delay between requests to avoid rate limiting (wait ~2 seconds between each API call)
         if (symbols.indexOf(symbol) < symbols.length - 1) {
           console.log(`⏳ Waiting 2 seconds before next request...`)
-          await new Promise(resolve => setTimeout(resolve, 2000))
+          await sleep(2000)
         }
         
-      } catch (error) {
+      } catch (error: any) {
         console.error(`Error processing ${symbol}:`, error)
         results.push({
           symbol,
@@ -144,12 +207,16 @@ Deno.serve(async (req) => {
       summary: {
         total_symbols_tested: symbols.length,
         timeframe_hours: hours,
-        highest_volume: Math.max(...results.map(r => r.volume || 0)),
-        total_volume: results.reduce((sum, r) => sum + (r.volume || 0), 0)
+        highest_volume: Math.max(...results.map((r: any) => r.volume || 0)),
+        total_volume: results.reduce((sum: number, r: any) => sum + (r.volume || 0), 0),
+      },
+      rate_limit: {
+        last: lastRateLimit,
+        per_symbol: rateLimitPerSymbol,
       }
     }, { headers: corsHeaders })
 
-  } catch (error) {
+  } catch (error: any) {
     console.error('Error in twitter-volume-test:', error)
     return Response.json(
       { error: 'Internal server error', details: error.message },

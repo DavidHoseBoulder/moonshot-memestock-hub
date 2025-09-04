@@ -22,7 +22,15 @@ interface VolumeResult {
     created_at: string;
     engagement: number;
   }>;
+  rate_limit?: RateLimitInfo;
 }
+
+type RateLimitInfo = {
+  limit?: number;
+  remaining?: number;
+  reset?: number; // epoch seconds
+  retry_after?: number; // seconds
+};
 
 export function TwitterVolumeTest() {
   const [symbols, setSymbols] = useState("TSLA,PLTR,AAPL");
@@ -30,6 +38,8 @@ export function TwitterVolumeTest() {
   const [loading, setLoading] = useState(false);
   const [results, setResults] = useState<VolumeResult[]>([]);
   const [error, setError] = useState<string>("");
+  const [rateLimit, setRateLimit] = useState<RateLimitInfo | null>(null);
+  const [perSymbolRateLimit, setPerSymbolRateLimit] = useState<Record<string, RateLimitInfo> | null>(null);
 
   const runTest = async () => {
     setLoading(true);
@@ -48,6 +58,8 @@ export function TwitterVolumeTest() {
 
       if (data?.results) {
         setResults(data.results);
+        setRateLimit(data?.rate_limit?.last ?? null);
+        setPerSymbolRateLimit(data?.rate_limit?.per_symbol ?? null);
       } else {
         throw new Error("No results returned");
       }
@@ -117,6 +129,43 @@ export function TwitterVolumeTest() {
           )}
         </CardContent>
       </Card>
+ 
+      {rateLimit && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Twitter rate limit</CardTitle>
+            <CardDescription>
+              {typeof rateLimit.remaining === 'number' && typeof rateLimit.limit === 'number' ? (
+                <span>{rateLimit.remaining} remaining of {rateLimit.limit}</span>
+              ) : (
+                <span>Rate limit info available</span>
+              )}
+              {typeof rateLimit.reset === 'number' && (
+                <span> • resets at {new Date(rateLimit.reset * 1000).toLocaleTimeString()}</span>
+              )}
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            {perSymbolRateLimit && (
+              <div className="grid gap-2 text-sm">
+                {Object.entries(perSymbolRateLimit).map(([sym, rl]) => (
+                  <div key={sym} className="flex items-center justify-between">
+                    <span>${""}{sym}</span>
+                    <span className="text-muted-foreground">
+                      {typeof rl.remaining === 'number' && typeof rl.limit === 'number'
+                        ? `${rl.remaining}/${rl.limit} remaining`
+                        : 'limit n/a'}
+                      {typeof rl.retry_after === 'number'
+                        ? ` • retry in ${Math.round(rl.retry_after)}s`
+                        : (typeof rl.reset === 'number' ? ` • resets ${new Date(rl.reset * 1000).toLocaleTimeString()}` : '')}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
 
       {results.length > 0 && (
         <div className="grid gap-4">
