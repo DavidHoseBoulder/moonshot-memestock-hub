@@ -45,7 +45,8 @@ Deno.serve(async (req) => {
     for (const symbol of symbols) {
       try {
         // Calculate time range (last 24 hours by default)
-        const endTime = new Date()
+        // Set end time to be at least 30 seconds ago to avoid Twitter API timing issues
+        const endTime = new Date(Date.now() - 30000) // 30 seconds ago
         const startTime = new Date(endTime.getTime() - (hours * 60 * 60 * 1000))
         
         // Build Twitter search query - looking for cashtag and mentions
@@ -118,6 +119,12 @@ Deno.serve(async (req) => {
         })
 
         console.log(`📊 ${symbol}: ${volume} tweets in ${hours} hours (${Math.round(volume/hours*24)} daily estimate)`)
+        
+        // Add delay between requests to avoid rate limiting (wait 2 seconds between each API call)
+        if (symbols.indexOf(symbol) < symbols.length - 1) {
+          console.log(`⏳ Waiting 2 seconds before next request...`)
+          await new Promise(resolve => setTimeout(resolve, 2000))
+        }
         
       } catch (error) {
         console.error(`Error processing ${symbol}:`, error)
