@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/components/ui/use-toast";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { TwitterVolumeTest } from "@/components/TwitterVolumeTest";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 
 // Dev-only utility page to validate unified ticker extraction across edge functions
 const ExtractionTester: React.FC = () => {
@@ -306,7 +307,17 @@ const ExtractionTester: React.FC = () => {
               <CardTitle>StockTwits Result</CardTitle>
             </CardHeader>
             <CardContent>
-              <pre className="text-xs whitespace-pre-wrap break-words">{JSON.stringify(results["stocktwits"], null, 2)}</pre>
+              <Collapsible>
+                <div className="flex items-center justify-between">
+                  <div className="text-sm text-muted-foreground">Raw JSON output</div>
+                  <CollapsibleTrigger asChild>
+                    <Button size="sm" variant="outline">Toggle JSON</Button>
+                  </CollapsibleTrigger>
+                </div>
+                <CollapsibleContent>
+                  <pre className="mt-3 text-xs whitespace-pre-wrap break-words">{JSON.stringify(results["stocktwits"], null, 2)}</pre>
+                </CollapsibleContent>
+              </Collapsible>
             </CardContent>
           </Card>
 
@@ -315,7 +326,17 @@ const ExtractionTester: React.FC = () => {
               <CardTitle>YouTube Result</CardTitle>
             </CardHeader>
             <CardContent>
-              <pre className="text-xs whitespace-pre-wrap break-words">{JSON.stringify(results["youtube"], null, 2)}</pre>
+              <Collapsible>
+                <div className="flex items-center justify-between">
+                  <div className="text-sm text-muted-foreground">Raw JSON output</div>
+                  <CollapsibleTrigger asChild>
+                    <Button size="sm" variant="outline">Toggle JSON</Button>
+                  </CollapsibleTrigger>
+                </div>
+                <CollapsibleContent>
+                  <pre className="mt-3 text-xs whitespace-pre-wrap break-words">{JSON.stringify(results["youtube"], null, 2)}</pre>
+                </CollapsibleContent>
+              </Collapsible>
             </CardContent>
           </Card>
 
@@ -324,7 +345,17 @@ const ExtractionTester: React.FC = () => {
               <CardTitle>Financial News Result</CardTitle>
             </CardHeader>
             <CardContent>
-              <pre className="text-xs whitespace-pre-wrap break-words">{JSON.stringify(results["financial-news"], null, 2)}</pre>
+              <Collapsible>
+                <div className="flex items-center justify-between">
+                  <div className="text-sm text-muted-foreground">Raw JSON output</div>
+                  <CollapsibleTrigger asChild>
+                    <Button size="sm" variant="outline">Toggle JSON</Button>
+                  </CollapsibleTrigger>
+                </div>
+                <CollapsibleContent>
+                  <pre className="mt-3 text-xs whitespace-pre-wrap break-words">{JSON.stringify(results["financial-news"], null, 2)}</pre>
+                </CollapsibleContent>
+              </Collapsible>
             </CardContent>
           </Card>
 
@@ -333,7 +364,17 @@ const ExtractionTester: React.FC = () => {
               <CardTitle>Twitter Result</CardTitle>
             </CardHeader>
             <CardContent>
-              <pre className="text-xs whitespace-pre-wrap break-words">{JSON.stringify(results["twitter"], null, 2)}</pre>
+              <Collapsible>
+                <div className="flex items-center justify-between">
+                  <div className="text-sm text-muted-foreground">Raw JSON output</div>
+                  <CollapsibleTrigger asChild>
+                    <Button size="sm" variant="outline">Toggle JSON</Button>
+                  </CollapsibleTrigger>
+                </div>
+                <CollapsibleContent>
+                  <pre className="mt-3 text-xs whitespace-pre-wrap break-words">{JSON.stringify(results["twitter"], null, 2)}</pre>
+                </CollapsibleContent>
+              </Collapsible>
             </CardContent>
           </Card>
         </section>
