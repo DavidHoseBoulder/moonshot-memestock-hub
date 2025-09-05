@@ -52,6 +52,14 @@ interface FilterState {
   minPosts: number;
   minScore: number;
   minConfidence: number;
+  selectedSymbol: string;
+  selectedHorizon: string;
+}
+
+interface RuleDefaults {
+  def_min_posts: number;
+  def_min_score: number;
+  def_min_conf: number;
 }
 
 const TodaysSentiment = () => {
@@ -63,13 +71,18 @@ const TodaysSentiment = () => {
   const [showLeadersOnly, setShowLeadersOnly] = useState(false);
   const [sortBy, setSortBy] = useState<'mentions' | 'score'>('mentions');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
+  const [availableSymbols, setAvailableSymbols] = useState<string[]>([]);
+  const [availableHorizons, setAvailableHorizons] = useState<string[]>([]);
+  const [isLoadingDefaults, setIsLoadingDefaults] = useState(false);
   
   const [filters, setFilters] = useState<FilterState>({
     date: new Date('2025-07-31'), // Default to a date that has data
     contentType: 'all',
-    minPosts: 5,
-    minScore: 0.1,
-    minConfidence: 0.5,
+    minPosts: 3, // Fallback default
+    minScore: 0.20, // Fallback default
+    minConfidence: 0.70, // Fallback default
+    selectedSymbol: 'ALL',
+    selectedHorizon: 'ALL',
   });
 
   const { toast } = useToast();
@@ -95,6 +108,125 @@ const TodaysSentiment = () => {
   };
 
   // Data fetching functions
+  const fetchGlobalDefaults = async (modelVersion: string = 'claude-v1'): Promise<RuleDefaults | null> => {
+    try {
+      console.log('📊 Fetching global defaults for model:', modelVersion);
+      const { data, error } = await supabase.rpc('get_global_rule_defaults', {
+        p_model_version: modelVersion
+      });
+
+      if (error) {
+        console.error('❌ Error fetching global defaults:', error);
+        return null;
+      }
+
+      console.log('📊 Global defaults received:', data);
+      return data?.[0] || null;
+    } catch (error) {
+      console.error('❌ Error fetching global defaults:', error);
+      return null;
+    }
+  };
+
+  const fetchSymbolDefaults = async (symbol: string, horizon: string, modelVersion: string = 'claude-v1'): Promise<RuleDefaults | null> => {
+    try {
+      console.log('🎯 Fetching symbol defaults for:', { symbol, horizon, modelVersion });
+      const { data, error } = await supabase
+        .from('live_sentiment_entry_rules')
+        .select('min_mentions, pos_thresh, min_conf')
+        .eq('symbol', symbol)
+        .eq('horizon', horizon)
+        .eq('model_version', modelVersion)
+        .eq('is_enabled', true)
+        .order('priority', { ascending: false })
+        .limit(1);
+
+      if (error) {
+        console.error('❌ Error fetching symbol defaults:', error);
+        return null;
+      }
+
+      if (data && data.length > 0) {
+        console.log('🎯 Symbol defaults received:', data[0]);
+        return {
+          def_min_posts: data[0].min_mentions,
+          def_min_score: data[0].pos_thresh,
+          def_min_conf: data[0].min_conf
+        };
+      }
+
+      return null;
+    } catch (error) {
+      console.error('❌ Error fetching symbol defaults:', error);
+      return null;
+    }
+  };
+
+  const fetchAvailableOptions = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('live_sentiment_entry_rules')
+        .select('symbol, horizon')
+        .eq('is_enabled', true)
+        .order('priority', { ascending: false });
+
+      if (error) {
+        console.error('❌ Error fetching available options:', error);
+        return;
+      }
+
+      const symbols = [...new Set(data?.map(d => d.symbol) || [])];
+      const horizons = [...new Set(data?.map(d => d.horizon) || [])];
+      
+      setAvailableSymbols(['ALL', ...symbols]);
+      setAvailableHorizons(['ALL', ...horizons]);
+      
+      console.log('📊 Available options:', { symbols, horizons });
+    } catch (error) {
+      console.error('❌ Error fetching available options:', error);
+    }
+  };
+
+  const updateFiltersWithDefaults = async (symbol: string, horizon: string) => {
+    setIsLoadingDefaults(true);
+    try {
+      let defaults: RuleDefaults | null = null;
+
+      // Try symbol-specific defaults first
+      if (symbol !== 'ALL' && horizon !== 'ALL') {
+        defaults = await fetchSymbolDefaults(symbol, horizon);
+      }
+
+      // Fall back to global defaults
+      if (!defaults) {
+        defaults = await fetchGlobalDefaults();
+      }
+
+      // Apply defaults or fall back to hardcoded values
+      if (defaults) {
+        console.log('📊 Applying defaults:', defaults);
+        setFilters(prev => ({
+          ...prev,
+          minPosts: defaults!.def_min_posts,
+          minScore: defaults!.def_min_score,
+          minConfidence: defaults!.def_min_conf,
+        }));
+      } else {
+        console.log('📊 Using fallback defaults: 3 / 0.20 / 0.70');
+        setFilters(prev => ({
+          ...prev,
+          minPosts: 3,
+          minScore: 0.20,
+          minConfidence: 0.70,
+        }));
+      }
+    } catch (error) {
+      console.error('❌ Error updating filters with defaults:', error);
+    } finally {
+      setIsLoadingDefaults(false);
+    }
+  };
+
   const fetchLatestAvailableDate = async () => {
     try {
       const { data, error } = await supabase
@@ -268,30 +400,41 @@ const TodaysSentiment = () => {
 
   // Effects
   useEffect(() => {
-    const initializeDate = async () => {
+    const initialize = async () => {
+      // Load available options first
+      await fetchAvailableOptions();
+      
+      // Set up initial defaults
+      await updateFiltersWithDefaults('ALL', 'ALL');
+      
+      // Then initialize date
       const latestDate = await fetchLatestAvailableDate();
       if (latestDate && filters.date.getTime() === new Date('2025-07-31').getTime()) {
-        // Only update if we're still on the default date
         setFilters(prev => ({ ...prev, date: latestDate }));
       } else {
         fetchAllData();
       }
     };
     
-    initializeDate();
+    initialize();
   }, []);
 
   useEffect(() => {
     if (filters.date.getTime() !== new Date('2025-07-31').getTime()) {
       fetchAllData();
     }
-  }, [filters]);
+  }, [filters.date, filters.minPosts, filters.minScore, filters.minConfidence, filters.contentType]);
 
   useEffect(() => {
     if (sentimentData.length > 0) {
       fetchSparklineData();
     }
   }, [sentimentData]);
+
+  // Update defaults when symbol/horizon changes
+  useEffect(() => {
+    updateFiltersWithDefaults(filters.selectedSymbol, filters.selectedHorizon);
+  }, [filters.selectedSymbol, filters.selectedHorizon]);
 
   // Computed values
   const bullishLeaders = sentimentData
@@ -356,7 +499,7 @@ const TodaysSentiment = () => {
       {/* Filter Bar */}
       <Card>
         <CardContent className="p-4">
-          <div className="grid grid-cols-2 md:grid-cols-6 gap-4 items-end">
+          <div className="grid grid-cols-2 md:grid-cols-8 gap-4 items-end">
             {/* Date Picker */}
             <div className="space-y-2">
               <Label className="text-sm font-medium">Date</Label>
@@ -384,6 +527,46 @@ const TodaysSentiment = () => {
               </Popover>
             </div>
 
+            {/* Symbol Selection */}
+            <div className="space-y-2">
+              <Label className="text-sm font-medium">Symbol</Label>
+              <Select 
+                value={filters.selectedSymbol} 
+                onValueChange={(value) => 
+                  setFilters(prev => ({ ...prev, selectedSymbol: value }))
+                }
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {availableSymbols.map(symbol => (
+                    <SelectItem key={symbol} value={symbol}>{symbol}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Horizon Selection */}
+            <div className="space-y-2">
+              <Label className="text-sm font-medium">Horizon</Label>
+              <Select 
+                value={filters.selectedHorizon} 
+                onValueChange={(value) => 
+                  setFilters(prev => ({ ...prev, selectedHorizon: value }))
+                }
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {availableHorizons.map(horizon => (
+                    <SelectItem key={horizon} value={horizon}>{horizon}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
             {/* Content Type */}
             <div className="space-y-2">
               <Label className="text-sm font-medium">Content Type</Label>
@@ -406,7 +589,10 @@ const TodaysSentiment = () => {
 
             {/* Min Posts */}
             <div className="space-y-2">
-              <Label className="text-sm font-medium">Min Posts ({filters.minPosts})</Label>
+              <Label className="text-sm font-medium">
+                Min Posts ({filters.minPosts})
+                {isLoadingDefaults && <span className="text-xs text-muted-foreground ml-1">(updating...)</span>}
+              </Label>
               <Slider
                 value={[filters.minPosts]}
                 onValueChange={([value]) => setFilters(prev => ({ ...prev, minPosts: value }))}
@@ -414,12 +600,16 @@ const TodaysSentiment = () => {
                 min={1}
                 step={1}
                 className="w-full"
+                disabled={isLoadingDefaults}
               />
             </div>
 
             {/* Min Score */}
             <div className="space-y-2">
-              <Label className="text-sm font-medium">Min |Score| ({filters.minScore.toFixed(2)})</Label>
+              <Label className="text-sm font-medium">
+                Min |Score| ({filters.minScore.toFixed(2)})
+                {isLoadingDefaults && <span className="text-xs text-muted-foreground ml-1">(updating...)</span>}
+              </Label>
               <Slider
                 value={[filters.minScore]}
                 onValueChange={([value]) => setFilters(prev => ({ ...prev, minScore: value }))}
@@ -427,12 +617,16 @@ const TodaysSentiment = () => {
                 min={0}
                 step={0.01}
                 className="w-full"
+                disabled={isLoadingDefaults}
               />
             </div>
 
             {/* Min Confidence */}
             <div className="space-y-2">
-              <Label className="text-sm font-medium">Min Confidence ({formatPercent(filters.minConfidence)})</Label>
+              <Label className="text-sm font-medium">
+                Min Confidence ({formatPercent(filters.minConfidence)})
+                {isLoadingDefaults && <span className="text-xs text-muted-foreground ml-1">(updating...)</span>}
+              </Label>
               <Slider
                 value={[filters.minConfidence]}
                 onValueChange={([value]) => setFilters(prev => ({ ...prev, minConfidence: value }))}
@@ -440,6 +634,7 @@ const TodaysSentiment = () => {
                 min={0}
                 step={0.05}
                 className="w-full"
+                disabled={isLoadingDefaults}
               />
             </div>
           </div>
