@@ -125,8 +125,8 @@ const TradesOverview = () => {
   const [isLoadingDetails, setIsLoadingDetails] = useState(false);
   const [newTradeDialogOpen, setNewTradeDialogOpen] = useState(false);
   const [isSubmittingTrade, setIsSubmittingTrade] = useState(false);
-  const [selectedDate, setSelectedDate] = useState('');
-  const [latestDate, setLatestDate] = useState('');
+  const [selectedDate, setSelectedDate] = useState(() => todayInDenverDateString());
+  const [latestDate, setLatestDate] = useState(() => todayInDenverDateString());
   const [dailyPnLSummary, setDailyPnLSummary] = useState<DailyPnLSummary | null>(null);
   const { toast } = useToast();
 
