@@ -6,7 +6,7 @@ import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
-import { todayInDenverDateString } from '@/utils/timezone';
+import { todayInDenverDateString, formatFullDateInDenver } from '@/utils/timezone';
 import { 
   RefreshCw, 
   Target, 
@@ -93,12 +93,10 @@ const RedditSentimentHomescreen = () => {
   const formatPercent = (value: number) => 
     `${value > 0 ? '+' : ''}${(value * 100).toFixed(1)}%`;
 
-  const formatDate = (date: string) => 
-    new Date(date + 'T12:00:00').toLocaleDateString('en-US', { 
-      month: 'short', 
-      day: 'numeric', 
-      year: 'numeric' 
-    });
+  const formatDate = (date?: string) => {
+    if (!date) return '—';
+    return formatFullDateInDenver(date);
+  };
 
   const getStrengthOrder = (grade: string) => {
     const order = { 'Strong': 1, 'Moderate': 2, 'Weak': 3 };
