@@ -18,7 +18,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Textarea } from "@/components/ui/textarea";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { todayInDenverDateString } from '@/utils/timezone';
+import { todayInDenverDateString, formatDateInDenver } from '@/utils/timezone';
 import * as z from "zod";
 
 interface Trade {
@@ -581,7 +581,7 @@ const TradesOverview = () => {
             <div className="font-semibold">
               {typeof trade.entry_price === 'number' ? `$${trade.entry_price.toFixed(2)}` : 'N/A'}
               <div className="text-xs text-muted-foreground">
-                {trade.entry_ts ? new Date(trade.entry_ts).toLocaleDateString() : 'N/A'}
+                {trade.entry_ts ? formatDateInDenver(trade.entry_ts) : 'N/A'}
               </div>
             </div>
           </div>
@@ -597,8 +597,8 @@ const TradesOverview = () => {
                 : (typeof trade.exit_price === 'number' ? `$${trade.exit_price.toFixed(2)}` : 'N/A')
               }
               {!isOpen && trade.exit_ts && (
-                <div className="text-xs text-muted-foreground">
-                  {new Date(trade.exit_ts).toLocaleDateString()}
+                 <div className="text-xs text-muted-foreground">
+                  {formatDateInDenver(trade.exit_ts)}
                 </div>
               )}
             </div>
