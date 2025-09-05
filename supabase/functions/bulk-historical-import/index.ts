@@ -97,8 +97,12 @@ Deno.serve(async (req) => {
 
             const result = data.chart.result[0]
             const timestamps = result.timestamp
-            const prices = result.indicators.quote[0].close
-            const volumes = result.indicators.quote[0].volume
+            const quotes = result.indicators.quote[0]
+            const prices = quotes.close
+            const openPrices = quotes.open
+            const highPrices = quotes.high
+            const lowPrices = quotes.low
+            const volumes = quotes.volume
 
             // Process all historical data points for this symbol
             const historicalData = []
@@ -146,6 +150,10 @@ Deno.serve(async (req) => {
               historicalData.push({
                 symbol: symbol.toUpperCase(),
                 price: currentPrice,
+                price_open: (openPrices && openPrices[j] != null) ? openPrices[j] : currentPrice,
+                price_high: (highPrices && highPrices[j] != null) ? highPrices[j] : currentPrice,
+                price_low: (lowPrices && lowPrices[j] != null) ? lowPrices[j] : currentPrice,
+                price_close: currentPrice,
                 volume: currentVolume,
                 timestamp: currentDate.toISOString(),
                 technical_indicators: technicalIndicators,
@@ -161,7 +169,7 @@ Deno.serve(async (req) => {
                 .from('enhanced_market_data')
                 .upsert(historicalData, { 
                   onConflict: 'symbol,data_date',
-                  ignoreDuplicates: true 
+                  ignoreDuplicates: false 
                 })
 
               if (dbError) {
