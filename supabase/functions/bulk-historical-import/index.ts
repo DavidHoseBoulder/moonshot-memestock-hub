@@ -149,7 +149,6 @@ Deno.serve(async (req) => {
 
               historicalData.push({
                 symbol: symbol.toUpperCase(),
-                price: currentPrice,
                 price_open: (openPrices && openPrices[j] != null) ? openPrices[j] : currentPrice,
                 price_high: (highPrices && highPrices[j] != null) ? highPrices[j] : currentPrice,
                 price_low: (lowPrices && lowPrices[j] != null) ? lowPrices[j] : currentPrice,

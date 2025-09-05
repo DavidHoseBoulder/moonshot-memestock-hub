@@ -102,7 +102,7 @@ Deno.serve(async (req) => {
       // Transform data for enhanced_market_data table structure
       const enhancedData = marketData.map(item => ({
         symbol: item.symbol,
-        price: item.price,
+        price_close: item.price,
         price_open: item.price_open,
         price_high: item.price_high,
         price_low: item.price_low,

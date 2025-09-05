@@ -270,7 +270,7 @@ Deno.serve(async (req) => {
       
       const dbRecords = enhancedData.map(item => ({
         symbol: item.symbol,
-        price: item.price,
+        price_close: item.price,
         price_open: item.price_open,
         price_high: item.price_high,
         price_low: item.price_low,
