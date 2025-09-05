@@ -18,6 +18,9 @@ interface TechnicalIndicators {
 interface PolygonMarketData {
   symbol: string
   price: number
+  price_open: number
+  price_high: number
+  price_low: number
   volume: number
   timestamp: string
   technical_indicators: TechnicalIndicators
@@ -156,6 +159,9 @@ Deno.serve(async (req) => {
 
           const results = data.results
           const prices = results.map((bar: any) => bar.c) // closing prices
+          const openPrices = results.map((bar: any) => bar.o) // open prices
+          const highPrices = results.map((bar: any) => bar.h) // high prices
+          const lowPrices = results.map((bar: any) => bar.l) // low prices
           const volumes = results.map((bar: any) => bar.v) // volumes
           const timestamps = results.map((bar: any) => bar.t) // timestamps
 
@@ -189,6 +195,10 @@ Deno.serve(async (req) => {
 
           // Price momentum and volatility
           const currentPrice = validPrices[validPrices.length - 1]
+          const currentOpen = openPrices.length > 0 ? openPrices[openPrices.length - 1] || currentPrice : currentPrice
+          const currentHigh = highPrices.length > 0 ? highPrices[highPrices.length - 1] || currentPrice : currentPrice
+          const currentLow = lowPrices.length > 0 ? lowPrices[lowPrices.length - 1] || currentPrice : currentPrice
+          
           const price_1d_ago = validPrices[validPrices.length - 2] || currentPrice
           const price_5d_ago = validPrices[validPrices.length - 6] || currentPrice
         
@@ -212,6 +222,9 @@ Deno.serve(async (req) => {
           return {
             symbol: symbol.toUpperCase(),
             price: Math.round(currentPrice * 100) / 100,
+            price_open: Math.round(currentOpen * 100) / 100,
+            price_high: Math.round(currentHigh * 100) / 100,
+            price_low: Math.round(currentLow * 100) / 100,
             volume: Math.round(currentVolume),
             timestamp: new Date(timestamps[timestamps.length - 1]).toISOString(),
             technical_indicators: {
@@ -258,6 +271,9 @@ Deno.serve(async (req) => {
       const dbRecords = enhancedData.map(item => ({
         symbol: item.symbol,
         price: item.price,
+        price_open: item.price_open,
+        price_high: item.price_high,
+        price_low: item.price_low,
         volume: item.volume,
         timestamp: item.timestamp,
         technical_indicators: item.technical_indicators,

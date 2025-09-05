@@ -253,6 +253,10 @@ export type Database = {
           price: number | null
           price_change_1d: number | null
           price_change_5d: number | null
+          price_close: number | null
+          price_high: number | null
+          price_low: number | null
+          price_open: number | null
           symbol: string
           technical_indicators: Json | null
           timestamp: string
@@ -266,6 +270,10 @@ export type Database = {
           price?: number | null
           price_change_1d?: number | null
           price_change_5d?: number | null
+          price_close?: number | null
+          price_high?: number | null
+          price_low?: number | null
+          price_open?: number | null
           symbol: string
           technical_indicators?: Json | null
           timestamp: string
@@ -279,6 +287,10 @@ export type Database = {
           price?: number | null
           price_change_1d?: number | null
           price_change_5d?: number | null
+          price_close?: number | null
+          price_high?: number | null
+          price_low?: number | null
+          price_open?: number | null
           symbol?: string
           technical_indicators?: Json | null
           timestamp?: string
@@ -487,6 +499,72 @@ export type Database = {
           symbol?: string
           trades?: number | null
           use_weighted?: boolean
+          win_rate?: number | null
+        }
+        Relationships: []
+      }
+      live_sentiment_entry_rules_backup: {
+        Row: {
+          avg_ret: number | null
+          created_at: string | null
+          end_date: string | null
+          horizon: string | null
+          is_enabled: boolean | null
+          median_ret: number | null
+          min_conf: number | null
+          min_mentions: number | null
+          model_version: string | null
+          notes: string | null
+          pos_thresh: number | null
+          priority: number | null
+          sharpe: number | null
+          side: string | null
+          start_date: string | null
+          symbol: string | null
+          trades: number | null
+          use_weighted: boolean | null
+          win_rate: number | null
+        }
+        Insert: {
+          avg_ret?: number | null
+          created_at?: string | null
+          end_date?: string | null
+          horizon?: string | null
+          is_enabled?: boolean | null
+          median_ret?: number | null
+          min_conf?: number | null
+          min_mentions?: number | null
+          model_version?: string | null
+          notes?: string | null
+          pos_thresh?: number | null
+          priority?: number | null
+          sharpe?: number | null
+          side?: string | null
+          start_date?: string | null
+          symbol?: string | null
+          trades?: number | null
+          use_weighted?: boolean | null
+          win_rate?: number | null
+        }
+        Update: {
+          avg_ret?: number | null
+          created_at?: string | null
+          end_date?: string | null
+          horizon?: string | null
+          is_enabled?: boolean | null
+          median_ret?: number | null
+          min_conf?: number | null
+          min_mentions?: number | null
+          model_version?: string | null
+          notes?: string | null
+          pos_thresh?: number | null
+          priority?: number | null
+          sharpe?: number | null
+          side?: string | null
+          start_date?: string | null
+          symbol?: string | null
+          trades?: number | null
+          use_weighted?: boolean | null
           win_rate?: number | null
         }
         Relationships: []
@@ -1563,6 +1641,45 @@ export type Database = {
         }
         Relationships: []
       }
+      v_import_runs_daily_summary: {
+        Row: {
+          analyzed_total: number | null
+          build_date: string | null
+          error: string | null
+          file: string | null
+          finished_at: string | null
+          inserted_total: number | null
+          queued_total: number | null
+          run_id: string | null
+          scanned_total: number | null
+          started_at: string | null
+          status: string | null
+        }
+        Relationships: []
+      }
+      v_import_runs_latest: {
+        Row: {
+          analyzed_total: number | null
+          batch_size: number | null
+          build_date: string | null
+          error: string | null
+          file: string | null
+          finished_at: string | null
+          inserted_total: number | null
+          queued_total: number | null
+          run_id: string | null
+          scanned_total: number | null
+          started_at: string | null
+          status: string | null
+        }
+        Relationships: []
+      }
+      v_latest_reddit_trade_date: {
+        Row: {
+          data_date: string | null
+        }
+        Relationships: []
+      }
       v_live_sentiment_rules: {
         Row: {
           avg_ret: number | null
@@ -1621,6 +1738,58 @@ export type Database = {
           selftext?: string | null
           subreddit?: string | null
           title?: string | null
+        }
+        Relationships: []
+      }
+      v_recommended_trades_today: {
+        Row: {
+          avg_ret: number | null
+          confidence_label: string | null
+          confidence_score: number | null
+          end_date: string | null
+          grade: string | null
+          grade_explain: string | null
+          has_open_any: boolean | null
+          has_open_paper: boolean | null
+          has_open_real: boolean | null
+          horizon: string | null
+          mentions: number | null
+          min_mentions: number | null
+          rule_threshold: number | null
+          score: number | null
+          sharpe: number | null
+          side: string | null
+          start_date: string | null
+          symbol: string | null
+          trades: number | null
+          triggered_at: string | null
+          win_rate: number | null
+        }
+        Relationships: []
+      }
+      v_recommended_trades_today_conf: {
+        Row: {
+          avg_ret: number | null
+          confidence_label: string | null
+          confidence_score: number | null
+          end_date: string | null
+          grade: string | null
+          grade_explain: string | null
+          has_open_any: boolean | null
+          has_open_paper: boolean | null
+          has_open_real: boolean | null
+          horizon: string | null
+          mentions: number | null
+          min_mentions: number | null
+          rule_threshold: number | null
+          score: number | null
+          sharpe: number | null
+          side: string | null
+          start_date: string | null
+          symbol: string | null
+          trades: number | null
+          triggered_at: string | null
+          win_rate: number | null
         }
         Relationships: []
       }
@@ -1916,6 +2085,65 @@ export type Database = {
           selftext: string | null
           subreddit: string | null
           title: string | null
+        }
+        Relationships: []
+      }
+      v_sentiment_history: {
+        Row: {
+          avg_score: number | null
+          data_date: string | null
+          n_mentions: number | null
+          symbol: string | null
+          used_score: number | null
+        }
+        Relationships: []
+      }
+      v_sentiment_velocity_lite: {
+        Row: {
+          avg_score: number | null
+          data_date: string | null
+          delta_mentions: number | null
+          delta_score: number | null
+          n_mentions: number | null
+          symbol: string | null
+          trailing_avg_mentions: number | null
+          trailing_avg_score: number | null
+          trailing_stddev_score: number | null
+          used_score: number | null
+          z_score_score: number | null
+        }
+        Relationships: []
+      }
+      v_today_velocity_ranked: {
+        Row: {
+          avg_score: number | null
+          data_date: string | null
+          delta_mentions: number | null
+          delta_score: number | null
+          n_mentions: number | null
+          rank: number | null
+          symbol: string | null
+          trailing_avg_mentions: number | null
+          trailing_avg_score: number | null
+          trailing_stddev_score: number | null
+          used_score: number | null
+          z_score_score: number | null
+        }
+        Relationships: []
+      }
+      v_today_velocity_spikes: {
+        Row: {
+          avg_score: number | null
+          data_date: string | null
+          delta_mentions: number | null
+          delta_score: number | null
+          n_mentions: number | null
+          symbol: string | null
+          trailing_avg_mentions: number | null
+          trailing_avg_score: number | null
+          trailing_stddev_score: number | null
+          used_score: number | null
+          z_score_score: number | null
         }
         Relationships: []
       }

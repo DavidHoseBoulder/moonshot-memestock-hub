@@ -8,6 +8,9 @@ const corsHeaders = {
 interface MarketDataPoint {
   symbol: string
   price: number
+  price_open: number
+  price_high: number
+  price_low: number
   volume?: number
   timestamp: string
   asset_type: 'stock' | 'crypto'
@@ -63,8 +66,12 @@ Deno.serve(async (req) => {
 
         const result = data.chart.result[0]
         const timestamps = result.timestamp
-        const prices = result.indicators.quote[0].close
-        const volumes = result.indicators.quote[0].volume
+        const quotes = result.indicators.quote[0]
+        const prices = quotes.close
+        const openPrices = quotes.open
+        const highPrices = quotes.high
+        const lowPrices = quotes.low
+        const volumes = quotes.volume
 
         // Convert to our format
         for (let i = 0; i < timestamps.length; i++) {
@@ -72,6 +79,9 @@ Deno.serve(async (req) => {
             marketData.push({
               symbol: symbol.toUpperCase(),
               price: prices[i],
+              price_open: openPrices[i] || prices[i],
+              price_high: highPrices[i] || prices[i],
+              price_low: lowPrices[i] || prices[i],
               volume: volumes[i] || null,
               timestamp: new Date(timestamps[i] * 1000).toISOString(),
               asset_type: symbol.match(/^(BTC|ETH|DOGE|ADA|DOT)/) ? 'crypto' : 'stock'
@@ -93,6 +103,9 @@ Deno.serve(async (req) => {
       const enhancedData = marketData.map(item => ({
         symbol: item.symbol,
         price: item.price,
+        price_open: item.price_open,
+        price_high: item.price_high,
+        price_low: item.price_low,
         volume: item.volume,
         timestamp: item.timestamp,
         data_date: new Date(item.timestamp).toISOString().split('T')[0],

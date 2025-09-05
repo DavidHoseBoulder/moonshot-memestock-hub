@@ -18,6 +18,9 @@ interface TechnicalIndicators {
 interface EnhancedMarketData {
   symbol: string
   price: number
+  price_open: number
+  price_high: number
+  price_low: number
   volume: number
   timestamp: string
   technical_indicators: TechnicalIndicators
@@ -69,20 +72,23 @@ Deno.serve(async (req) => {
 
     const enhancedData: EnhancedMarketData[] = []
     
-    // Add cached data to results
-    if (cachedData) {
-      cachedData.forEach(cached => {
-        enhancedData.push({
-          symbol: cached.symbol,
-          price: cached.price,
-          volume: cached.volume,
-          timestamp: cached.timestamp,
-          technical_indicators: cached.technical_indicators,
-          price_change_1d: cached.price_change_1d,
-          price_change_5d: cached.price_change_5d
+      // Add cached data to results
+      if (cachedData) {
+        cachedData.forEach(cached => {
+          enhancedData.push({
+            symbol: cached.symbol,
+            price: cached.price,
+            price_open: cached.price_open || cached.price,
+            price_high: cached.price_high || cached.price,
+            price_low: cached.price_low || cached.price,
+            volume: cached.volume,
+            timestamp: cached.timestamp,
+            technical_indicators: cached.technical_indicators,
+            price_change_1d: cached.price_change_1d,
+            price_change_5d: cached.price_change_5d
+          })
         })
-      })
-    }
+      }
 
     // Only fetch data for symbols not in cache
     if (symbolsToFetch.length === 0) {
@@ -144,6 +150,9 @@ Deno.serve(async (req) => {
           const timestamps = result.timestamp
           const quotes = result.indicators.quote[0]
           const prices = quotes?.close || []
+          const openPrices = quotes?.open || []
+          const highPrices = quotes?.high || []
+          const lowPrices = quotes?.low || []
           const volumes = quotes?.volume || []
 
           // Better validation for data availability
@@ -185,6 +194,10 @@ Deno.serve(async (req) => {
 
           // Price momentum and volatility with validation
           const currentPrice = validPrices[validPrices.length - 1]
+          const currentOpen = openPrices.length > 0 ? openPrices[openPrices.length - 1] || currentPrice : currentPrice
+          const currentHigh = highPrices.length > 0 ? highPrices[highPrices.length - 1] || currentPrice : currentPrice
+          const currentLow = lowPrices.length > 0 ? lowPrices[lowPrices.length - 1] || currentPrice : currentPrice
+          
           if (!currentPrice || currentPrice <= 0) {
             console.log(`Invalid current price for ${symbol}: ${currentPrice}`)
             return null
@@ -213,6 +226,9 @@ Deno.serve(async (req) => {
           return {
             symbol: symbol.toUpperCase(),
             price: Math.round(currentPrice * 100) / 100, // Round to 2 decimal places
+            price_open: Math.round(currentOpen * 100) / 100,
+            price_high: Math.round(currentHigh * 100) / 100,
+            price_low: Math.round(currentLow * 100) / 100,
             volume: Math.round(currentVolume),
             timestamp: new Date(timestamps[timestamps.length - 1] * 1000).toISOString(),
             technical_indicators: technicalIndicators,
@@ -255,6 +271,9 @@ Deno.serve(async (req) => {
         .upsert(newData.map(item => ({
           symbol: item.symbol,
           price: item.price,
+          price_open: item.price_open,
+          price_high: item.price_high,
+          price_low: item.price_low,
           volume: item.volume,
           timestamp: item.timestamp,
           technical_indicators: item.technical_indicators,
