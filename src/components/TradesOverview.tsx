@@ -18,7 +18,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Textarea } from "@/components/ui/textarea";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { todayInDenverDateString, formatDateInDenver } from '@/utils/timezone';
+import { todayInDenverDateString, formatDateInDenver, formatFullDateInDenver } from '@/utils/timezone';
 import * as z from "zod";
 
 interface Trade {
@@ -623,7 +623,7 @@ const TradesOverview = () => {
 
         <div className="mt-3 pt-3 border-t text-xs text-muted-foreground">
           <div>Source: {trade.source} • Qty: 1 (paper default)</div>
-          <div>Trade Date: {trade.trade_date ? new Date(trade.trade_date).toLocaleDateString() : 'N/A'}</div>
+          <div>Trade Date: {trade.trade_date ? formatDateInDenver(trade.trade_date) : 'N/A'}</div>
         </div>
       </Card>
     );
@@ -1027,7 +1027,7 @@ const TradesOverview = () => {
                     <div>
                       <div className="text-sm text-muted-foreground">Entry Date</div>
                       <div className="font-medium">
-                        {selectedTrade.entry_ts ? new Date(selectedTrade.entry_ts).toLocaleString() : 'N/A'}
+                        {selectedTrade.entry_ts ? formatFullDateInDenver(selectedTrade.entry_ts) : 'N/A'}
                       </div>
                     </div>
                     <div>
@@ -1230,7 +1230,7 @@ const TradesOverview = () => {
                                 key={index}
                                 className="flex-1 bg-primary rounded-sm opacity-70 hover:opacity-100 transition-opacity"
                                 style={{ height: `${height}px` }}
-                                title={`$${point.price.toFixed(2)} on ${point.timestamp ? new Date(point.timestamp).toLocaleDateString() : 'Unknown date'}`}
+                                title={`$${point.price.toFixed(2)} on ${point.timestamp ? formatDateInDenver(point.timestamp) : 'Unknown date'}`}
                               />
                             );
                           })}
