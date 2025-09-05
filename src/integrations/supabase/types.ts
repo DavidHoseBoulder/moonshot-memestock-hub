@@ -1467,6 +1467,18 @@ export type Database = {
           symbol: string | null
           volume: number | null
         }
+        Insert: {
+          close?: number | null
+          d?: string | null
+          symbol?: string | null
+          volume?: number | null
+        }
+        Update: {
+          close?: number | null
+          d?: string | null
+          symbol?: string | null
+          volume?: number | null
+        }
         Relationships: []
       }
       reddit_comments_clean: {
