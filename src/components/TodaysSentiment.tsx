@@ -111,17 +111,39 @@ const TodaysSentiment = () => {
   const fetchGlobalDefaults = async (modelVersion: string = 'claude-v1'): Promise<RuleDefaults | null> => {
     try {
       console.log('📊 Fetching global defaults for model:', modelVersion);
-      const { data, error } = await supabase.rpc('get_global_rule_defaults', {
-        p_model_version: modelVersion
-      });
+      const { data, error } = await supabase
+        .from('live_sentiment_entry_rules')
+        .select('min_mentions, pos_thresh, min_conf')
+        .eq('is_enabled', true)
+        .eq('model_version', modelVersion);
 
       if (error) {
         console.error('❌ Error fetching global defaults:', error);
         return null;
       }
 
-      console.log('📊 Global defaults received:', data);
-      return data?.[0] || null;
+      if (!data || data.length === 0) {
+        return null;
+      }
+
+      // Calculate medians manually
+      const mentions = data.map(d => d.min_mentions).sort((a, b) => a - b);
+      const scores = data.map(d => d.pos_thresh).sort((a, b) => a - b);
+      const confs = data.map(d => d.min_conf).sort((a, b) => a - b);
+
+      const getMedian = (arr: number[]) => {
+        const mid = Math.floor(arr.length / 2);
+        return arr.length % 2 ? arr[mid] : (arr[mid - 1] + arr[mid]) / 2;
+      };
+
+      const result = {
+        def_min_posts: Math.round(getMedian(mentions)),
+        def_min_score: getMedian(scores),
+        def_min_conf: getMedian(confs)
+      };
+
+      console.log('📊 Global defaults calculated:', result);
+      return result;
     } catch (error) {
       console.error('❌ Error fetching global defaults:', error);
       return null;

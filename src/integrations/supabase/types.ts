@@ -1287,6 +1287,18 @@ export type Database = {
         }
         Relationships: []
       }
+      tmp_cal: {
+        Row: {}
+        Insert: {}
+        Update: {}
+        Relationships: []
+      }
+      tmp_entries: {
+        Row: {}
+        Insert: {}
+        Update: {}
+        Relationships: []
+      }
       trades: {
         Row: {
           audit: Json | null
@@ -2231,6 +2243,14 @@ export type Database = {
           category: string
           name: string
           priority: number
+        }[]
+      }
+      get_global_rule_defaults: {
+        Args: { p_model_version: string }
+        Returns: {
+          def_min_conf: number
+          def_min_posts: number
+          def_min_score: number
         }[]
       }
       is_market_data_fresh: {
