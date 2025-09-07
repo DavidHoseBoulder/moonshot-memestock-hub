@@ -1,9 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { format } from 'date-fns';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Slider } from '@/components/ui/slider';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { todayInDenverDateString, formatFullDateInDenver } from '@/utils/timezone';
@@ -17,7 +21,8 @@ import {
   TrendingDown, 
   Activity,
   DollarSign,
-  ArrowRight
+  ArrowRight,
+  Settings
 } from 'lucide-react';
 
 // Types
@@ -138,15 +143,6 @@ const RedditSentimentHomescreen = () => {
   const fetchTriggeredCandidates = async () => {
     console.log('🎯 Fetching recommended trades from v_recommended_trades_today_conf...');
     try {
-      // Set configuration parameters
-      await supabase.rpc('exec', {
-        sql: `
-          SET LOCAL app.reco_date = '${recoDate}';
-          SET LOCAL app.min_confidence_score = '${minConfidence}';
-          SET LOCAL app.min_trades = '${minTrades}';
-        `
-      });
-
       const { data, error } = await supabase
         .from('v_recommended_trades_today_conf' as any)
         .select('*')
@@ -209,15 +205,6 @@ const RedditSentimentHomescreen = () => {
   const fetchMonitoringCandidates = async () => {
     console.log('👀 Fetching monitoring candidates from v_reddit_monitoring_signals...');
     try {
-      // Set configuration parameters for consistency
-      await supabase.rpc('exec', {
-        sql: `
-          SET LOCAL app.reco_date = '${recoDate}';
-          SET LOCAL app.min_confidence_score = '${minConfidence}';
-          SET LOCAL app.min_trades = '${minTrades}';
-        `
-      });
-
       // Get triggered symbols first
       const { data: triggeredData } = await supabase
         .from('v_recommended_trades_today_conf' as any)

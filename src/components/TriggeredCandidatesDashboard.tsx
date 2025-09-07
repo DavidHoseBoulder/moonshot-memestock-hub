@@ -102,15 +102,6 @@ const TriggeredCandidatesDashboard = () => {
   const fetchTriggeredCandidates = async () => {
     console.log('🎯 Fetching recommended trades...');
     try {
-      // Set configuration parameters
-      await supabase.rpc('exec', {
-        sql: `
-          SET LOCAL app.reco_date = '${recoDate}';
-          SET LOCAL app.min_confidence_score = '${minConfidence}';
-          SET LOCAL app.min_trades = '${minTrades}';
-        `
-      });
-
       const { data, error } = await supabase
         .from('v_recommended_trades_today_conf' as any)
         .select('*')
