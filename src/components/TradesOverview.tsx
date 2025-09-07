@@ -38,6 +38,7 @@ interface Trade {
   exit_price_source?: string;
   notes?: string;
   created_at: string;
+  qty: number;
 }
 
 interface MarketData {
@@ -268,17 +269,21 @@ const TradesOverview = () => {
 
   // Calculate PnL for a trade
   const calculatePnL = (trade: Trade, currentPrice?: number) => {
+    const qty = Number(trade.qty) || 1; // Default to 1 if qty is not set
+    
     if (trade.status.toLowerCase() === 'closed' && trade.exit_price) {
-      const pnl = trade.side === 'LONG' 
+      const priceChange = trade.side === 'LONG' 
         ? trade.exit_price - trade.entry_price
         : trade.entry_price - trade.exit_price;
-      const returnPct = (pnl / trade.entry_price) * 100;
+      const pnl = priceChange * qty; // Multiply by quantity
+      const returnPct = (priceChange / trade.entry_price) * 100;
       return { realized_pnl: pnl, return_pct: returnPct };
     } else if (trade.status.toLowerCase() === 'open' && currentPrice) {
-      const pnl = trade.side === 'LONG'
+      const priceChange = trade.side === 'LONG'
         ? currentPrice - trade.entry_price
         : trade.entry_price - currentPrice;
-      const returnPct = (pnl / trade.entry_price) * 100;
+      const pnl = priceChange * qty; // Multiply by quantity
+      const returnPct = (priceChange / trade.entry_price) * 100;
       return { unrealized_pnl: pnl, return_pct: returnPct };
     }
     return {};
@@ -621,9 +626,24 @@ const TradesOverview = () => {
           </div>
         )}
 
-        <div className="mt-3 pt-3 border-t text-xs text-muted-foreground">
-          <div>Source: {trade.source} • Qty: 1 (paper default)</div>
-          <div>Trade Date: {trade.trade_date ? formatDateInDenver(trade.trade_date) : 'N/A'}</div>
+        <div className="mt-3 space-y-2">
+          <div className="flex justify-between items-center text-xs">
+            <span className="text-muted-foreground">Quantity:</span>
+            <span className="font-medium">{Number(trade.qty) || 1}</span>
+          </div>
+          <div className="flex justify-between items-center text-xs">
+            <span className="text-muted-foreground">Total Invested:</span>
+            <span className="font-medium">
+              {typeof trade.entry_price === 'number' 
+                ? `$${(trade.entry_price * (Number(trade.qty) || 1)).toFixed(2)}`
+                : 'N/A'
+              }
+            </span>
+          </div>
+          <div className="pt-2 border-t text-xs text-muted-foreground">
+            <div>Source: {trade.source}</div>
+            <div>Trade Date: {trade.trade_date ? formatDateInDenver(trade.trade_date) : 'N/A'}</div>
+          </div>
         </div>
       </Card>
     );
