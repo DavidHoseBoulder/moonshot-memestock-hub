@@ -32,16 +32,17 @@ interface TriggeredCandidate {
   symbol: string;
   horizon: string;
   side: string;
-  grade: 'Strong' | 'Moderate' | 'Weak';
+  grade: 'Strong' | 'Moderate' | 'Weak' | null;
+  confidence_label: string | null;
   mentions: number;
   min_mentions: number;
   pos_thresh: number;
-  sharpe: number;
-  avg_ret: number;
-  win_rate: number;
-  trades: number;
-  start_date: string;
-  end_date: string;
+  sharpe: number | null;
+  avg_ret: number | null;
+  win_rate: number | null;
+  trades: number | null;
+  start_date: string | null;
+  end_date: string | null;
   notes: string | null;
   is_enabled: boolean;
   priority: number;
@@ -50,8 +51,8 @@ interface TriggeredCandidate {
 interface SummaryKPIs {
   totalCandidates: number;
   strongCandidates: number;
-  averageSharpe: number;
-  averageWinRate: number;
+  averageSharpe: string;
+  averageWinRate: string;
 }
 
 const TriggeredCandidatesDashboard = () => {
@@ -97,17 +98,46 @@ const TriggeredCandidatesDashboard = () => {
   const navigate = useNavigate();
 
   // Helper functions
-  const formatPercent = (value: number) => 
-    `${value > 0 ? '+' : ''}${(value * 100).toFixed(1)}%`;
+  const formatPercent = (value: number | null) => {
+    if (value === null || value === undefined) return '—';
+    return `${value > 0 ? '+' : ''}${(value * 100).toFixed(1)}%`;
+  };
 
-  const formatDate = (date: string) => 
-    new Date(date + 'T12:00:00').toLocaleDateString('en-US', { 
+  const formatNumber = (value: number | null, decimals: number = 2) => {
+    if (value === null || value === undefined) return '—';
+    return value.toFixed(decimals);
+  };
+
+  const formatDate = (date: string | null) => {
+    if (!date) return '—';
+    return new Date(date + 'T12:00:00').toLocaleDateString('en-US', { 
       month: 'short', 
       day: 'numeric', 
       year: 'numeric' 
     });
+  };
 
-  const getGradeVariant = (grade: string) => {
+  const formatDateRange = (startDate: string | null, endDate: string | null) => {
+    if (!startDate && !endDate) return '—';
+    if (!startDate) return formatDate(endDate);
+    if (!endDate) return formatDate(startDate);
+    return `${formatDate(startDate)}–${formatDate(endDate)}`;
+  };
+
+  const mapConfidenceToGrade = (confidenceLabel: string | null): 'Strong' | 'Moderate' | 'Weak' => {
+    if (!confidenceLabel) return 'Weak';
+    const label = confidenceLabel.toLowerCase();
+    if (label === 'high') return 'Strong';
+    if (label === 'medium') return 'Moderate';
+    return 'Weak';
+  };
+
+  const getBacktestBadgeText = (trades: number | null) => {
+    if (trades === null || trades === undefined) return 'No sweep match';
+    return `Trades=${trades}`;
+  };
+
+  const getGradeVariant = (grade: string | null) => {
     switch (grade) {
       case 'Strong': return 'default';
       case 'Moderate': return 'secondary';
@@ -116,7 +146,7 @@ const TriggeredCandidatesDashboard = () => {
     }
   };
 
-  const getGradeOrder = (grade: string) => {
+  const getGradeOrder = (grade: string | null) => {
     const order = { 'Strong': 1, 'Moderate': 2, 'Weak': 3 };
     return order[grade as keyof typeof order] || 4;
   };
@@ -142,16 +172,17 @@ const TriggeredCandidatesDashboard = () => {
           symbol: item.symbol,
           horizon: item.horizon,
           side: item.side,
-          grade: item.grade || 'Weak',
+          grade: item.grade || mapConfidenceToGrade(item.confidence_label),
+          confidence_label: item.confidence_label,
           mentions: item.mentions || 0,
           min_mentions: item.min_mentions || 0,
           pos_thresh: item.rule_threshold || 0,
-          sharpe: item.sharpe || 0,
-          avg_ret: item.avg_ret || 0,
-          win_rate: item.win_rate || 0,
-          trades: item.trades || 0,
-          start_date: item.start_date || '',
-          end_date: item.end_date || '',
+          sharpe: item.sharpe,
+          avg_ret: item.avg_ret,
+          win_rate: item.win_rate,
+          trades: item.trades,
+          start_date: item.start_date,
+          end_date: item.end_date,
           notes: item.grade_explain || '',
           is_enabled: true, // All items from this view are triggered
           priority: 100,
@@ -160,15 +191,21 @@ const TriggeredCandidatesDashboard = () => {
         setCandidates(processed);
 
         // Calculate summary KPIs
-        const strongCount = processed.filter(c => c.grade === 'Strong').length;
-        const avgSharpe = processed.reduce((sum, c) => sum + c.sharpe, 0) / processed.length;
-        const avgWinRate = processed.reduce((sum, c) => sum + c.win_rate, 0) / processed.length;
+        const strongCount = processed.filter(c => c.grade === 'Strong' || mapConfidenceToGrade(c.confidence_label) === 'Strong').length;
+        
+        // Average Sharpe - only include non-null values
+        const validSharpes = processed.filter(c => c.sharpe !== null && c.sharpe !== undefined).map(c => c.sharpe as number);
+        const avgSharpe = validSharpes.length > 0 ? validSharpes.reduce((sum, val) => sum + val, 0) / validSharpes.length : null;
+        
+        // Average Win Rate - only include non-null values
+        const validWinRates = processed.filter(c => c.win_rate !== null && c.win_rate !== undefined).map(c => c.win_rate as number);
+        const avgWinRate = validWinRates.length > 0 ? validWinRates.reduce((sum, val) => sum + val, 0) / validWinRates.length : null;
 
         setSummaryKPIs({
           totalCandidates: processed.length,
           strongCandidates: strongCount,
-          averageSharpe: avgSharpe || 0,
-          averageWinRate: avgWinRate || 0,
+          averageSharpe: formatNumber(avgSharpe),
+          averageWinRate: formatPercent(avgWinRate),
         });
       } else {
         setCandidates([]);
@@ -393,7 +430,7 @@ const TriggeredCandidatesDashboard = () => {
               <div>
                 <p className="text-sm text-muted-foreground">Average Sharpe</p>
                 {summaryKPIs ? (
-                  <p className="text-2xl font-bold">{summaryKPIs.averageSharpe.toFixed(2)}</p>
+                  <p className="text-2xl font-bold">{summaryKPIs.averageSharpe}</p>
                 ) : (
                   <Skeleton className="h-8 w-16" />
                 )}
@@ -409,7 +446,7 @@ const TriggeredCandidatesDashboard = () => {
               <div>
                 <p className="text-sm text-muted-foreground">Average Win Rate</p>
                 {summaryKPIs ? (
-                  <p className="text-2xl font-bold">{formatPercent(summaryKPIs.averageWinRate)}</p>
+                  <p className="text-2xl font-bold">{summaryKPIs.averageWinRate}</p>
                 ) : (
                   <Skeleton className="h-8 w-16" />
                 )}
@@ -452,9 +489,11 @@ const TriggeredCandidatesDashboard = () => {
             <div className="space-y-4">
               {sortedSymbols.map(symbol => {
                 const symbolCandidates = groupedCandidates[symbol];
-                const bestGrade = symbolCandidates.reduce((best, current) => 
-                  getGradeOrder(current.grade) < getGradeOrder(best.grade) ? current : best
-                );
+                const bestGrade = symbolCandidates.reduce((best, current) => {
+                  const currentGrade = current.grade || mapConfidenceToGrade(current.confidence_label);
+                  const bestGradeResolved = best.grade || mapConfidenceToGrade(best.confidence_label);
+                  return getGradeOrder(currentGrade) < getGradeOrder(bestGradeResolved) ? current : best;
+                });
 
                 return (
                   <div key={symbol} className="border rounded-lg p-4">
@@ -468,8 +507,8 @@ const TriggeredCandidatesDashboard = () => {
                           {symbol}
                         </h3>
                         <Badge variant="outline">{bestGrade.side}</Badge>
-                        <Badge variant={getGradeVariant(bestGrade.grade)}>
-                          {bestGrade.grade}
+                        <Badge variant={getGradeVariant(bestGrade.grade || mapConfidenceToGrade(bestGrade.confidence_label))}>
+                          {bestGrade.grade || mapConfidenceToGrade(bestGrade.confidence_label)}
                         </Badge>
                       </div>
                       <Button
@@ -485,7 +524,11 @@ const TriggeredCandidatesDashboard = () => {
                     {/* Horizon Rows */}
                     <div className="space-y-3">
                       {symbolCandidates
-                        .sort((a, b) => getGradeOrder(a.grade) - getGradeOrder(b.grade))
+                        .sort((a, b) => {
+                          const aGrade = a.grade || mapConfidenceToGrade(a.confidence_label);
+                          const bGrade = b.grade || mapConfidenceToGrade(b.confidence_label);
+                          return getGradeOrder(aGrade) - getGradeOrder(bGrade);
+                        })
                         .map((candidate, idx) => {
                           const noteKey = `${symbol}-${candidate.horizon}`;
                           const isNoteExpanded = expandedNotes.has(noteKey);
@@ -504,7 +547,7 @@ const TriggeredCandidatesDashboard = () => {
                                   <span className="text-muted-foreground">Threshold:</span> {candidate.pos_thresh}
                                 </div>
                                 <div className="text-sm">
-                                  <span className="text-muted-foreground">Sharpe:</span> {candidate.sharpe.toFixed(2)}
+                                  <span className="text-muted-foreground">Sharpe:</span> {formatNumber(candidate.sharpe)}
                                 </div>
                                 <div className="text-sm">
                                   <span className="text-muted-foreground">Avg Ret:</span> {formatPercent(candidate.avg_ret)}
@@ -513,19 +556,24 @@ const TriggeredCandidatesDashboard = () => {
                                   <span className="text-muted-foreground">Win:</span> {formatPercent(candidate.win_rate)}
                                 </div>
                                 <div className="flex gap-2">
-                                  <Badge variant={getGradeVariant(candidate.grade)} className="text-xs">
-                                    {candidate.grade}
+                                  <Badge variant={getGradeVariant(candidate.grade || mapConfidenceToGrade(candidate.confidence_label))} className="text-xs">
+                                    {candidate.grade || mapConfidenceToGrade(candidate.confidence_label)}
                                   </Badge>
                                   <Badge variant="secondary" className="text-xs">
-                                    Active
+                                    {getBacktestBadgeText(candidate.trades)}
                                   </Badge>
+                                  {candidate.trades === null && (
+                                    <span className="text-xs text-muted-foreground" title="No backtest at this exact (min_mentions, pos_thresh)">
+                                      ⚠️
+                                    </span>
+                                  )}
                                 </div>
                               </div>
 
                               {/* Backtest Context */}
                               <div className="text-xs text-muted-foreground mb-2">
-                                [{candidate.grade}] Trades={candidate.trades} • Avg {formatPercent(candidate.avg_ret)} • 
-                                Win {formatPercent(candidate.win_rate)} • Sharpe {candidate.sharpe.toFixed(1)} ({formatDate(candidate.start_date)}–{formatDate(candidate.end_date)})
+                                [{candidate.grade || mapConfidenceToGrade(candidate.confidence_label)}] {getBacktestBadgeText(candidate.trades)} • Avg {formatPercent(candidate.avg_ret)} • 
+                                Win {formatPercent(candidate.win_rate)} • Sharpe {formatNumber(candidate.sharpe, 1)} ({formatDateRange(candidate.start_date, candidate.end_date)})
                                 <Button 
                                   variant="link" 
                                   className="h-auto p-0 ml-2 text-xs"
