@@ -65,10 +65,33 @@ const TriggeredCandidatesDashboard = () => {
   const [tradingDate] = useState<string>(todayInDenverDateString());
   const [showConfig, setShowConfig] = useState(false);
   
-  // Configuration state
+  // Configuration state - loaded from database
   const [recoDate, setRecoDate] = useState(format(new Date(), 'yyyy-MM-dd'));
   const [minConfidence, setMinConfidence] = useState(60);
   const [minTrades, setMinTrades] = useState(5);
+  
+  // Load configuration from reddit_heuristics table
+  useEffect(() => {
+    const loadConfiguration = async () => {
+      try {
+        const { data, error } = await supabase
+          .from('reddit_heuristics' as any)
+          .select('min_confidence_score, min_trades')
+          .eq('is_active', true)
+          .single();
+        
+        if (data && !error) {
+          const config = data as any;
+          setMinConfidence(config.min_confidence_score || 60);
+          setMinTrades(config.min_trades || 5);
+        }
+      } catch (error) {
+        console.error('Error loading configuration:', error);
+      }
+    };
+    
+    loadConfiguration();
+  }, []);
 
   const { toast } = useToast();
   const navigate = useNavigate();
@@ -279,8 +302,11 @@ const TriggeredCandidatesDashboard = () => {
       {/* Configuration Panel */}
       {showConfig && (
         <Card className="border-dashed">
-          <CardHeader>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-lg">Configuration</CardTitle>
+            <Badge variant="outline" className="text-xs">
+              From Database
+            </Badge>
           </CardHeader>
           <CardContent>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -303,6 +329,7 @@ const TriggeredCandidatesDashboard = () => {
                   max={100}
                   step={5}
                   className="w-full"
+                  disabled
                 />
               </div>
               
@@ -315,8 +342,16 @@ const TriggeredCandidatesDashboard = () => {
                   max={20}
                   step={1}
                   className="w-full"
+                  disabled
                 />
               </div>
+            </div>
+            <div className="text-xs text-muted-foreground mt-3">
+              Configuration values are loaded from the database. Use the Configuration page to modify them.
+            </div>
+          </CardContent>
+        </Card>
+      )}
             </div>
           </CardContent>
         </Card>

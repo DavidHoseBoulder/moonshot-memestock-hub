@@ -13,6 +13,7 @@ import Backtesting from "./pages/Backtesting";
 import Reports from "./pages/Reports";
 import Trades from "./pages/Trades";
 import RecommendedTrades from "./pages/RecommendedTrades";
+import Configuration from "./pages/Configuration";
 import { Toaster } from "@/components/ui/toaster";
 
 
@@ -48,6 +49,7 @@ const App: React.FC = () => {
         <Route path="/sentiment" element={<ProtectedRoute><SentimentDashboardPage /></ProtectedRoute>} />
         <Route path="/portfolio" element={<ProtectedRoute><Trades /></ProtectedRoute>} />
         <Route path="/backtesting" element={<ProtectedRoute><Backtesting /></ProtectedRoute>} />
+        <Route path="/configuration" element={<ProtectedRoute><Configuration /></ProtectedRoute>} />
         <Route path="/bulk-import" element={<ProtectedRoute><BulkImport /></ProtectedRoute>} />
         <Route path="/dev/extraction-tester" element={<ProtectedRoute><ExtractionTester /></ProtectedRoute>} />
         <Route path="/reports" element={<ProtectedRoute><Reports /></ProtectedRoute>} />

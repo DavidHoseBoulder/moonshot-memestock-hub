@@ -29,6 +29,7 @@ const navItems = [
   { path: "/sentiment", icon: MessageSquare, label: "Sentiment" },
   { path: "/portfolio", icon: DollarSign, label: "Portfolio & Trades" },
   { path: "/backtesting", icon: BarChart3, label: "Backtesting" },
+  { path: "/configuration", icon: Settings, label: "Configuration" },
 ];
 
 export function NavigationSidebar() {
