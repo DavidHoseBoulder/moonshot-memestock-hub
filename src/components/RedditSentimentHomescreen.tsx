@@ -82,6 +82,12 @@ const RedditSentimentHomescreen = () => {
   const [redditSignals, setRedditSignals] = useState<RedditSignal[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [showConfig, setShowConfig] = useState(false);
+  
+  // Configuration state
+  const [recoDate, setRecoDate] = useState(format(new Date(), 'yyyy-MM-dd'));
+  const [minConfidence, setMinConfidence] = useState(60);
+  const [minTrades, setMinTrades] = useState(5);
 
   const { toast } = useToast();
   const navigate = useNavigate();
@@ -132,6 +138,15 @@ const RedditSentimentHomescreen = () => {
   const fetchTriggeredCandidates = async () => {
     console.log('🎯 Fetching recommended trades from v_recommended_trades_today_conf...');
     try {
+      // Set configuration parameters
+      await supabase.rpc('exec', {
+        sql: `
+          SET LOCAL app.reco_date = '${recoDate}';
+          SET LOCAL app.min_confidence_score = '${minConfidence}';
+          SET LOCAL app.min_trades = '${minTrades}';
+        `
+      });
+
       const { data, error } = await supabase
         .from('v_recommended_trades_today_conf' as any)
         .select('*')
@@ -194,6 +209,15 @@ const RedditSentimentHomescreen = () => {
   const fetchMonitoringCandidates = async () => {
     console.log('👀 Fetching monitoring candidates from v_reddit_monitoring_signals...');
     try {
+      // Set configuration parameters for consistency
+      await supabase.rpc('exec', {
+        sql: `
+          SET LOCAL app.reco_date = '${recoDate}';
+          SET LOCAL app.min_confidence_score = '${minConfidence}';
+          SET LOCAL app.min_trades = '${minTrades}';
+        `
+      });
+
       // Get triggered symbols first
       const { data: triggeredData } = await supabase
         .from('v_recommended_trades_today_conf' as any)
@@ -357,7 +381,7 @@ const RedditSentimentHomescreen = () => {
 
   useEffect(() => {
     fetchAllData();
-  }, []);
+  }, [recoDate, minConfidence, minTrades]);
 
   // Group triggered candidates by symbol
   const groupedCandidates = triggeredCandidates.reduce((acc, candidate) => {
@@ -394,11 +418,68 @@ const RedditSentimentHomescreen = () => {
             Last updated {lastUpdated.toLocaleTimeString()} • Market closed — showing last trading day ({kpiData ? formatDate(kpiData.header_as_of_date) : '...'})
           </p>
         </div>
-        <Button onClick={handleRefresh} disabled={isRefreshing}>
-          <RefreshCw className={`w-4 h-4 mr-2 ${isRefreshing ? 'animate-spin' : ''}`} />
-          Refresh
-        </Button>
+        <div className="flex gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setShowConfig(!showConfig)}
+            className="gap-2"
+          >
+            <Settings className="h-4 w-4" />
+            {showConfig ? 'Hide Config' : 'Show Config'}
+          </Button>
+          <Button onClick={handleRefresh} disabled={isRefreshing}>
+            <RefreshCw className={`w-4 h-4 mr-2 ${isRefreshing ? 'animate-spin' : ''}`} />
+            Refresh
+          </Button>
+        </div>
       </div>
+
+      {/* Configuration Panel */}
+      {showConfig && (
+        <Card className="border-dashed">
+          <CardHeader>
+            <CardTitle className="text-lg">Configuration</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="reco-date">Recommendation Date</Label>
+                <Input
+                  id="reco-date"
+                  type="date"
+                  value={recoDate}
+                  onChange={(e) => setRecoDate(e.target.value)}
+                />
+              </div>
+              
+              <div className="space-y-2">
+                <Label>Min Confidence Score: {minConfidence}</Label>
+                <Slider
+                  value={[minConfidence]}
+                  onValueChange={(value) => setMinConfidence(value[0])}
+                  min={0}
+                  max={100}
+                  step={5}
+                  className="w-full"
+                />
+              </div>
+              
+              <div className="space-y-2">
+                <Label>Min Trades: {minTrades}</Label>
+                <Slider
+                  value={[minTrades]}
+                  onValueChange={(value) => setMinTrades(value[0])}
+                  min={1}
+                  max={20}
+                  step={1}
+                  className="w-full"
+                />
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* KPIs */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">

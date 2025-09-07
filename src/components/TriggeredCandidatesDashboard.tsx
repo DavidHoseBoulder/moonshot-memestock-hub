@@ -7,6 +7,7 @@ import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import { Separator } from '@/components/ui/separator';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
@@ -21,8 +22,11 @@ import {
   ChevronUp,
   ExternalLink,
   BarChart3,
-  Activity
+  Activity,
+  Filter,
+  Settings
 } from 'lucide-react';
+import { Slider } from '@/components/ui/slider';
 
 interface TriggeredCandidate {
   symbol: string;
@@ -59,6 +63,12 @@ const TriggeredCandidatesDashboard = () => {
   const [searchSymbol, setSearchSymbol] = useState('');
   const [expandedNotes, setExpandedNotes] = useState<Set<string>>(new Set());
   const [tradingDate] = useState<string>(todayInDenverDateString());
+  const [showConfig, setShowConfig] = useState(false);
+  
+  // Configuration state
+  const [recoDate, setRecoDate] = useState(format(new Date(), 'yyyy-MM-dd'));
+  const [minConfidence, setMinConfidence] = useState(60);
+  const [minTrades, setMinTrades] = useState(5);
 
   const { toast } = useToast();
   const navigate = useNavigate();
@@ -92,7 +102,16 @@ const TriggeredCandidatesDashboard = () => {
   const fetchTriggeredCandidates = async () => {
     console.log('🎯 Fetching recommended trades...');
     try {
-    const { data, error } = await supabase
+      // Set configuration parameters
+      await supabase.rpc('exec', {
+        sql: `
+          SET LOCAL app.reco_date = '${recoDate}';
+          SET LOCAL app.min_confidence_score = '${minConfidence}';
+          SET LOCAL app.min_trades = '${minTrades}';
+        `
+      });
+
+      const { data, error } = await supabase
         .from('v_recommended_trades_today_conf' as any)
         .select('*')
         .order('sharpe', { ascending: false });
@@ -166,7 +185,7 @@ const TriggeredCandidatesDashboard = () => {
   useEffect(() => {
     setIsLoading(true);
     fetchTriggeredCandidates().finally(() => setIsLoading(false));
-  }, []);
+  }, [recoDate, minConfidence, minTrades]);
 
   // Filter and group data
   const filteredCandidates = candidates.filter(candidate => {
@@ -231,28 +250,86 @@ const TriggeredCandidatesDashboard = () => {
       {/* Filter Bar */}
       <Card>
         <CardContent className="pt-6">
-          <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center">
-            <Tabs value={activeGradeFilter} onValueChange={(value) => setActiveGradeFilter(value as any)}>
-              <TabsList>
-                <TabsTrigger value="all">All</TabsTrigger>
-                <TabsTrigger value="strong">Strong</TabsTrigger>
-                <TabsTrigger value="moderate">Moderate</TabsTrigger>
-                <TabsTrigger value="weak">Weak</TabsTrigger>
-              </TabsList>
-            </Tabs>
+          <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between">
+            <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center">
+              <Tabs value={activeGradeFilter} onValueChange={(value) => setActiveGradeFilter(value as any)}>
+                <TabsList>
+                  <TabsTrigger value="all">All</TabsTrigger>
+                  <TabsTrigger value="strong">Strong</TabsTrigger>
+                  <TabsTrigger value="moderate">Moderate</TabsTrigger>
+                  <TabsTrigger value="weak">Weak</TabsTrigger>
+                </TabsList>
+              </Tabs>
 
-            <div className="relative flex-1 max-w-sm">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground w-4 h-4" />
-              <Input
-                placeholder="Search symbol..."
-                value={searchSymbol}
-                onChange={(e) => setSearchSymbol(e.target.value)}
-                className="pl-10"
-              />
+              <div className="relative flex-1 max-w-sm">
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground w-4 h-4" />
+                <Input
+                  placeholder="Search symbol..."
+                  value={searchSymbol}
+                  onChange={(e) => setSearchSymbol(e.target.value)}
+                  className="pl-10"
+                />
+              </div>
             </div>
+            
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setShowConfig(!showConfig)}
+              className="gap-2"
+            >
+              <Settings className="h-4 w-4" />
+              {showConfig ? 'Hide Config' : 'Show Config'}
+            </Button>
           </div>
         </CardContent>
       </Card>
+
+      {/* Configuration Panel */}
+      {showConfig && (
+        <Card className="border-dashed">
+          <CardHeader>
+            <CardTitle className="text-lg">Configuration</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="reco-date">Recommendation Date</Label>
+                <Input
+                  id="reco-date"
+                  type="date"
+                  value={recoDate}
+                  onChange={(e) => setRecoDate(e.target.value)}
+                />
+              </div>
+              
+              <div className="space-y-2">
+                <Label>Min Confidence Score: {minConfidence}</Label>
+                <Slider
+                  value={[minConfidence]}
+                  onValueChange={(value) => setMinConfidence(value[0])}
+                  min={0}
+                  max={100}
+                  step={5}
+                  className="w-full"
+                />
+              </div>
+              
+              <div className="space-y-2">
+                <Label>Min Trades: {minTrades}</Label>
+                <Slider
+                  value={[minTrades]}
+                  onValueChange={(value) => setMinTrades(value[0])}
+                  min={1}
+                  max={20}
+                  step={1}
+                  className="w-full"
+                />
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Summary KPIs */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
