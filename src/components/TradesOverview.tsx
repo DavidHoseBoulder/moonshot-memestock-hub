@@ -120,6 +120,7 @@ const TradesOverview = () => {
   const [marketData, setMarketData] = useState<Record<string, MarketData>>({});
   const [isLoading, setIsLoading] = useState(true);
   const [filter, setFilter] = useState<'all' | 'paper' | 'real'>('all');
+  const [sideFilter, setSideFilter] = useState<'all' | 'long' | 'short'>('all');
   const [selectedTrade, setSelectedTrade] = useState<TradeWithPnL | null>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [tradeDetailData, setTradeDetailData] = useState<TradeDetailData | null>(null);
@@ -492,12 +493,15 @@ const TradesOverview = () => {
     fetchTrades();
   }, []);
 
-  // Filter trades based on current filter
+  // Filter trades based on current filters
   const filteredTrades = trades.filter(trade => {
-    if (filter === 'all') return true;
-    if (filter === 'paper') return trade.mode === 'paper';
-    if (filter === 'real') return trade.mode === 'real';
-    return true;
+    // Filter by mode (paper/real/all)
+    const modeMatch = filter === 'all' || trade.mode === filter;
+    
+    // Filter by side (long/short/all)
+    const sideMatch = sideFilter === 'all' || trade.side.toLowerCase() === sideFilter;
+    
+    return modeMatch && sideMatch;
   });
 
   const openTrades = filteredTrades.filter(t => t.status.toLowerCase() === 'open');
@@ -911,14 +915,33 @@ const TradesOverview = () => {
         </div>
       </div>
 
-      <Tabs value={filter} onValueChange={(value) => setFilter(value as typeof filter)}>
-        <TabsList>
-          <TabsTrigger value="all">All Trades</TabsTrigger>
-          <TabsTrigger value="paper">Paper Only</TabsTrigger>
-          <TabsTrigger value="real">Real Only</TabsTrigger>
-        </TabsList>
+      <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center">
+        <Tabs value={filter} onValueChange={(value) => setFilter(value as typeof filter)}>
+          <TabsList>
+            <TabsTrigger value="all">All Trades</TabsTrigger>
+            <TabsTrigger value="paper">Paper Only</TabsTrigger>
+            <TabsTrigger value="real">Real Only</TabsTrigger>
+          </TabsList>
+        </Tabs>
+        
+        <div className="flex items-center gap-2">
+          <span className="text-sm text-muted-foreground whitespace-nowrap">Side:</span>
+          <Select value={sideFilter} onValueChange={(value) => setSideFilter(value as typeof sideFilter)}>
+            <SelectTrigger className="w-[140px]">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Trades</SelectItem>
+              <SelectItem value="long">Long Only</SelectItem>
+              <SelectItem value="short">Short Only</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+      </div>
 
-        <TabsContent value={filter} className="space-y-6">
+      <Tabs value={filter}>
+
+        <TabsContent value={filter} className="space-y-6 mt-6">
           {/* Summary Cards */}
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
             <Card>
