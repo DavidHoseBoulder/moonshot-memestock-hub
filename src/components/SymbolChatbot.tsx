@@ -6,6 +6,19 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Send, Bot, User, Loader2 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 
+// Simple markdown parser for basic formatting
+const parseMarkdown = (text: string) => {
+  const parts = text.split(/(\*\*[^*]+\*\*)/g);
+  
+  return parts.map((part, index) => {
+    if (part.startsWith('**') && part.endsWith('**')) {
+      const content = part.slice(2, -2);
+      return <strong key={index} className="font-semibold text-primary">{content}</strong>;
+    }
+    return part;
+  });
+};
+
 interface Message {
   id: string;
   role: 'user' | 'assistant';
@@ -161,7 +174,7 @@ What would you like to know about ${symbol}?`,
                         : 'bg-muted'
                     }`}
                   >
-                    {message.content}
+                    {parseMarkdown(message.content)}
                   </div>
                 </div>
               </div>
