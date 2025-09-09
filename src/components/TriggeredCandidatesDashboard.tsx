@@ -511,14 +511,11 @@ const TriggeredCandidatesDashboard = () => {
                           {bestGrade.grade || mapConfidenceToGrade(bestGrade.confidence_label)}
                         </Badge>
                       </div>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => navigate(`/sentiment?symbol=${symbol}`)}
-                      >
-                        <ExternalLink className="w-4 h-4 mr-2" />
-                        View Sentiment
-                      </Button>
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm text-muted-foreground">
+                          {symbolCandidates.length} signal{symbolCandidates.length > 1 ? 's' : ''}
+                        </span>
+                      </div>
                     </div>
 
                     {/* Horizon Rows */}
@@ -620,25 +617,36 @@ const TriggeredCandidatesDashboard = () => {
         </CardContent>
       </Card>
 
-      {/* Deep Links */}
+      {/* Sentiment */}
       <Card>
-        <CardContent className="pt-6">
+        <CardHeader>
+          <CardTitle>Sentiment</CardTitle>
+        </CardHeader>
+        <CardContent>
           <div className="flex flex-col sm:flex-row gap-3">
             <Button 
               variant="outline" 
-              onClick={() => navigate('/sentiment')}
+              onClick={() => navigate('/sentiment?tab=sentiment')}
               className="flex items-center gap-2"
             >
-              <BarChart3 className="w-4 h-4" />
-              View sentiment velocity → Velocity Tracker
+              <TrendingUp className="w-4 h-4" />
+              Today
             </Button>
             <Button 
               variant="outline" 
-              onClick={() => navigate('/sentiment')}
+              onClick={() => navigate('/sentiment?tab=velocity')}
+              className="flex items-center gap-2"
+            >
+              <BarChart3 className="w-4 h-4" />
+              Velocity
+            </Button>
+            <Button 
+              variant="outline" 
+              onClick={() => navigate('/sentiment?tab=history')}
               className="flex items-center gap-2"
             >
               <Activity className="w-4 h-4" />
-              View past days → Sentiment History
+              History
             </Button>
           </div>
         </CardContent>
