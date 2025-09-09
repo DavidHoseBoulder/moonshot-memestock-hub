@@ -229,23 +229,88 @@ Current symbol context: ${symbol || 'None specified'}`
           const dateFilter = new Date();
           dateFilter.setDate(dateFilter.getDate() - daysBack);
           
-          // Get mentions with actual post text and sentiment scores
-          const { data: redditMentions } = await supabase
+          console.log(`Getting mentions for ${functionArgs.symbol} since ${dateFilter.toISOString()}`);
+          
+          // Get mentions with actual post/comment text and sentiment scores
+          const { data: redditMentions, error: mentionsError } = await supabase
             .from('reddit_mentions')
             .select(`
               mention_id,
               symbol,
               doc_id,
+              doc_type,
               created_utc,
-              reddit_posts_std!inner(title, selftext, subreddit, score),
-              reddit_sentiment!left(overall_score, confidence, label, rationale)
+              content_len,
+              match_source,
+              disambig_rule
             `)
             .eq('symbol', functionArgs.symbol.toUpperCase())
             .gte('created_utc', dateFilter.toISOString())
             .order('created_utc', { ascending: false })
             .limit(functionArgs.limit || 20);
           
-          functionResult = redditMentions || [];
+          console.log(`Found ${redditMentions?.length || 0} mentions`);
+          if (mentionsError) console.error('Mentions error:', mentionsError);
+          
+          // Get post/comment text for these mentions
+          if (redditMentions && redditMentions.length > 0) {
+            const postIds = redditMentions.filter(m => m.doc_type === 'post').map(m => m.doc_id);
+            const commentIds = redditMentions.filter(m => m.doc_type === 'comment').map(m => m.doc_id);
+            
+            console.log(`Getting ${postIds.length} posts and ${commentIds.length} comments`);
+            
+            // Get posts
+            const { data: posts } = await supabase
+              .from('reddit_posts_std')
+              .select('post_id, title, selftext, subreddit, score, created_utc')
+              .in('post_id', postIds);
+            
+            // Get comments  
+            const { data: comments } = await supabase
+              .from('reddit_comments')
+              .select('comment_id, body, subreddit, score, created_utc, post_id')
+              .in('comment_id', commentIds);
+            
+            // Get sentiment scores
+            const { data: sentiments } = await supabase
+              .from('reddit_sentiment')
+              .select('mention_id, overall_score, confidence, label, rationale')
+              .in('mention_id', redditMentions.map(m => m.mention_id));
+            
+            // Combine all data
+            const enrichedMentions = redditMentions.map(mention => {
+              const sentiment = sentiments?.find(s => s.mention_id === mention.mention_id);
+              let content = {};
+              
+              if (mention.doc_type === 'post') {
+                const post = posts?.find(p => p.post_id === mention.doc_id);
+                content = post || {};
+              } else {
+                const comment = comments?.find(c => c.comment_id === mention.doc_id);
+                content = comment ? { ...comment, title: 'Comment', selftext: comment.body } : {};
+              }
+              
+              return {
+                mention_id: mention.mention_id,
+                symbol: mention.symbol,
+                doc_type: mention.doc_type,
+                created_utc: mention.created_utc,
+                match_source: mention.match_source,
+                disambig_rule: mention.disambig_rule,
+                content_len: mention.content_len,
+                ...content,
+                sentiment_score: sentiment?.overall_score || null,
+                confidence: sentiment?.confidence || null,
+                sentiment_label: sentiment?.label || null,
+                rationale: sentiment?.rationale || null
+              };
+            });
+            
+            console.log(`Enriched ${enrichedMentions.length} mentions`);
+            functionResult = enrichedMentions;
+          } else {
+            functionResult = [];
+          }
           break;
       }
 
