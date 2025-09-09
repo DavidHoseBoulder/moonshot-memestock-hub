@@ -33,7 +33,7 @@ const Trades = () => {
                   AI Assistant
                 </Button>
               </SheetTrigger>
-              <SheetContent side="right" className="w-screen max-w-none h-screen">
+              <SheetContent side="right" className="w-full h-full" style={{ width: '100vw', maxWidth: '100vw', height: '100vh' }}>
                 <SheetHeader>
                   <SheetTitle className="flex items-center gap-2">
                     <MessageSquare className="w-5 h-5" />

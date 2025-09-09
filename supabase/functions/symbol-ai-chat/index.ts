@@ -229,14 +229,16 @@ Current symbol context: ${symbol || 'None specified'}`
           const dateFilter = new Date();
           dateFilter.setDate(dateFilter.getDate() - daysBack);
           
-          // Get mentions with post/comment text from reddit_mentions joined with posts
+          // Get mentions with actual post text and sentiment scores
           const { data: redditMentions } = await supabase
             .from('reddit_mentions')
             .select(`
               mention_id,
               symbol,
+              doc_id,
               created_utc,
-              reddit_posts_std!inner(title, selftext, subreddit, score)
+              reddit_posts_std!inner(title, selftext, subreddit, score),
+              reddit_sentiment!left(overall_score, confidence, label, rationale)
             `)
             .eq('symbol', functionArgs.symbol.toUpperCase())
             .gte('created_utc', dateFilter.toISOString())
