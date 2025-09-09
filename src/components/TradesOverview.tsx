@@ -115,7 +115,11 @@ const newTradeSchema = z.object({
 
 type NewTradeFormData = z.infer<typeof newTradeSchema>;
 
-const TradesOverview = () => {
+interface TradesOverviewProps {
+  onSymbolSelect?: (symbol: string) => void;
+}
+
+const TradesOverview = ({ onSymbolSelect }: TradesOverviewProps) => {
   const [trades, setTrades] = useState<TradeWithPnL[]>([]);
   const [marketData, setMarketData] = useState<Record<string, MarketData>>({});
   const [isLoading, setIsLoading] = useState(true);
@@ -487,6 +491,8 @@ const TradesOverview = () => {
     setSelectedTrade(trade);
     setDrawerOpen(true);
     fetchTradeDetails(trade);
+    // Notify parent component about symbol selection
+    onSymbolSelect?.(trade.symbol);
   };
 
   useEffect(() => {
