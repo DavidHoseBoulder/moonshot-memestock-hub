@@ -222,7 +222,10 @@ Current symbol context: ${symbol || 'None specified'}`
             .order('entry_ts', { ascending: false })
             .limit(functionArgs.limit || 10);
           
-          functionResult = tradeData || [];
+          functionResult = tradeData?.map(trade => ({
+            ...trade,
+            type: 'Your Recent Trades'
+          })) || [];
           break;
 
         case 'get_backtest_results':

@@ -7,7 +7,7 @@ import { Send, Bot, User, Loader2 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 
 // Enhanced markdown parser for better formatting
-const parseMarkdown = (text: string) => {
+const parseMarkdown = (text: string, onPromptClick?: (prompt: string) => void) => {
   // Handle tables first
   if (text.includes('|') && text.includes('\n')) {
     const lines = text.split('\n');
@@ -28,7 +28,7 @@ const parseMarkdown = (text: string) => {
         
         return (
           <div>
-            {beforeTable && <div className="mb-4">{parseBasicMarkdown(beforeTable)}</div>}
+            {beforeTable && <div className="mb-4">{parseBasicMarkdown(beforeTable, onPromptClick)}</div>}
             <div className="overflow-x-auto">
               <table className="min-w-full border border-border rounded-lg">
                 <thead>
@@ -49,8 +49,12 @@ const parseMarkdown = (text: string) => {
                             <span className="text-green-600 font-medium">{cell}</span>
                           ) : cell.startsWith('-') ? (
                             <span className="text-red-600 font-medium">{cell}</span>
+                          ) : cell.startsWith('http') ? (
+                            <a href={cell} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">
+                              {cell}
+                            </a>
                           ) : (
-                            parseBasicMarkdown(cell)
+                            parseBasicMarkdown(cell, onPromptClick)
                           )}
                         </td>
                       ))}
@@ -59,23 +63,49 @@ const parseMarkdown = (text: string) => {
                 </tbody>
               </table>
             </div>
-            {afterTable && <div className="mt-4">{parseBasicMarkdown(afterTable)}</div>}
+            {afterTable && <div className="mt-4">{parseBasicMarkdown(afterTable, onPromptClick)}</div>}
           </div>
         );
       }
     }
   }
   
-  return parseBasicMarkdown(text);
+  return parseBasicMarkdown(text, onPromptClick);
 };
 
 // Basic markdown for non-table content
-const parseBasicMarkdown = (text: string) => {
+const parseBasicMarkdown = (text: string, onPromptClick?: (prompt: string) => void) => {
   const parts = text.split(/(\*\*[^*]+\*\*)/g);
   
   return parts.map((part, index) => {
     if (part.startsWith('**') && part.endsWith('**')) {
       const content = part.slice(2, -2);
+      const isClickablePrompt = content.includes('Historical prices') || 
+                               content.includes('Reddit mentions') || 
+                               content.includes('recent trades') ||
+                               content.includes('news and market');
+      
+      if (isClickablePrompt && onPromptClick) {
+        const promptMap: { [key: string]: string } = {
+          'Historical prices and market data': 'Show me historical prices and market data',
+          'Reddit mentions and sentiment analysis': 'Show me recent Reddit mentions and sentiment',
+          'Your recent trades': 'Show me my recent trades',
+          'Recent news and market activity': 'Show me recent news'
+        };
+        
+        const prompt = promptMap[content] || content;
+        
+        return (
+          <button
+            key={index}
+            onClick={() => onPromptClick(prompt)}
+            className="font-semibold text-primary hover:text-primary/80 underline cursor-pointer"
+          >
+            {content}
+          </button>
+        );
+      }
+      
       return <strong key={index} className="font-semibold text-primary">{content}</strong>;
     }
     return part;
@@ -117,16 +147,21 @@ const SymbolChatbot: React.FC<SymbolChatbotProps> = ({ symbol, className = "" })
         role: 'assistant',
         content: `Hi! I can help you explore data about ${symbol}. You can ask me about:
 
-• Historical prices and market data
-• Reddit mentions and sentiment analysis
-• Trading signals and backtest results
-• Recent news and market activity
+• **Historical prices and market data**
+• **Reddit mentions and sentiment analysis**  
+• **Your recent trades**
+• **Recent news and market activity**
 
 What would you like to know about ${symbol}?`,
         timestamp: new Date()
       }]);
     }
   }, [symbol]);
+
+  const handlePromptClick = (prompt: string) => {
+    setInput(prompt);
+    sendMessage();
+  };
 
   const sendMessage = async () => {
     if (!input.trim() || isLoading) return;
@@ -237,7 +272,10 @@ What would you like to know about ${symbol}?`,
                         : 'bg-muted'
                     }`}
                   >
-                    {parseMarkdown(message.content)}
+                    {message.role === 'assistant' ? 
+                      parseMarkdown(message.content, handlePromptClick) : 
+                      parseMarkdown(message.content)
+                    }
                   </div>
                 </div>
               </div>
