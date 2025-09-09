@@ -6,8 +6,71 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Send, Bot, User, Loader2 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 
-// Simple markdown parser for basic formatting
+// Enhanced markdown parser for better formatting
 const parseMarkdown = (text: string) => {
+  // Handle tables first
+  if (text.includes('|') && text.includes('\n')) {
+    const lines = text.split('\n');
+    const tableStart = lines.findIndex(line => line.includes('|') && line.includes('-'));
+    
+    if (tableStart > 0) {
+      const beforeTable = lines.slice(0, tableStart - 1).join('\n');
+      const headerLine = lines[tableStart - 1];
+      const separatorLine = lines[tableStart];
+      const dataLines = lines.slice(tableStart + 1).filter(line => line.includes('|'));
+      const afterTable = lines.slice(tableStart + 1 + dataLines.length).join('\n');
+      
+      if (headerLine && separatorLine && dataLines.length > 0) {
+        const headers = headerLine.split('|').map(h => h.trim()).filter(h => h);
+        const rows = dataLines.map(line => 
+          line.split('|').map(cell => cell.trim()).filter(cell => cell)
+        );
+        
+        return (
+          <div>
+            {beforeTable && <div className="mb-4">{parseBasicMarkdown(beforeTable)}</div>}
+            <div className="overflow-x-auto">
+              <table className="min-w-full border border-border rounded-lg">
+                <thead>
+                  <tr className="bg-muted">
+                    {headers.map((header, idx) => (
+                      <th key={idx} className="border-b border-border px-3 py-2 text-left text-sm font-semibold text-foreground">
+                        {header}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {rows.map((row, rowIdx) => (
+                    <tr key={rowIdx} className="hover:bg-muted/50">
+                      {row.map((cell, cellIdx) => (
+                        <td key={cellIdx} className="border-b border-border px-3 py-2 text-sm text-foreground">
+                          {cell.startsWith('+') ? (
+                            <span className="text-green-600 font-medium">{cell}</span>
+                          ) : cell.startsWith('-') ? (
+                            <span className="text-red-600 font-medium">{cell}</span>
+                          ) : (
+                            parseBasicMarkdown(cell)
+                          )}
+                        </td>
+                      ))}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            {afterTable && <div className="mt-4">{parseBasicMarkdown(afterTable)}</div>}
+          </div>
+        );
+      }
+    }
+  }
+  
+  return parseBasicMarkdown(text);
+};
+
+// Basic markdown for non-table content
+const parseBasicMarkdown = (text: string) => {
   const parts = text.split(/(\*\*[^*]+\*\*)/g);
   
   return parts.map((part, index) => {

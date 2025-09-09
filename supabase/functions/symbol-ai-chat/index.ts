@@ -118,6 +118,18 @@ serve(async (req) => {
           },
           required: ["symbol"]
         }
+      },
+      {
+        name: "get_financial_news",
+        description: "Get recent financial news articles for a symbol",
+        parameters: {
+          type: "object",
+          properties: {
+            symbol: { type: "string", description: "Stock symbol" },
+            days: { type: "number", description: "Number of days back to search (default 7)" }
+          },
+          required: ["symbol"]
+        }
       }
     ];
 
@@ -310,6 +322,20 @@ Current symbol context: ${symbol || 'None specified'}`
             functionResult = enrichedMentions;
           } else {
             functionResult = [];
+          }
+          break;
+          
+        case 'get_financial_news':
+          console.log(`Getting financial news for ${functionArgs.symbol}`);
+          const newsResponse = await supabase.functions.invoke('financial-news', {
+            body: { symbols: [functionArgs.symbol.toUpperCase()], days: functionArgs.days || 7 }
+          });
+          
+          if (newsResponse.error) {
+            console.error('Error fetching news:', newsResponse.error);
+            functionResult = [];
+          } else {
+            functionResult = newsResponse.data?.articles || [];
           }
           break;
       }
