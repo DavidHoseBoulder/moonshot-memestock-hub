@@ -8,7 +8,7 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sh
 import { Input } from "@/components/ui/input";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
-import { TrendingUp, TrendingDown, DollarSign, Target, ExternalLink, X, Info, Plus, Calendar, Activity } from "lucide-react";
+import { TrendingUp, TrendingDown, DollarSign, Target, ExternalLink, X, Info, Plus, Calendar, Activity, Bot } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Drawer, DrawerContent, DrawerHeader, DrawerTitle, DrawerClose } from "@/components/ui/drawer";
 import { Separator } from "@/components/ui/separator";
@@ -117,9 +117,10 @@ type NewTradeFormData = z.infer<typeof newTradeSchema>;
 
 interface TradesOverviewProps {
   onSymbolSelect?: (symbol: string) => void;
+  onOpenChat?: () => void;
 }
 
-const TradesOverview = ({ onSymbolSelect }: TradesOverviewProps) => {
+const TradesOverview = ({ onSymbolSelect, onOpenChat }: TradesOverviewProps) => {
   const [trades, setTrades] = useState<TradeWithPnL[]>([]);
   const [marketData, setMarketData] = useState<Record<string, MarketData>>({});
   const [isLoading, setIsLoading] = useState(true);
@@ -556,6 +557,19 @@ const TradesOverview = ({ onSymbolSelect }: TradesOverviewProps) => {
                 {trade.symbol}
                 <ExternalLink className="w-3 h-3" />
               </a>
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-6 w-6 p-0"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onSymbolSelect?.(trade.symbol);
+                  onOpenChat?.();
+                }}
+                title={`Ask AI about ${trade.symbol}`}
+              >
+                <Bot className="w-3 h-3" />
+              </Button>
             </h3>
             <Badge variant="outline">{trade.side}</Badge>
             <Badge variant="outline">{trade.horizon}</Badge>

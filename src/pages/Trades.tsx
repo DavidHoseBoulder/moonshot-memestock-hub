@@ -33,7 +33,7 @@ const Trades = () => {
                   AI Assistant
                 </Button>
               </SheetTrigger>
-              <SheetContent side="right" className="w-[400px] sm:w-[540px]">
+              <SheetContent side="right" className="w-full max-w-none">
                 <SheetHeader>
                   <SheetTitle className="flex items-center gap-2">
                     <MessageSquare className="w-5 h-5" />
@@ -51,7 +51,10 @@ const Trades = () => {
           </header>
           
           <main className="max-w-7xl mx-auto p-6 min-h-screen flex flex-col">
-            <TradesOverview onSymbolSelect={setSelectedSymbol} />
+            <TradesOverview 
+              onSymbolSelect={setSelectedSymbol} 
+              onOpenChat={() => setChatOpen(true)} 
+            />
           </main>
           <Footer />
         </SidebarInset>

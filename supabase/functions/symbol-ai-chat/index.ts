@@ -105,6 +105,19 @@ serve(async (req) => {
           },
           required: ["symbol"]
         }
+      },
+      {
+        name: "get_reddit_mentions",
+        description: "Get actual Reddit post/comment text and sentiment scores for a symbol",
+        parameters: {
+          type: "object",
+          properties: {
+            symbol: { type: "string", description: "Stock symbol" },
+            limit: { type: "number", description: "Number of recent mentions (default 20)" },
+            days: { type: "number", description: "Number of days back to search (default 7)" }
+          },
+          required: ["symbol"]
+        }
       }
     ];
 
@@ -209,6 +222,23 @@ Current symbol context: ${symbol || 'None specified'}`
             .limit(10);
           
           functionResult = backtestData || [];
+          break;
+
+        case 'get_reddit_mentions':
+          const daysBack = functionArgs.days || 7;
+          const dateFilter = new Date();
+          dateFilter.setDate(dateFilter.getDate() - daysBack);
+          
+          const { data: redditMentions } = await supabase
+            .from('reddit_posts_analyzed')
+            .select('title, selftext, permalink, created_utc, overall_score, label, confidence, subreddit')
+            .ilike('title', `%${functionArgs.symbol.toUpperCase()}%`)
+            .or(`selftext.ilike.%${functionArgs.symbol.toUpperCase()}%`)
+            .gte('created_utc', Math.floor(dateFilter.getTime() / 1000))
+            .order('created_utc', { ascending: false })
+            .limit(functionArgs.limit || 20);
+          
+          functionResult = redditMentions || [];
           break;
       }
 
