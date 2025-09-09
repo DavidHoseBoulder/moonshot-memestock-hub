@@ -8,7 +8,7 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sh
 import { Input } from "@/components/ui/input";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
-import { TrendingUp, TrendingDown, DollarSign, Target, ExternalLink, X, Info, Plus, Calendar, Activity, Bot } from "lucide-react";
+import { TrendingUp, TrendingDown, DollarSign, Target, ExternalLink, X, Info, Plus, Calendar, Activity, MessageSquare } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Drawer, DrawerContent, DrawerHeader, DrawerTitle, DrawerClose } from "@/components/ui/drawer";
 import { Separator } from "@/components/ui/separator";
@@ -560,7 +560,7 @@ const TradesOverview = ({ onSymbolSelect, onOpenChat }: TradesOverviewProps) => 
               <Button
                 size="sm"
                 variant="outline"
-                className="h-6 w-6 p-0"
+                className="h-6 w-6 p-0 border-green-500 bg-green-50 hover:bg-green-100 text-green-600"
                 onClick={(e) => {
                   e.stopPropagation();
                   onSymbolSelect?.(trade.symbol);
@@ -568,7 +568,7 @@ const TradesOverview = ({ onSymbolSelect, onOpenChat }: TradesOverviewProps) => 
                 }}
                 title={`Ask AI about ${trade.symbol}`}
               >
-                <Bot className="w-3 h-3" />
+                <MessageSquare className="w-3 h-3" />
               </Button>
             </h3>
             <Badge variant="outline">{trade.side}</Badge>
