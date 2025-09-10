@@ -435,7 +435,7 @@ const RedditSentimentHomescreen = () => {
         <div>
           <h1 className="text-3xl font-bold text-foreground">Meme Trading Homepage</h1>
           <p className="text-muted-foreground">
-            Last updated {lastUpdated.toLocaleTimeString()} • {marketOpen ? 'Market open' : 'Market closed — showing last trading day'} ({kpiData ? formatDate(kpiData.header_as_of_date) : '...'})
+            Last updated {lastUpdated.toLocaleTimeString()} • {marketOpen ? 'Market open' : 'Market closed — showing last trading day'} ({marketOpen ? formatFullDateInDenver(todayInDenverDateString()) : (kpiData ? formatDate(kpiData.header_as_of_date) : '...')})
           </p>
         </div>
         <div className="flex gap-2">
