@@ -10,7 +10,7 @@ import { Label } from '@/components/ui/label';
 import { Slider } from '@/components/ui/slider';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
-import { todayInDenverDateString, formatFullDateInDenver } from '@/utils/timezone';
+import { todayInDenverDateString, formatFullDateInDenver, isMarketOpen } from '@/utils/timezone';
 import { 
   RefreshCw, 
   Target, 
@@ -425,7 +425,7 @@ const RedditSentimentHomescreen = () => {
         <div>
           <h1 className="text-3xl font-bold text-foreground">Meme Trading Homepage</h1>
           <p className="text-muted-foreground">
-            Last updated {lastUpdated.toLocaleTimeString()} • Market closed — showing last trading day ({kpiData ? formatDate(kpiData.header_as_of_date) : '...'})
+            Last updated {lastUpdated.toLocaleTimeString()} • {isMarketOpen() ? 'Market open' : 'Market closed — showing last trading day'} ({kpiData ? formatDate(kpiData.header_as_of_date) : '...'})
           </p>
         </div>
         <div className="flex gap-2">
