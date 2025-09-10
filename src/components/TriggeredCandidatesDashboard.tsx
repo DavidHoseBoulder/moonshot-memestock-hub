@@ -65,6 +65,7 @@ const TriggeredCandidatesDashboard = () => {
   const [expandedNotes, setExpandedNotes] = useState<Set<string>>(new Set());
   const [tradingDate] = useState<string>(todayInDenverDateString());
   const [showConfig, setShowConfig] = useState(false);
+  const [selectedSymbol, setSelectedSymbol] = useState<string | null>(null);
   
   // Configuration state - loaded from database
   const [recoDate, setRecoDate] = useState(format(new Date(), 'yyyy-MM-dd'));
@@ -502,7 +503,10 @@ const TriggeredCandidatesDashboard = () => {
                       <div className="flex items-center gap-3">
                         <h3 
                           className="text-xl font-bold cursor-pointer hover:text-primary"
-                          onClick={() => navigate(`/sentiment?symbol=${symbol}`)}
+                          onClick={() => {
+                            setSelectedSymbol(symbol);
+                            navigate(`/sentiment?symbol=${symbol}`);
+                          }}
                         >
                           {symbol}
                         </h3>
@@ -642,11 +646,11 @@ const TriggeredCandidatesDashboard = () => {
             </Button>
             <Button 
               variant="outline" 
-              onClick={() => navigate('/sentiment?tab=history')}
+              onClick={() => navigate(`/sentiment?tab=history${selectedSymbol ? `&symbol=${selectedSymbol}` : ''}`)}
               className="flex items-center gap-2"
             >
               <Activity className="w-4 h-4" />
-              History
+              History {selectedSymbol && `(${selectedSymbol})`}
             </Button>
           </div>
         </CardContent>
