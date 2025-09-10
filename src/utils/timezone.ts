@@ -40,9 +40,10 @@ export const formatFullDateInDenver = (dateString: string): string => {
   });
 };
 
-// Check if the US stock market is currently open using Supabase function
+// Check if the US stock market is currently open (trading day + trading hours)
 export const isMarketOpen = async (): Promise<boolean> => {
   try {
+    // First check if it's a trading day (weekday + not holiday)
     const { data, error } = await supabase.rpc('is_market_open' as any, {
       ts: new Date().toISOString()
     });
@@ -52,7 +53,20 @@ export const isMarketOpen = async (): Promise<boolean> => {
       return false;
     }
     
-    return Boolean(data);
+    // If it's not a trading day, market is closed
+    if (!data) return false;
+    
+    // Check if we're within trading hours (9:30 AM - 4:00 PM ET)
+    const now = new Date();
+    const etTime = new Date(now.toLocaleString("en-US", { timeZone: "America/New_York" }));
+    const hour = etTime.getHours();
+    const minute = etTime.getMinutes();
+    const timeInMinutes = hour * 60 + minute;
+    
+    const marketOpenTime = 9 * 60 + 30; // 9:30 AM
+    const marketCloseTime = 16 * 60; // 4:00 PM
+    
+    return timeInMinutes >= marketOpenTime && timeInMinutes < marketCloseTime;
   } catch (error) {
     console.error('Error calling is_market_open:', error);
     return false;
