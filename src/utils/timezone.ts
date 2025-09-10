@@ -3,6 +3,8 @@
  * All "today" dates use America/Denver timezone
  */
 
+import { supabase } from '@/integrations/supabase/client';
+
 // Today's date in America/Denver (yyyy-MM-dd format)
 export const todayInDenverDateString = (): string => {
   const now = new Date();
@@ -38,25 +40,21 @@ export const formatFullDateInDenver = (dateString: string): string => {
   });
 };
 
-// Check if the US stock market is currently open
-export const isMarketOpen = (): boolean => {
-  const now = new Date();
-  
-  // Get current time in ET (market timezone)
-  const etTime = new Date(now.toLocaleString("en-US", { timeZone: "America/New_York" }));
-  const day = etTime.getDay(); // 0 = Sunday, 1 = Monday, ..., 6 = Saturday
-  const hour = etTime.getHours();
-  const minute = etTime.getMinutes();
-  const timeInMinutes = hour * 60 + minute;
-  
-  // Market is closed on weekends
-  if (day === 0 || day === 6) {
+// Check if the US stock market is currently open using Supabase function
+export const isMarketOpen = async (): Promise<boolean> => {
+  try {
+    const { data, error } = await supabase.rpc('is_market_open' as any, {
+      ts: new Date().toISOString()
+    });
+    
+    if (error) {
+      console.error('Error checking market status:', error);
+      return false;
+    }
+    
+    return Boolean(data);
+  } catch (error) {
+    console.error('Error calling is_market_open:', error);
     return false;
   }
-  
-  // Market hours: 9:30 AM to 4:00 PM ET (570 minutes to 960 minutes from midnight)
-  const marketOpen = 9 * 60 + 30; // 9:30 AM
-  const marketClose = 16 * 60; // 4:00 PM
-  
-  return timeInMinutes >= marketOpen && timeInMinutes < marketClose;
 };

@@ -80,6 +80,7 @@ interface RedditSignal {
 
 const RedditSentimentHomescreen = () => {
   const [lastUpdated, setLastUpdated] = useState<Date>(new Date());
+  const [marketOpen, setMarketOpen] = useState(false);
   const [tradingMode, setTradingMode] = useState<string>('paper'); // 'paper' | 'real' | 'all'
   const [kpiData, setKpiData] = useState<HomeKPIs | null>(null);
   const [triggeredCandidates, setTriggeredCandidates] = useState<TriggeredCandidate[]>([]);
@@ -115,6 +116,15 @@ const RedditSentimentHomescreen = () => {
     };
     
     loadConfiguration();
+  }, []);
+
+  // Check market status on component mount
+  useEffect(() => {
+    const checkMarketStatus = async () => {
+      const isOpen = await isMarketOpen();
+      setMarketOpen(isOpen);
+    };
+    checkMarketStatus();
   }, []);
 
   const { toast } = useToast();
@@ -425,7 +435,7 @@ const RedditSentimentHomescreen = () => {
         <div>
           <h1 className="text-3xl font-bold text-foreground">Meme Trading Homepage</h1>
           <p className="text-muted-foreground">
-            Last updated {lastUpdated.toLocaleTimeString()} • {isMarketOpen() ? 'Market open' : 'Market closed — showing last trading day'} ({kpiData ? formatDate(kpiData.header_as_of_date) : '...'})
+            Last updated {lastUpdated.toLocaleTimeString()} • {marketOpen ? 'Market open' : 'Market closed — showing last trading day'} ({kpiData ? formatDate(kpiData.header_as_of_date) : '...'})
           </p>
         </div>
         <div className="flex gap-2">
