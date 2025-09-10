@@ -10,7 +10,7 @@ import { Label } from '@/components/ui/label';
 import { Slider } from '@/components/ui/slider';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
-import { todayInDenverDateString, formatFullDateInDenver, isMarketOpen } from '@/utils/timezone';
+import { todayInDenverDateString, formatFullDateInDenver, isMarketOpen, isTradingDay } from '@/utils/timezone';
 import { 
   RefreshCw, 
   Target, 
@@ -81,6 +81,7 @@ interface RedditSignal {
 const RedditSentimentHomescreen = () => {
   const [lastUpdated, setLastUpdated] = useState<Date>(new Date());
   const [marketOpen, setMarketOpen] = useState(false);
+  const [todayIsTradingDay, setTodayIsTradingDay] = useState(false);
   const [tradingMode, setTradingMode] = useState<string>('paper'); // 'paper' | 'real' | 'all'
   const [kpiData, setKpiData] = useState<HomeKPIs | null>(null);
   const [triggeredCandidates, setTriggeredCandidates] = useState<TriggeredCandidate[]>([]);
@@ -122,7 +123,9 @@ const RedditSentimentHomescreen = () => {
   useEffect(() => {
     const checkMarketStatus = async () => {
       const isOpen = await isMarketOpen();
+      const isTradingDayToday = await isTradingDay();
       setMarketOpen(isOpen);
+      setTodayIsTradingDay(isTradingDayToday);
     };
     checkMarketStatus();
   }, []);
@@ -435,7 +438,7 @@ const RedditSentimentHomescreen = () => {
         <div>
           <h1 className="text-3xl font-bold text-foreground">Meme Trading Homepage</h1>
           <p className="text-muted-foreground">
-            Last updated {lastUpdated.toLocaleTimeString()} • {marketOpen ? 'Market open' : 'Market closed — showing last trading day'} ({marketOpen ? formatFullDateInDenver(todayInDenverDateString()) : (kpiData ? formatDate(kpiData.header_as_of_date) : '...')})
+            Last updated {lastUpdated.toLocaleTimeString()} • {marketOpen ? 'Market open' : 'Market closed — showing last trading day'} ({todayIsTradingDay ? formatFullDateInDenver(todayInDenverDateString()) : (kpiData ? formatDate(kpiData.header_as_of_date) : '...')})
           </p>
         </div>
         <div className="flex gap-2">

@@ -40,6 +40,25 @@ export const formatFullDateInDenver = (dateString: string): string => {
   });
 };
 
+// Check if today is a trading day (weekday + not holiday)
+export const isTradingDay = async (): Promise<boolean> => {
+  try {
+    const { data, error } = await supabase.rpc('is_market_open' as any, {
+      ts: new Date().toISOString()
+    });
+    
+    if (error) {
+      console.error('Error checking trading day:', error);
+      return false;
+    }
+    
+    return Boolean(data);
+  } catch (error) {
+    console.error('Error calling is_market_open:', error);
+    return false;
+  }
+};
+
 // Check if the US stock market is currently open (trading day + trading hours)
 export const isMarketOpen = async (): Promise<boolean> => {
   try {
