@@ -4,6 +4,7 @@
  */
 
 import { supabase } from '@/integrations/supabase/client';
+import { formatInTimeZone, fromZonedTime } from 'date-fns-tz';
 
 // Today's date in America/Denver (yyyy-MM-dd format)
 export const todayInDenverDateString = (): string => {
@@ -18,43 +19,38 @@ export const todayInDenverDateString = (): string => {
 // Format date for display using Denver timezone
 export const formatDateInDenver = (dateString: string): string => {
   if (!dateString) return '';
-  const date = new Date(dateString);
-  return date.toLocaleDateString('en-US', { 
-    timeZone: 'America/Denver',
-    month: 'short', 
-    day: 'numeric', 
-    year: '2-digit' 
-  });
+  try {
+    const date = /^\d{4}-\d{2}-\d{2}$/.test(dateString)
+      ? fromZonedTime(dateString, 'America/Denver')
+      : new Date(dateString);
+    return formatInTimeZone(date, 'America/Denver', 'MMM d, yy');
+  } catch {
+    return '';
+  }
 };
 
 // Format full date display using Denver timezone
 export const formatFullDateInDenver = (dateString: string): string => {
   if (!dateString) return '';
-  const date = new Date(dateString);
-  return date.toLocaleDateString('en-US', { 
-    timeZone: 'America/Denver',
-    weekday: 'short',
-    month: 'short',
-    day: 'numeric',
-    year: 'numeric'
-  });
+  try {
+    const date = /^\d{4}-\d{2}-\d{2}$/.test(dateString)
+      ? fromZonedTime(dateString, 'America/Denver')
+      : new Date(dateString);
+    return formatInTimeZone(date, 'America/Denver', 'EEE, MMM d, yyyy');
+  } catch {
+    return '';
+  }
 };
 
 // Check if today is a trading day (weekday + not holiday)
 export const isTradingDay = async (): Promise<boolean> => {
   try {
-    const { data, error } = await supabase.rpc('is_market_open' as any, {
-      ts: new Date().toISOString()
-    });
-    
-    if (error) {
-      console.error('Error checking trading day:', error);
-      return false;
-    }
-    
-    return Boolean(data);
+    const now = new Date();
+    const etNow = new Date(now.toLocaleString('en-US', { timeZone: 'America/New_York' }));
+    const day = etNow.getDay(); // 0 (Sun) - 6 (Sat)
+    return day >= 1 && day <= 5;
   } catch (error) {
-    console.error('Error calling is_market_open:', error);
+    console.error('Error determining trading day:', error);
     return false;
   }
 };
