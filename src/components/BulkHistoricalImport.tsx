@@ -73,6 +73,43 @@ const BulkHistoricalImport = () => {
     }
   };
 
+  const fixMissingSymbols = async () => {
+    const missingSymbols = ['SPY', 'GOOGL', 'PFE', 'PNC', 'HKD', 'CHPT', 'VFS'];
+    try {
+      setIsImporting(true);
+      
+      const { data, error } = await supabase.functions.invoke('bulk-historical-import', {
+        body: {
+          symbols: missingSymbols,
+          days: 120, // Go back further to catch missing data
+          batch_size: 3,
+          delay_ms: 2000
+        }
+      });
+
+      if (error) {
+        throw error;
+      }
+
+      toast({
+        title: "Missing Data Import Started",
+        description: `Importing missing data for ${missingSymbols.length} symbols since June 1st`,
+      });
+
+      console.log('Missing symbols import response:', data);
+
+    } catch (error) {
+      console.error('Missing symbols import error:', error);
+      toast({
+        title: "Import Failed", 
+        description: "Failed to import missing symbol data",
+        variant: "destructive",
+      });
+    } finally {
+      setIsImporting(false);
+    }
+  };
+
   return (
     <Card className="w-full max-w-2xl">
       <CardHeader>
@@ -83,6 +120,23 @@ const BulkHistoricalImport = () => {
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
+        {/* Quick fix for missing symbols */}
+        <div className="bg-muted p-4 rounded-lg border-l-4 border-l-warning">
+          <h4 className="font-semibold text-sm mb-2">Missing Data Detected</h4>
+          <p className="text-sm text-muted-foreground mb-3">
+            SPY, GOOGL, PFE, PNC, HKD, CHPT, VFS are missing data before June 9th.
+          </p>
+          <Button 
+            onClick={fixMissingSymbols} 
+            disabled={isImporting}
+            variant="outline"
+            size="sm"
+            className="w-full"
+          >
+            {isImporting ? 'Fixing...' : 'Fix Missing Data (7 symbols)'}
+          </Button>
+        </div>
+
         <div className="grid grid-cols-2 gap-4">
           <div className="space-y-2">
             <Label htmlFor="days">Days of History</Label>
