@@ -13,6 +13,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { todayInDenverDateString } from '@/utils/timezone';
 import { cn } from '@/lib/utils';
+import { TodaySentimentSummary, VelocitySentimentSummary, HistorySentimentSummary } from './SentimentSummaryWidgets';
 import { 
   RefreshCw, 
   Target, 
@@ -627,31 +628,42 @@ const TriggeredCandidatesDashboard = () => {
           <CardTitle>Sentiment</CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="flex flex-col sm:flex-row gap-3">
-            <Button 
-              variant="outline" 
-              onClick={() => navigate('/sentiment?tab=sentiment')}
-              className="flex items-center gap-2"
-            >
-              <TrendingUp className="w-4 h-4" />
-              Today
-            </Button>
-            <Button 
-              variant="outline" 
-              onClick={() => navigate('/sentiment?tab=velocity')}
-              className="flex items-center gap-2"
-            >
-              <BarChart3 className="w-4 h-4" />
-              Velocity
-            </Button>
-            <Button 
-              variant="outline" 
-              onClick={() => navigate(`/sentiment?tab=history${selectedSymbol ? `&symbol=${selectedSymbol}` : ''}`)}
-              className="flex items-center gap-2"
-            >
-              <Activity className="w-4 h-4" />
-              History {selectedSymbol && `(${selectedSymbol})`}
-            </Button>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            {/* Today */}
+            <div className="space-y-3">
+              <Button 
+                onClick={() => navigate('/sentiment?tab=sentiment')}
+                className="w-full flex items-center gap-2 bg-primary text-primary-foreground hover:bg-primary/90"
+              >
+                <TrendingUp className="w-4 h-4" />
+                Today
+              </Button>
+              <TodaySentimentSummary selectedSymbol={selectedSymbol} />
+            </div>
+
+            {/* Velocity */}
+            <div className="space-y-3">
+              <Button 
+                onClick={() => navigate('/sentiment?tab=velocity')}
+                className="w-full flex items-center gap-2 bg-primary text-primary-foreground hover:bg-primary/90"
+              >
+                <BarChart3 className="w-4 h-4" />
+                Velocity
+              </Button>
+              <VelocitySentimentSummary />
+            </div>
+
+            {/* History */}
+            <div className="space-y-3">
+              <Button 
+                onClick={() => navigate(`/sentiment?tab=history${selectedSymbol ? `&symbol=${selectedSymbol}` : ''}`)}
+                className="w-full flex items-center gap-2 bg-primary text-primary-foreground hover:bg-primary/90"
+              >
+                <Activity className="w-4 h-4" />
+                History {selectedSymbol && `(${selectedSymbol})`}
+              </Button>
+              <HistorySentimentSummary selectedSymbol={selectedSymbol} />
+            </div>
           </div>
         </CardContent>
       </Card>
