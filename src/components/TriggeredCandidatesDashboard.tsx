@@ -180,7 +180,7 @@ const TriggeredCandidatesDashboard = () => {
         break;
       case 'Weak':
       default:
-        return { qty: 0, value: 0, mode: 'paper' }; // Watch/paper only
+        return { qty: 1, value: currentPrice || 50, mode: 'paper' }; // 1 share paper trade
     }
     
     if (!currentPrice || currentPrice <= 0) {
@@ -654,20 +654,19 @@ const TriggeredCandidatesDashboard = () => {
                                    )}
                                  </div>
                                  <div className="flex gap-1">
-                                   <Button
-                                     size="sm"
-                                     onClick={() => handleNewTrade(candidate)}
-                                     className="h-6 px-2 text-xs"
-                                     disabled={!candidate.grade && mapConfidenceToGrade(candidate.confidence_label) === 'Weak'}
-                                   >
-                                     <Plus className="w-3 h-3 mr-1" />
-                                     {(() => {
-                                       const grade = candidate.grade || mapConfidenceToGrade(candidate.confidence_label);
-                                       const size = getDefaultTradeSize(grade);
-                                       if (grade === 'Weak') return 'Watch';
-                                       return `$${Math.round(size.value)}`;
-                                     })()}
-                                   </Button>
+                                    <Button
+                                      size="sm"
+                                      onClick={() => handleNewTrade(candidate)}
+                                      className="h-6 px-2 text-xs"
+                                    >
+                                      <Plus className="w-3 h-3 mr-1" />
+                                      {(() => {
+                                        const grade = candidate.grade || mapConfidenceToGrade(candidate.confidence_label);
+                                        const size = getDefaultTradeSize(grade);
+                                        if (grade === 'Weak') return 'Paper (1 share)';
+                                        return `$${Math.round(size.value)}`;
+                                      })()}
+                                    </Button>
                                  </div>
                                </div>
 
