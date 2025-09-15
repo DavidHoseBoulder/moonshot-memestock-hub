@@ -25,7 +25,8 @@ import {
   BarChart3,
   Activity,
   Filter,
-  Settings
+  Settings,
+  Plus
 } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { Slider } from '@/components/ui/slider';
@@ -164,6 +165,51 @@ const TriggeredCandidatesDashboard = () => {
   };
 
   const getGradeTooltip = () => 'Strong = full, Moderate = half, Weak = watch.';
+
+  // Helper function to calculate default trade size based on grade
+  const getDefaultTradeSize = (grade: string | null, currentPrice?: number) => {
+    const resolvedGrade = grade || 'Weak';
+    let targetValue: number;
+    
+    switch (resolvedGrade) {
+      case 'Strong': 
+        targetValue = 1000; // $1,000 for Strong
+        break;
+      case 'Moderate': 
+        targetValue = 500; // $500 for Moderate
+        break;
+      case 'Weak':
+      default:
+        return { qty: 0, value: 0, mode: 'paper' }; // Watch/paper only
+    }
+    
+    if (!currentPrice || currentPrice <= 0) {
+      return { qty: 1, value: targetValue, mode: 'real' };
+    }
+    
+    // Calculate quantity (rounded up to whole numbers)
+    const qty = Math.ceil(targetValue / currentPrice);
+    const actualValue = qty * currentPrice;
+    
+    return { qty, value: actualValue, mode: 'real' };
+  };
+
+  const handleNewTrade = (candidate: TriggeredCandidate) => {
+    const grade = candidate.grade || mapConfidenceToGrade(candidate.confidence_label);
+    const tradeSize = getDefaultTradeSize(grade);
+    
+    // Navigate to trades page with pre-filled data
+    const params = new URLSearchParams({
+      symbol: candidate.symbol,
+      side: candidate.side,
+      horizon: candidate.horizon,
+      qty: tradeSize.qty.toString(),
+      mode: tradeSize.mode,
+      source: 'recommendation'
+    });
+    
+    navigate(`/trades?${params.toString()}`);
+  };
 
   // Data fetching
   const fetchTriggeredCandidates = async () => {
@@ -562,52 +608,68 @@ const TriggeredCandidatesDashboard = () => {
                           
                           return (
                             <div key={idx} className="bg-muted/30 rounded-lg p-3">
-                              {/* Horizon Data Row */}
-                              <div className="grid grid-cols-2 md:grid-cols-7 gap-3 items-center mb-2">
-                                <div>
-                                  <span className="font-medium text-sm">{candidate.horizon}</span>
-                                </div>
-                                <div className="text-sm">
-                                  <span className="text-muted-foreground">Mentions:</span> {candidate.mentions}/{candidate.min_mentions}
-                                </div>
-                                <div className="text-sm">
-                                  <span className="text-muted-foreground">Threshold:</span> {candidate.pos_thresh}
-                                </div>
-                                <div className="text-sm">
-                                  <span className="text-muted-foreground">Sharpe:</span> {formatNumber(candidate.sharpe)}
-                                </div>
-                                <div className="text-sm">
-                                  <span className="text-muted-foreground">Avg Ret:</span> {formatPercent(candidate.avg_ret)}
-                                </div>
-                                <div className="text-sm">
-                                  <span className="text-muted-foreground">Win:</span> {formatPercent(candidate.win_rate)}
-                                </div>
-                                <div className="flex gap-2">
-                                  <div className="flex flex-col items-start gap-1">
-                                    <Tooltip>
-                                      <TooltipTrigger asChild>
-                                        <Badge variant={getGradeVariant(candidate.grade || mapConfidenceToGrade(candidate.confidence_label))} className="text-xs">
-                                          {candidate.grade || mapConfidenceToGrade(candidate.confidence_label)}
-                                        </Badge>
-                                      </TooltipTrigger>
-                                      <TooltipContent>
-                                        {getGradeTooltip()}
-                                      </TooltipContent>
-                                    </Tooltip>
-                                    <span className="text-xs text-muted-foreground max-w-xs">
-                                      {getGradeHelperText(candidate.grade || mapConfidenceToGrade(candidate.confidence_label))}
-                                    </span>
-                                  </div>
-                                  <Badge variant="secondary" className="text-xs">
-                                    {getBacktestBadgeText(candidate.trades)}
-                                  </Badge>
-                                  {candidate.trades === null && (
-                                    <span className="text-xs text-muted-foreground" title="No backtest at this exact (min_mentions, pos_thresh)">
-                                      ⚠️
-                                    </span>
-                                  )}
-                                </div>
-                              </div>
+                               {/* Horizon Data Row */}
+                               <div className="grid grid-cols-2 md:grid-cols-8 gap-3 items-center mb-2">
+                                 <div>
+                                   <span className="font-medium text-sm">{candidate.horizon}</span>
+                                 </div>
+                                 <div className="text-sm">
+                                   <span className="text-muted-foreground">Mentions:</span> {candidate.mentions}/{candidate.min_mentions}
+                                 </div>
+                                 <div className="text-sm">
+                                   <span className="text-muted-foreground">Threshold:</span> {candidate.pos_thresh}
+                                 </div>
+                                 <div className="text-sm">
+                                   <span className="text-muted-foreground">Sharpe:</span> {formatNumber(candidate.sharpe)}
+                                 </div>
+                                 <div className="text-sm">
+                                   <span className="text-muted-foreground">Avg Ret:</span> {formatPercent(candidate.avg_ret)}
+                                 </div>
+                                 <div className="text-sm">
+                                   <span className="text-muted-foreground">Win:</span> {formatPercent(candidate.win_rate)}
+                                 </div>
+                                 <div className="flex gap-2">
+                                   <div className="flex flex-col items-start gap-1">
+                                     <Tooltip>
+                                       <TooltipTrigger asChild>
+                                         <Badge variant={getGradeVariant(candidate.grade || mapConfidenceToGrade(candidate.confidence_label))} className="text-xs">
+                                           {candidate.grade || mapConfidenceToGrade(candidate.confidence_label)}
+                                         </Badge>
+                                       </TooltipTrigger>
+                                       <TooltipContent>
+                                         {getGradeTooltip()}
+                                       </TooltipContent>
+                                     </Tooltip>
+                                     <span className="text-xs text-muted-foreground max-w-xs">
+                                       {getGradeHelperText(candidate.grade || mapConfidenceToGrade(candidate.confidence_label))}
+                                     </span>
+                                   </div>
+                                   <Badge variant="secondary" className="text-xs">
+                                     {getBacktestBadgeText(candidate.trades)}
+                                   </Badge>
+                                   {candidate.trades === null && (
+                                     <span className="text-xs text-muted-foreground" title="No backtest at this exact (min_mentions, pos_thresh)">
+                                       ⚠️
+                                     </span>
+                                   )}
+                                 </div>
+                                 <div className="flex gap-1">
+                                   <Button
+                                     size="sm"
+                                     onClick={() => handleNewTrade(candidate)}
+                                     className="h-6 px-2 text-xs"
+                                     disabled={!candidate.grade && mapConfidenceToGrade(candidate.confidence_label) === 'Weak'}
+                                   >
+                                     <Plus className="w-3 h-3 mr-1" />
+                                     {(() => {
+                                       const grade = candidate.grade || mapConfidenceToGrade(candidate.confidence_label);
+                                       const size = getDefaultTradeSize(grade);
+                                       if (grade === 'Weak') return 'Watch';
+                                       return `$${Math.round(size.value)}`;
+                                     })()}
+                                   </Button>
+                                 </div>
+                               </div>
 
                               {/* Backtest Context */}
                               <div className="text-xs text-muted-foreground mb-2">
