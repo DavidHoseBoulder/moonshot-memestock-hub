@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useSearchParams } from "react-router-dom";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -28,9 +29,12 @@ interface BacktestResult {
 }
 
 const BacktestingDashboard = () => {
+  const [searchParams] = useSearchParams();
+  const urlSymbol = searchParams.get('symbol');
+  
   const [backtestResults, setBacktestResults] = useState<BacktestResult[]>([]);
   const [isLoading, setIsLoading] = useState(false);
-  const [symbol, setSymbol] = useState("AAPL");
+  const [symbol, setSymbol] = useState(urlSymbol || "AAPL");
   const [days, setDays] = useState(30);
   const [lastRunTimestamp, setLastRunTimestamp] = useState<string | null>(null);
   const { toast } = useToast();
