@@ -27,6 +27,7 @@ import {
   Filter,
   Settings
 } from 'lucide-react';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { Slider } from '@/components/ui/slider';
 
 interface TriggeredCandidate {
@@ -152,6 +153,17 @@ const TriggeredCandidatesDashboard = () => {
     const order = { 'Strong': 1, 'Moderate': 2, 'Weak': 3 };
     return order[grade as keyof typeof order] || 4;
   };
+
+  const getGradeHelperText = (grade: string | null) => {
+    switch (grade) {
+      case 'Strong': return '✅ Full size (~$1,000). High Sharpe, reliable backtest edge.';
+      case 'Moderate': return '⚖️ Half size (~$500). Some edge, but lower confidence.';
+      case 'Weak': return '👀 Watch / paper only. Marginal backtest performance.';
+      default: return '';
+    }
+  };
+
+  const getGradeTooltip = () => 'Strong = full, Moderate = half, Weak = watch.';
 
   // Data fetching
   const fetchTriggeredCandidates = async () => {
@@ -285,7 +297,8 @@ const TriggeredCandidatesDashboard = () => {
   };
 
   return (
-    <div className="p-6 space-y-6">
+    <TooltipProvider>
+      <div className="p-6 space-y-6">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
@@ -512,9 +525,21 @@ const TriggeredCandidatesDashboard = () => {
                           {symbol}
                         </h3>
                         <Badge variant="outline">{bestGrade.side}</Badge>
-                        <Badge variant={getGradeVariant(bestGrade.grade || mapConfidenceToGrade(bestGrade.confidence_label))}>
-                          {bestGrade.grade || mapConfidenceToGrade(bestGrade.confidence_label)}
-                        </Badge>
+                        <div className="flex flex-col items-start gap-1">
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <Badge variant={getGradeVariant(bestGrade.grade || mapConfidenceToGrade(bestGrade.confidence_label))}>
+                                {bestGrade.grade || mapConfidenceToGrade(bestGrade.confidence_label)}
+                              </Badge>
+                            </TooltipTrigger>
+                            <TooltipContent>
+                              {getGradeTooltip()}
+                            </TooltipContent>
+                          </Tooltip>
+                          <span className="text-xs text-muted-foreground">
+                            {getGradeHelperText(bestGrade.grade || mapConfidenceToGrade(bestGrade.confidence_label))}
+                          </span>
+                        </div>
                       </div>
                       <div className="flex items-center gap-2">
                         <span className="text-sm text-muted-foreground">
@@ -558,9 +583,21 @@ const TriggeredCandidatesDashboard = () => {
                                   <span className="text-muted-foreground">Win:</span> {formatPercent(candidate.win_rate)}
                                 </div>
                                 <div className="flex gap-2">
-                                  <Badge variant={getGradeVariant(candidate.grade || mapConfidenceToGrade(candidate.confidence_label))} className="text-xs">
-                                    {candidate.grade || mapConfidenceToGrade(candidate.confidence_label)}
-                                  </Badge>
+                                  <div className="flex flex-col items-start gap-1">
+                                    <Tooltip>
+                                      <TooltipTrigger asChild>
+                                        <Badge variant={getGradeVariant(candidate.grade || mapConfidenceToGrade(candidate.confidence_label))} className="text-xs">
+                                          {candidate.grade || mapConfidenceToGrade(candidate.confidence_label)}
+                                        </Badge>
+                                      </TooltipTrigger>
+                                      <TooltipContent>
+                                        {getGradeTooltip()}
+                                      </TooltipContent>
+                                    </Tooltip>
+                                    <span className="text-xs text-muted-foreground max-w-xs">
+                                      {getGradeHelperText(candidate.grade || mapConfidenceToGrade(candidate.confidence_label))}
+                                    </span>
+                                  </div>
                                   <Badge variant="secondary" className="text-xs">
                                     {getBacktestBadgeText(candidate.trades)}
                                   </Badge>
@@ -667,7 +704,8 @@ const TriggeredCandidatesDashboard = () => {
           </div>
         </CardContent>
       </Card>
-    </div>
+      </div>
+    </TooltipProvider>
   );
 };
 
