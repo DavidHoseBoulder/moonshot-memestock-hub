@@ -1,0 +1,8 @@
+{
+  "nodeModulesDir": "auto",
+  "lock": false,
+  "fmt": {
+    "useTabs": false,
+    "lineWidth": 100
+  }
+}

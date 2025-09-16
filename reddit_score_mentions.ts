@@ -22,13 +22,11 @@ const MODEL_TAG      = Deno.env.get("MODEL_TAG") ?? "gpt-sent-v1";
 const BATCH_SIZE     = Number(Deno.env.get("BATCH_SIZE") ?? 25);
 const MAX_BATCHES    = Number(Deno.env.get("MAX_BATCHES") ?? 3);
 const SLEEP_MS       = Number(Deno.env.get("SLEEP_MS") ?? 300);
-const OPENAI_MODEL   = Deno.env.get("OPENAI_MODEL") ?? "gpt-4o-mini";
-
 // comma-separated symbols or empty => null
-const SYMBOLS    = (Deno.env.get("SYMBOLS") ?? "").trim();
+const SYMBOLS_ENV    = (Deno.env.get("SYMBOLS") ?? "").trim();
 // SYMBOLS_ARR: null if empty; else uppercase array
-const SYMBOLS_ARR = SYMBOLS
-  ? SYMBOLS.split(",").map(s => s.trim()).filter(Boolean).map(s => s.toUpperCase())
+const SYMBOLS_ARR = SYMBOLS_ENV
+  ? SYMBOLS_ENV.split(",").map(s => s.trim()).filter(Boolean).map(s => s.toUpperCase())
   : null;
 const MICRO_BATCH = Number(Deno.env.get("MICRO_BATCH") ?? 12); // how many mentions per API call
 const PAUSE_ON_429_MS = Number(Deno.env.get("PAUSE_ON_429_MS") ?? 120000); // 2m
@@ -37,7 +35,7 @@ if (!PGURI) { console.error("❌ PGURI is required."); Deno.exit(1); }
 if (!OPENAI_API_KEY || !OPENAI_API_KEY.startsWith("sk-")) {
   console.error("❌ OPENAI_API_KEY missing or invalid."); Deno.exit(1);
 }
-console.log("Using MODEL_TAG =", MODEL_TAG, "START_DATE =", START_DATE, "END_DATE =", END_DATE, "BATCH_SIZE =", BATCH_SIZE, "MAX_BATCHES =", MAX_BATCHES, "SYMBOLS =",SYMBOLS, "SYMBOLS_ARR =", SYMBOLS_ARR);
+console.log("Using MODEL_TAG =", MODEL_TAG, "START_DATE =", START_DATE, "END_DATE =", END_DATE, "BATCH_SIZE =", BATCH_SIZE, "MAX_BATCHES =", MAX_BATCHES, "SYMBOLS_ENV =",SYMBOLS_ENV, "SYMBOLS_ARR =", SYMBOLS_ARR);
 
 import pg from "npm:pg@8.11.3";
 const { Pool } = pg;
@@ -60,13 +58,6 @@ function chunk<T>(arr: T[], size: number): T[][] {
   return out;
 }
 
-function clean(s) {
-  return (s ?? "").toString()
-    .replace(/[\\u0000-\\u001F\\u007F]/g, "") /* strip control chars */
-    .replace(/[ \\t\\f\\v]+/g, " ")            /* collapse whitespace */
-    .trim();
-}
-
 // --- helper: strip code fences the model might add ---
 function stripFences(s: string): string {
   let t = s?.trim() ?? "";
@@ -81,7 +72,7 @@ function stripFences(s: string): string {
 
 
 
-// Single input to model
+// Single input to model (not used now)
 async function scoreSentiment(input: {
   subreddit: string; symbol: string; title: string; body_text: string;
 }) {
@@ -125,36 +116,33 @@ Rules:
     const controller = new AbortController();
     const to = setTimeout(() => controller.abort(), timeoutMs);
     try {
-      const response = await fetch("https://api.openai.com/v1/chat/completions", {
-  method: "POST",
-  headers: {
-    "Content-Type": "application/json",
-    "Authorization": `Bearer ${OPENAI_API_KEY}`,
-  },
-  body: JSON.stringify({
-    model: OPENAI_MODEL,        // keep your env model
-    temperature: 0,
-    response_format: { type: "json_object" },
-    messages: [
-      {
-        role: "system",
-        content:
-          "You are a strict JSON API. Respond ONLY with a single JSON object that matches the requested fields. No prose, no code fences."
-      },
-      { role: "user", content: prompt }   // <-- use 'prompt' here
-    ],
-  }),
+      const r = await fetch("https://api.openai.com/v1/chat/completions", {
+        method: "POST",
+        signal: controller.signal,
+        headers: {
+          Authorization: `Bearer ${OPENAI_API_KEY}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          model: "gpt-4o-mini",
+          temperature: 0,
+          response_format: { type: "json_object" },
+          messages: [
+            { role: "system", content: "You are a strict JSON API. Always return exactly one JSON object and nothing else." },
+            { role: "user", content: prompt },
+          ],
+        }),
       });
       clearTimeout(to);
 
       // 🔹 DEBUG: log non-200 responses
-      if (!response.ok) {
-        const text = await response.text().catch(() => "");
-        console.error(`DEBUG_API_ERROR: status=${response.status} body=${text.slice(0, 300)}`);
-        throw new Error(`OpenAI ${response.status}: ${text.slice(0, 200)}`);
+      if (!r.ok) {
+        const text = await r.text().catch(() => "");
+        console.error(`DEBUG_API_ERROR: status=${r.status} body=${text.slice(0, 300)}`);
+        throw new Error(`OpenAI ${r.status}: ${text.slice(0, 200)}`);
       }
 
-      const j = await response.json();
+      const j = await r.json();
       const txt = j?.choices?.[0]?.message?.content ?? "{}";
 
       (globalThis as any).__LOGS__ ??= 0;
@@ -191,7 +179,7 @@ function sleep(ms: number) { return new Promise(res => setTimeout(res, ms)); }
 const UPSERT_SQL = `
 INSERT INTO reddit_sentiment
   (mention_id, model_version, overall_score, label, confidence, rationale)
-VALUES ($1::bigint, $2, $3, $4, $5, $6)
+VALUES ($1, $2, $3, $4, $5, $6)
 ON CONFLICT (model_version, mention_id) DO UPDATE
 SET overall_score = EXCLUDED.overall_score,
     score         = EXCLUDED.overall_score,  -- keep legacy "score" in sync
@@ -282,7 +270,7 @@ async function scoreBatch(items: Array<{
     additionalProperties: false,
     required: ["mention_id", "overall_score", "label", "confidence", "rationale"],
     properties: {
-      mention_id: { type: "string" },
+      mention_id: { type: "integer" },
       overall_score: { type: "number" },
       label: { type: "string", enum: ["neg", "neu", "pos"] },
       confidence: { type: "number" },
@@ -306,41 +294,18 @@ async function scoreBatch(items: Array<{
     }
   };
 
-  function cleanResult(o: any) {
-  const mid = String(o?.mention_id ?? "").trim();
-  const lbl = String(o?.label ?? o?.sentiment ?? "neu").toLowerCase();
-  return {
-    mention_id: mid,
-    overall_score: Number(o?.overall_score ?? 0),
-    label: lbl === "positive" ? "pos" : lbl === "negative" ? "neg" : (lbl === "pos" || lbl === "neg" || lbl === "neu" ? lbl : "neu"),
-    confidence: Math.max(0, Math.min(1, Number(o?.confidence ?? 0.5))),
-    rationale: String(o?.rationale ?? "").slice(0, 300),
-  };
-}
-
-
   // shared caller to OpenAI for a given slice of items
   const callOnce = async (slice: typeof items) => {
     const examples = slice.map(toExample);
 
-const instructions =
+    const instructions =
 `You analyze retail-investor sentiment for specific stock symbols in Reddit content.
 
-For EACH input item, return ONE result object with EXACTLY these fields:
-- mention_id: string (echo exactly as provided)
-- overall_score: number in [-1, 1]
-- label: "neg" | "neu" | "pos"
-- confidence: number in [0, 1]
-- rationale: brief string (<= 20 words)
-
+Return ONLY JSON that matches the provided JSON schema. For EACH input item, produce exactly one result object.
 Scoring rules:
 - Judge sentiment about the specific "symbol" only (not market/sector).
-- If unclear/purely informational, use "neu" and score near 0.
-
-Respond as a single JSON object with this shape:
-{ "results": [ { ...for item 1... }, { ...for item 2... }, ... ] }
-No prose. No code fences. No extra keys.`;
-
+- If unclear or purely informational, use label "neu" and overall_score near 0.
+- Keep rationale brief (<= 20 words).`;
 
     const maxRetries = 6;
     const baseDelay = 400;
@@ -350,73 +315,75 @@ No prose. No code fences. No extra keys.`;
       const controller = new AbortController();
       const to = setTimeout(() => controller.abort(), timeoutMs);
       try {
-        const response = await fetch("https://api.openai.com/v1/chat/completions", {
+        const r = await fetch("https://api.openai.com/v1/chat/completions", {
           method: "POST",
+          signal: controller.signal,
           headers: {
+            Authorization: `Bearer ${OPENAI_API_KEY}`,
             "Content-Type": "application/json",
-            "Authorization": `Bearer ${OPENAI_API_KEY}`,
           },
           body: JSON.stringify({
-            model: OPENAI_MODEL,
+            model: "gpt-4o-mini",
             temperature: 0,
-            response_format: { type: "json_object" },
+            // Strict schema prevents trailing text and wrong shapes
+            response_format: { type: "json_schema", json_schema: RESPONSE_SCHEMA },
             messages: [
-              { role: "system", content: "You are a strict JSON API. Return ONLY valid JSON. No prose, no code fences." },
+              { role: "system", content: "You are a strict JSON API. Respond ONLY with JSON that matches the schema." },
               { role: "user", content: instructions },
               { role: "user", content: JSON.stringify({ items: examples }) },
             ],
-}),
+          }),
         });
         clearTimeout(to);
 
         // 429 RPD short-circuit (keep your behavior)
-        if (response.status === 429) {
-          const body = await response.text().catch(() => "");
+        if (r.status === 429) {
+          const body = await r.text().catch(() => "");
           if (body.includes("requests per day (RPD)")) {
             console.error("DEBUG_API_ERROR: RPD exhausted. Exiting run.");
             throw new Error("RPD_EXHAUSTED");
           }
-          const ra = Number(response.headers.get("retry-after") ?? "0");
+          const ra = Number(r.headers.get("retry-after") ?? "0");
           const waitMs = (isFinite(ra) && ra > 0 ? ra * 1000 : baseDelay) + Math.floor(Math.random() * 250);
           await new Promise(res => setTimeout(res, waitMs));
           continue;
         }
-        if (response.status >= 500) {
-          const text = await response.text().catch(() => "");
-          console.error("DEBUG_API_ERROR:", response.status, text.slice(0, 400));
+        if (r.status >= 500) {
+          const text = await r.text().catch(() => "");
+          console.error("DEBUG_API_ERROR:", r.status, text.slice(0, 400));
           if (attempt < maxRetries) {
             const waitMs = Math.round((baseDelay * Math.pow(2, attempt)) + Math.random() * 300);
             await new Promise(res => setTimeout(res, waitMs));
             continue;
           }
-          throw new Error(`OpenAI ${response.status}: ${text.slice(0, 500)}`);
+          throw new Error(`OpenAI ${r.status}: ${text.slice(0, 500)}`);
         }
-        if (!response.ok) throw new Error(`OpenAI ${response.status}: ${await response.text()}`);
+        if (!r.ok) throw new Error(`OpenAI ${r.status}: ${await r.text()}`);
 
-        const j = await response.json();
-        let raw = j?.choices?.[0]?.message?.content ?? "{}";
-        raw = stripFences(raw);
+        const j = await r.json();
+        const raw = j?.choices?.[0]?.message?.content ?? "{}";
+
+        (globalThis as any).__BATCH_LOGS__ ??= 0;
+        if ((globalThis as any).__BATCH_LOGS__ < 2) {
+          console.log("RAW_MODEL_JSON:", raw.slice(0, 400));
+          (globalThis as any).__BATCH_LOGS__++;
+        }
 
         let parsed: any;
         try { parsed = JSON.parse(raw); } catch { throw new Error("Model returned non-JSON."); }
-
-        // Prefer {"results":[...]} but tolerate a couple of variants
-        let arr = parsed?.results;
-        if (!arr && Array.isArray(parsed)) arr = parsed;                // bare array
-        if (!arr && Array.isArray(parsed?.result)) arr = parsed.result; // "result" key
-
+        const arr = parsed?.results;
         if (!Array.isArray(arr)) throw new Error("Model JSON not an array of results.");
 
         // Map results by mention_id (ignore any strays)
         const out = new Map<string, { overall_score: number; label: string; confidence: number; rationale: string }>();
-        for (const o0 of arr) {
-          const o = cleanResult(o0);
-          if (!o.mention_id) continue;
-          out.set(o.mention_id, {
-            overall_score: o.overall_score,
-            label: o.label,
-            confidence: o.confidence,
-            rationale: o.rationale,
+        for (const o of arr) {
+          const mid = String(o?.mention_id ?? "");
+          if (!mid) continue;
+          out.set(mid, {
+            overall_score: Number(o?.overall_score ?? 0),
+            label: String(o?.label ?? "neu"),
+            confidence: Number(o?.confidence ?? 0.5),
+            rationale: String(o?.rationale ?? "n/a").slice(0, 300),
           });
         }
         return out;
@@ -445,7 +412,7 @@ No prose. No code fences. No extra keys.`;
 
   console.warn(`Batch JSON missing ${missing.length}/${items.length} mention_ids. Retrying the gaps once...`);
   // 2) One retry wave for just the missing
-  let recovered = new Map<string, { overall_score: number; label: string; confidence: number; rationale: string }>();
+  let recovered = new Map<number, { overall_score: number; label: string; confidence: number; rationale: string }>();
   if (missing.length > 0) {
     try {
       recovered = await callOnce(missing);
@@ -492,7 +459,7 @@ async function runBatch(limit = BATCH_SIZE, symbol: string | null = null): Promi
       limit
     ]);
     const rows = r.rows as Array<{
-  mention_id: string;
+  mention_id: number;
   doc_type: "post" | "comment";
   doc_id: string;
   post_id: string | null;
@@ -537,7 +504,7 @@ for (const grp of chunk(rows, MICRO_BATCH)) {
         continue;
       }
       await client.query(UPSERT_SQL, [
-        String(r.mention_id),
+        r.mention_id,
         MODEL_TAG,
         scored.overall_score,
         scored.label,
@@ -568,9 +535,10 @@ for (const grp of chunk(rows, MICRO_BATCH)) {
 }
 
 // 7) Main
+const SYMBOLS = (Deno.env.get("SYMBOLS") ?? "").split(",").map(s => s.trim()).filter(Boolean);
 let total = 0;
-if (SYMBOLS_ARR?.length) {
-for (const sym of SYMBOLS_ARR) {
+if (SYMBOLS.length) {
+for (const sym of SYMBOLS) {
     console.log(`\n=== Draining symbol ${sym} ===`);
     for (let i = 0; i < MAX_BATCHES; i++) {
 	  const { fetched, processed } = await runBatch(BATCH_SIZE, sym);
@@ -597,7 +565,3 @@ else {
 
 console.log(`Done. Total processed: ${total}`);
 await pool.end();
-function replace(arg0: RegExp, arg1: string) {
-  throw new Error("Function not implemented.");
-}
-
