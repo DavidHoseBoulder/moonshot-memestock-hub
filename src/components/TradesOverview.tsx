@@ -141,6 +141,7 @@ const TradesOverview = ({ onSymbolSelect, onOpenChat }: TradesOverviewProps) => 
   const [isSubmittingTrade, setIsSubmittingTrade] = useState(false);
   const [selectedDate, setSelectedDate] = useState(() => todayInDenverDateString());
   const [latestDate, setLatestDate] = useState(() => todayInDenverDateString());
+  const [closedTradesTimeFilter, setClosedTradesTimeFilter] = useState('all');
   const [dailyPnLSummary, setDailyPnLSummary] = useState<DailyPnLSummary | null>(null);
   const { toast } = useToast();
 
@@ -523,8 +524,37 @@ const TradesOverview = ({ onSymbolSelect, onOpenChat }: TradesOverviewProps) => 
   });
 
   const openTrades = filteredTrades.filter(t => t.status.toLowerCase() === 'open');
-  // Reverse sort closed trades to show newest first (previously showing oldest first)
-  const closedTrades = filteredTrades.filter(t => t.status.toLowerCase() === 'closed').sort((a, b) => 
+  
+  // Filter closed trades by time period
+  let closedTradesFiltered = filteredTrades.filter(t => t.status.toLowerCase() === 'closed');
+  
+  if (closedTradesTimeFilter !== 'all') {
+    const now = new Date();
+    const cutoffDate = new Date();
+    
+    switch (closedTradesTimeFilter) {
+      case '7d':
+        cutoffDate.setDate(now.getDate() - 7);
+        break;
+      case '30d':
+        cutoffDate.setDate(now.getDate() - 30);
+        break;
+      case '90d':
+        cutoffDate.setDate(now.getDate() - 90);
+        break;
+      case '1y':
+        cutoffDate.setFullYear(now.getFullYear() - 1);
+        break;
+    }
+    
+    closedTradesFiltered = closedTradesFiltered.filter(trade => {
+      const tradeDate = new Date(trade.exit_ts || trade.created_at);
+      return tradeDate >= cutoffDate;
+    });
+  }
+  
+  // Reverse sort closed trades to show newest first
+  const closedTrades = closedTradesFiltered.sort((a, b) => 
     new Date(b.exit_ts || b.created_at).getTime() - new Date(a.exit_ts || a.created_at).getTime()
   );
 
@@ -1103,32 +1133,54 @@ const TradesOverview = ({ onSymbolSelect, onOpenChat }: TradesOverviewProps) => 
             <div>
               <div className="flex justify-between items-center mb-4">
                 <h3 className="text-lg font-semibold">
-                  Closed Trades ({closedTrades.length} total)
+                  Closed Trades ({closedTrades.length} 
+                  {closedTradesTimeFilter === 'all' ? ' total' : 
+                    closedTradesTimeFilter === '7d' ? ' last 7 days' :
+                    closedTradesTimeFilter === '30d' ? ' last 30 days' :
+                    closedTradesTimeFilter === '90d' ? ' last 90 days' :
+                    closedTradesTimeFilter === '1y' ? ' last year' : ''})
                   {symbolFilter !== 'all' && ` - ${symbolFilter}`}
                 </h3>
-                {totalClosedPages > 1 && (
-                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
-                      disabled={currentPage === 1}
-                    >
-                      <ChevronLeft className="w-4 h-4" />
-                    </Button>
-                    <span>
-                      Page {currentPage} of {totalClosedPages}
-                    </span>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => setCurrentPage(prev => Math.min(totalClosedPages, prev + 1))}
-                      disabled={currentPage === totalClosedPages}
-                    >
-                      <ChevronRight className="w-4 h-4" />
-                    </Button>
-                  </div>
-                )}
+                <div className="flex items-center gap-2">
+                  <Select value={closedTradesTimeFilter} onValueChange={(value) => {
+                    setClosedTradesTimeFilter(value);
+                    setCurrentPage(1); // Reset to first page when filter changes
+                  }}>
+                    <SelectTrigger className="w-32">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All Time</SelectItem>
+                      <SelectItem value="7d">Last 7 Days</SelectItem>
+                      <SelectItem value="30d">Last 30 Days</SelectItem>
+                      <SelectItem value="90d">Last 90 Days</SelectItem>
+                      <SelectItem value="1y">Last Year</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  {totalClosedPages > 1 && (
+                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+                        disabled={currentPage === 1}
+                      >
+                        Previous
+                      </Button>
+                      <span>
+                        Page {currentPage} of {totalClosedPages}
+                      </span>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setCurrentPage(prev => Math.min(totalClosedPages, prev + 1))}
+                        disabled={currentPage === totalClosedPages}
+                      >
+                        Next
+                      </Button>
+                    </div>
+                  )}
+                </div>
               </div>
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                 {paginatedClosedTrades.map(trade => (
