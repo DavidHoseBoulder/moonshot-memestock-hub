@@ -9,6 +9,10 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Separator } from '@/components/ui/separator';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Textarea } from '@/components/ui/textarea';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { todayInDenverDateString } from '@/utils/timezone';
@@ -30,6 +34,9 @@ import {
 } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { Slider } from '@/components/ui/slider';
+import { useForm } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
+import * as z from 'zod';
 
 interface TriggeredCandidate {
   symbol: string;
@@ -74,6 +81,41 @@ const TriggeredCandidatesDashboard = () => {
   const [recoDate, setRecoDate] = useState(format(new Date(), 'yyyy-MM-dd'));
   const [minConfidence, setMinConfidence] = useState(60);
   const [minTrades, setMinTrades] = useState(5);
+  
+  // Dialog state
+  const [newTradeDialogOpen, setNewTradeDialogOpen] = useState(false);
+  const [selectedCandidate, setSelectedCandidate] = useState<TriggeredCandidate | null>(null);
+  const [isSubmittingTrade, setIsSubmittingTrade] = useState(false);
+
+  // Form schema
+  const tradeFormSchema = z.object({
+    symbol: z.string().min(1, "Symbol is required"),
+    side: z.string().min(1, "Side is required"),
+    horizon: z.string().min(1, "Horizon is required"),
+    mode: z.string().min(1, "Mode is required"),
+    trade_date: z.string().min(1, "Trade date is required"),
+    entry_price: z.string().optional(),
+    qty: z.string().min(1, "Quantity is required"),
+    fees_bps: z.string().optional(),
+    slippage_bps: z.string().optional(),
+    notes: z.string().optional(),
+  });
+
+  const form = useForm<z.infer<typeof tradeFormSchema>>({
+    resolver: zodResolver(tradeFormSchema),
+    defaultValues: {
+      symbol: "",
+      side: "LONG", 
+      horizon: "5d",
+      mode: "paper",
+      trade_date: todayInDenverDateString(),
+      entry_price: "",
+      qty: "",
+      fees_bps: "0",
+      slippage_bps: "0",
+      notes: "",
+    },
+  });
   
   // Load configuration from reddit_heuristics table
   useEffect(() => {
@@ -196,19 +238,71 @@ const TriggeredCandidatesDashboard = () => {
 
   const handleNewTrade = (candidate: TriggeredCandidate) => {
     const grade = candidate.grade || mapConfidenceToGrade(candidate.confidence_label);
-    const tradeSize = getDefaultTradeSize(grade);
+    const size = getDefaultTradeSize(grade);
     
-    // Navigate to trades page with pre-filled data
-    const params = new URLSearchParams({
+    // For weak trades, default to 20 shares for ~$1000 worth
+    let quantity = size.qty.toString();
+    if (grade === 'Weak') {
+      quantity = "20"; // Reasonable default for paper trades
+    }
+
+    setSelectedCandidate(candidate);
+    form.reset({
       symbol: candidate.symbol,
       side: candidate.side,
       horizon: candidate.horizon,
-      qty: tradeSize.qty.toString(),
-      mode: tradeSize.mode,
-      source: 'recommendation'
+      mode: size.mode,
+      trade_date: todayInDenverDateString(),
+      entry_price: "",
+      qty: quantity,
+      fees_bps: "0",
+      slippage_bps: "0",
+      notes: grade === 'Weak' ? `Weak confidence trade - paper trading recommended` : "",
     });
+    setNewTradeDialogOpen(true);
+  };
+
+  // Submit new trade
+  const submitNewTrade = async (values: z.infer<typeof tradeFormSchema>) => {
+    if (!selectedCandidate) return;
     
-    navigate(`/trades?${params.toString()}`);
+    setIsSubmittingTrade(true);
+    try {
+      const { error } = await supabase.from('trades' as any).insert([{
+        symbol: values.symbol.toUpperCase(),
+        side: values.side,
+        horizon: values.horizon,
+        mode: values.mode,
+        trade_date: values.trade_date,
+        entry_ts: new Date().toISOString(),
+        entry_price: values.entry_price ? parseFloat(values.entry_price) : null,
+        qty: parseFloat(values.qty),
+        fees_bps: values.fees_bps ? parseFloat(values.fees_bps) : 0,
+        slippage_bps: values.slippage_bps ? parseFloat(values.slippage_bps) : 0,
+        notes: values.notes || null,
+        source: 'recommendation',
+        status: 'OPEN',
+      }]);
+      if (error) throw error;
+
+      toast({
+        title: "Trade Created",
+        description: `${values.mode === 'paper' ? 'Paper' : 'Real'} trade for ${values.symbol} has been created.`,
+      });
+
+      form.reset();
+      setNewTradeDialogOpen(false);
+      setSelectedCandidate(null);
+    } catch (error: any) {
+      console.error('Error creating trade:', error);
+      toast({
+        title: "Error",
+        description: error.message || "Failed to create trade",
+        variant: "destructive",
+      });
+    } finally {
+      setIsSubmittingTrade(false);
+    }
   };
 
   // Data fetching
@@ -766,6 +860,232 @@ const TriggeredCandidatesDashboard = () => {
         </CardContent>
       </Card>
       </div>
+
+      {/* New Trade Dialog */}
+      <Dialog open={newTradeDialogOpen} onOpenChange={setNewTradeDialogOpen}>
+        <DialogContent className="sm:max-w-[500px]">
+          <DialogHeader>
+            <DialogTitle>Create New Trade</DialogTitle>
+          </DialogHeader>
+          <Form {...form}>
+            <form onSubmit={form.handleSubmit(submitNewTrade)} className="space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <FormField
+                  control={form.control}
+                  name="symbol"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Symbol</FormLabel>
+                      <FormControl>
+                        <Input 
+                          placeholder="e.g. AAPL" 
+                          {...field} 
+                          onChange={(e) => field.onChange(e.target.value.toUpperCase())}
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={form.control}
+                  name="side"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Side</FormLabel>
+                      <Select onValueChange={field.onChange} defaultValue={field.value}>
+                        <FormControl>
+                          <SelectTrigger>
+                            <SelectValue placeholder="Select side" />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          <SelectItem value="LONG">LONG</SelectItem>
+                          <SelectItem value="SHORT">SHORT</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <FormField
+                  control={form.control}
+                  name="horizon"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Horizon</FormLabel>
+                      <Select onValueChange={field.onChange} defaultValue={field.value}>
+                        <FormControl>
+                          <SelectTrigger>
+                            <SelectValue placeholder="Select horizon" />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          <SelectItem value="1d">1 Day</SelectItem>
+                          <SelectItem value="3d">3 Days</SelectItem>
+                          <SelectItem value="5d">5 Days</SelectItem>
+                          <SelectItem value="10d">10 Days</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={form.control}
+                  name="mode"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Mode</FormLabel>
+                      <Select onValueChange={field.onChange} defaultValue={field.value}>
+                        <FormControl>
+                          <SelectTrigger>
+                            <SelectValue placeholder="Select mode" />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          <SelectItem value="paper">Paper</SelectItem>
+                          <SelectItem value="real">Real</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <FormField
+                  control={form.control}
+                  name="trade_date"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Trade Date</FormLabel>
+                      <FormControl>
+                        <Input type="date" {...field} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={form.control}
+                  name="entry_price"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Entry Price (optional)</FormLabel>
+                      <FormControl>
+                        <Input 
+                          type="number" 
+                          step="0.01" 
+                          placeholder="e.g. 150.25" 
+                          {...field} 
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </div>
+
+              <div className="grid grid-cols-3 gap-4">
+                <FormField
+                  control={form.control}
+                  name="qty"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Quantity</FormLabel>
+                      <FormControl>
+                        <Input 
+                          type="number" 
+                          step="0.01" 
+                          min="0.01"
+                          {...field} 
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={form.control}
+                  name="fees_bps"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Fees (bps)</FormLabel>
+                      <FormControl>
+                        <Input 
+                          type="number" 
+                          step="0.1" 
+                          placeholder="0"
+                          {...field} 
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={form.control}
+                  name="slippage_bps"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Slippage (bps)</FormLabel>
+                      <FormControl>
+                        <Input 
+                          type="number" 
+                          step="0.1" 
+                          placeholder="0"
+                          {...field} 
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </div>
+
+              <FormField
+                control={form.control}
+                name="notes"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Notes (optional)</FormLabel>
+                    <FormControl>
+                      <Textarea 
+                        placeholder="Add any notes about this trade..."
+                        className="resize-none"
+                        rows={3}
+                        {...field} 
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <div className="flex justify-end gap-2 pt-4">
+                <Button 
+                  type="button" 
+                  variant="outline" 
+                  onClick={() => {
+                    setNewTradeDialogOpen(false);
+                    setSelectedCandidate(null);
+                  }}
+                >
+                  Cancel
+                </Button>
+                <Button type="submit" disabled={isSubmittingTrade}>
+                  {isSubmittingTrade ? 'Creating...' : 'Create Trade'}
+                </Button>
+              </div>
+            </form>
+          </Form>
+        </DialogContent>
+      </Dialog>
     </TooltipProvider>
   );
 };
