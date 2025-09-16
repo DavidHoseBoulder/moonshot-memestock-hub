@@ -56,6 +56,11 @@
   \set DPT_BY_BAND NULL
 \endif
 
+\if :{?DRY_RUN}
+\else
+  \set DRY_RUN 0
+\endif
+
 \if :{?BAND_STRONG}
 \else
   \set BAND_STRONG 0.35
@@ -144,7 +149,7 @@ SELECT
   CASE
     WHEN f.horizon = '1d' THEN add_trading_days(f.trade_date, 1)      -- same day close
     WHEN f.horizon = '3d' THEN add_trading_days(f.trade_date, 3)      -- T+3 close
-    ELSE add_trading_days(f.trade_date, 1)
+    ELSE add_trading_days(f.trade_date, 5)      -- default: 5d horizon
   END AS exit_d
 FROM filtered f;
 
@@ -203,7 +208,31 @@ WHERE r.rn <= (:'DAILY_MAX')::int
   AND r.entry_price IS NOT NULL
   AND r.exit_price  IS NOT NULL;
 
+\echo '-- Final inserts band summary (pre-insert) --'
+SELECT
+  band,
+  ROUND(MIN(band_factor)::numeric, 3) AS min_factor,
+  ROUND(MAX(band_factor)::numeric, 3) AS max_factor,
+  SUM(qty) AS total_qty,
+  COUNT(*) AS n_trades
+FROM final_inserts
+GROUP BY 1
+ORDER BY band;
+
 -- 6) Insert into trades
+\if :DRY_RUN
+  \echo 'DRY_RUN=1 -> skipping insert into trades; count reflects would-be rows.'
+  SELECT COUNT(*) AS would_insert
+  FROM final_inserts f
+  WHERE NOT EXISTS (
+    SELECT 1 FROM trades t
+    WHERE t.symbol = f.symbol
+      AND t.side = f.side
+      AND t.horizon = f.horizon
+      AND t.trade_date = f.trade_date
+      AND t.source = 'rules-backfill-v2'
+  );
+\else
 WITH ins AS (
   INSERT INTO trades (
     trade_id, created_at, symbol, side, horizon, mode, source,
@@ -256,9 +285,10 @@ WITH ins AS (
   RETURNING 1
 )
 SELECT count(*) AS inserted FROM ins;
+\endif
 
 -- ===== Optional DEBUG output =====
-\if :{?DEBUG}
+\if :DEBUG
   DROP TABLE IF EXISTS dbg_filtered;
   DROP TABLE IF EXISTS dbg_sched;
   DROP TABLE IF EXISTS dbg_priced;

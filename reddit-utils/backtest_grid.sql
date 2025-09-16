@@ -694,6 +694,23 @@ ORDER BY CASE WHEN (:'USE_LB_RANKING')::int=1 THEN r.lb END DESC NULLS LAST,
 -- PERSIST + BEST-OF OUTPUT
 -- =========================
 
+-- Ensure persistence tables carry baseline/uplift metrics for promotion/reporting
+ALTER TABLE IF EXISTS backtest_sweep_results
+  ADD COLUMN IF NOT EXISTS baseline_naive_trades int,
+  ADD COLUMN IF NOT EXISTS baseline_naive_avg_ret numeric,
+  ADD COLUMN IF NOT EXISTS baseline_random_trades int,
+  ADD COLUMN IF NOT EXISTS baseline_random_avg_ret numeric,
+  ADD COLUMN IF NOT EXISTS uplift numeric,
+  ADD COLUMN IF NOT EXISTS uplift_random numeric;
+
+ALTER TABLE IF EXISTS backtest_sweep_grid
+  ADD COLUMN IF NOT EXISTS baseline_naive_trades int,
+  ADD COLUMN IF NOT EXISTS baseline_naive_avg_ret numeric,
+  ADD COLUMN IF NOT EXISTS baseline_random_trades int,
+  ADD COLUMN IF NOT EXISTS baseline_random_avg_ret numeric,
+  ADD COLUMN IF NOT EXISTS uplift numeric,
+  ADD COLUMN IF NOT EXISTS uplift_random numeric;
+
 -- 1) Filter + rank grid, pick ONE row per (symbol,horizon,side)
 WITH filtered AS (
   SELECT *
@@ -715,7 +732,10 @@ r_best AS (
   SELECT
     symbol, horizon, side,
     min_mentions, pos_thresh,
-    trades, avg_ret, win_rate, sharpe
+    trades, avg_ret, win_rate, sharpe,
+    baseline_naive_trades, baseline_naive_avg_ret,
+    baseline_random_trades, baseline_random_avg_ret,
+    uplift, uplift_random
   FROM ranked
   WHERE rk = 1
 ),
@@ -735,7 +755,11 @@ INSERT INTO backtest_sweep_results (
   model_version, symbol, horizon, side,
   start_date, end_date,
   trades, avg_ret, median_ret, win_rate, stdev_ret, sharpe,
-  min_mentions, pos_thresh, use_weighted, created_at
+  min_mentions, pos_thresh,
+  baseline_naive_trades, baseline_naive_avg_ret,
+  baseline_random_trades, baseline_random_avg_ret,
+  uplift, uplift_random,
+  use_weighted, created_at
 )
 SELECT
   :'MODEL_VERSION'::text,
@@ -743,6 +767,9 @@ SELECT
   :'START_DATE'::date, :'END_DATE'::date,
   r.trades, r.avg_ret, m.median_ret, r.win_rate, m.stdev_ret, r.sharpe,
   r.min_mentions, r.pos_thresh,
+  r.baseline_naive_trades, r.baseline_naive_avg_ret,
+  r.baseline_random_trades, r.baseline_random_avg_ret,
+  r.uplift, r.uplift_random,
   false, now()
 FROM r_best r
 LEFT JOIN med m
@@ -758,6 +785,12 @@ DO UPDATE SET
   sharpe       = EXCLUDED.sharpe,
   min_mentions = EXCLUDED.min_mentions,
   pos_thresh   = EXCLUDED.pos_thresh,
+  baseline_naive_trades   = EXCLUDED.baseline_naive_trades,
+  baseline_naive_avg_ret  = EXCLUDED.baseline_naive_avg_ret,
+  baseline_random_trades  = EXCLUDED.baseline_random_trades,
+  baseline_random_avg_ret = EXCLUDED.baseline_random_avg_ret,
+  uplift       = EXCLUDED.uplift,
+  uplift_random= EXCLUDED.uplift_random,
   use_weighted = EXCLUDED.use_weighted,
   created_at   = EXCLUDED.created_at;
 
@@ -803,6 +836,12 @@ CREATE TABLE IF NOT EXISTS backtest_sweep_grid (
   win_rate numeric,
   stdev_ret numeric,
   sharpe numeric,
+  baseline_naive_trades int,
+  baseline_naive_avg_ret numeric,
+  baseline_random_trades int,
+  baseline_random_avg_ret numeric,
+  uplift numeric,
+  uplift_random numeric,
   created_at timestamptz DEFAULT now(),
   CONSTRAINT chk_bsg_trades_nonneg CHECK (trades >= 0),
   CONSTRAINT chk_bsg_win_rate_bounds CHECK (win_rate IS NULL OR (win_rate >= 0 AND win_rate <= 1)),
@@ -819,13 +858,19 @@ CREATE INDEX IF NOT EXISTS idx_bsg_thresholds ON backtest_sweep_grid (symbol,hor
 INSERT INTO backtest_sweep_grid (
   model_version,start_date,end_date,
   symbol,horizon,side,min_mentions,pos_thresh,
-  trades,avg_ret,median_ret,win_rate,stdev_ret,sharpe
+  trades,avg_ret,median_ret,win_rate,stdev_ret,sharpe,
+  baseline_naive_trades,baseline_naive_avg_ret,
+  baseline_random_trades,baseline_random_avg_ret,
+  uplift,uplift_random
 )
 SELECT
   model_version,start_date,end_date,
   symbol,horizon,side,min_mentions,pos_thresh,
-  trades,avg_ret,median_ret,win_rate,stdev_ret,sharpe
-FROM tmp_results
+  trades,avg_ret,median_ret,win_rate,stdev_ret,sharpe,
+  baseline_naive_trades,baseline_naive_avg_ret,
+  baseline_random_trades,baseline_random_avg_ret,
+  uplift,uplift_random
+FROM tmp_results_final
 ON CONFLICT (model_version,start_date,end_date,symbol,horizon,side,min_mentions,pos_thresh)
 DO UPDATE SET
   trades     = EXCLUDED.trades,
@@ -834,6 +879,12 @@ DO UPDATE SET
   win_rate   = EXCLUDED.win_rate,
   stdev_ret  = EXCLUDED.stdev_ret,
   sharpe     = EXCLUDED.sharpe,
+  baseline_naive_trades   = EXCLUDED.baseline_naive_trades,
+  baseline_naive_avg_ret  = EXCLUDED.baseline_naive_avg_ret,
+  baseline_random_trades  = EXCLUDED.baseline_random_trades,
+  baseline_random_avg_ret = EXCLUDED.baseline_random_avg_ret,
+  uplift     = EXCLUDED.uplift,
+  uplift_random = EXCLUDED.uplift_random,
   created_at = now();
 
 ANALYZE backtest_sweep_grid;

@@ -34,6 +34,9 @@ SELECT
   model_version, symbol, horizon, side,
   min_mentions, pos_thresh,
   trades, avg_ret, median_ret, win_rate, stdev_ret, sharpe,
+  baseline_naive_trades, baseline_naive_avg_ret,
+  baseline_random_trades, baseline_random_avg_ret,
+  uplift, uplift_random,
   start_date, end_date
 FROM backtest_sweep_results
 WHERE :USE_FULL_GRID::int = 0
@@ -45,6 +48,9 @@ SELECT
   model_version, symbol, horizon, side,
   min_mentions, pos_thresh,
   trades, avg_ret, median_ret, win_rate, stdev_ret, sharpe,
+  baseline_naive_trades, baseline_naive_avg_ret,
+  baseline_random_trades, baseline_random_avg_ret,
+  uplift, uplift_random,
   start_date, end_date
 FROM backtest_sweep_grid
 WHERE :USE_FULL_GRID::int = 1
@@ -134,10 +140,20 @@ SELECT
        THEN NULL
        ELSE bf.q_max - p.q_value
   END AS q_margin,
+  g.baseline_naive_avg_ret,
+  (p.avg_ret - g.baseline_naive_avg_ret) AS uplift_naive,
+  g.baseline_random_avg_ret,
+  (p.avg_ret - g.baseline_random_avg_ret) AS uplift_random,
   n.neighbor_cnt,
   (n.neighbor_cnt < 1) AS brittle
 FROM rep_promoted_filtered p
 JOIN rep_neighbors_filtered n USING (symbol,horizon,side,min_mentions,pos_thresh)
+LEFT JOIN rep_grid g
+  ON g.symbol  = p.symbol
+ AND g.horizon = p.horizon
+ AND g.side    = p.side
+ AND g.min_mentions = p.min_mentions
+ AND g.pos_thresh   = p.pos_thresh
 CROSS JOIN rep_band_params bf
 ORDER BY brittle DESC, q_margin ASC NULLS LAST, p.sharpe ASC NULLS LAST, p.symbol;
 
@@ -219,3 +235,38 @@ FROM banded b
 CROSS JOIN rep_band_params bf
 GROUP BY 1,2
 ORDER BY scope, band;
+
+\echo 'Baseline uplift summary (promoted set):'
+WITH joined AS (
+  SELECT
+    p.symbol,
+    p.horizon,
+    p.side,
+    p.trades,
+    p.avg_ret,
+    g.baseline_naive_avg_ret,
+    g.baseline_random_avg_ret,
+    g.baseline_naive_trades,
+    g.baseline_random_trades
+  FROM rep_promoted_filtered p
+  LEFT JOIN rep_grid g
+    ON g.symbol  = p.symbol
+   AND g.horizon = p.horizon
+   AND g.side    = p.side
+   AND g.min_mentions = p.min_mentions
+   AND g.pos_thresh   = p.pos_thresh
+)
+SELECT
+  COUNT(*) AS n_rules,
+  SUM(trades) AS total_trades,
+  ROUND(AVG(avg_ret)::numeric, 4) AS mean_rule_ret,
+  ROUND(AVG(baseline_naive_avg_ret)::numeric, 4) AS mean_naive_ret,
+  ROUND(AVG(avg_ret - baseline_naive_avg_ret)::numeric, 4) AS mean_uplift_vs_naive,
+  ROUND(AVG(baseline_random_avg_ret)::numeric, 4) AS mean_random_ret,
+  ROUND(AVG(avg_ret - baseline_random_avg_ret)::numeric, 4) AS mean_uplift_vs_random,
+  ROUND(SUM(trades * avg_ret)::numeric / NULLIF(SUM(trades),0), 4) AS trade_wt_rule_ret,
+  ROUND(SUM(trades * baseline_naive_avg_ret)::numeric / NULLIF(SUM(trades),0), 4) AS trade_wt_naive_ret,
+  ROUND(SUM(trades * (avg_ret - baseline_naive_avg_ret))::numeric / NULLIF(SUM(trades),0), 4) AS trade_wt_uplift_vs_naive,
+  ROUND(SUM(trades * baseline_random_avg_ret)::numeric / NULLIF(SUM(trades),0), 4) AS trade_wt_random_ret,
+  ROUND(SUM(trades * (avg_ret - baseline_random_avg_ret))::numeric / NULLIF(SUM(trades),0), 4) AS trade_wt_uplift_vs_random
+FROM joined;

@@ -12,7 +12,7 @@ set -euo pipefail
 #   PGURI="$PGURI" ./run_seed_paper_trades_rules_only.sh 2025-06-01 2025-09-12 gpt-sent-v1
 #
 # Environment overrides (optional):
-#   DPT=1000 DAILY_MAX=5 MIN_MARGIN=0.00 DEBUG=0
+#   DPT=1000 DAILY_MAX=5 MIN_MARGIN=0.00 DEBUG=0 DPT_BY_BAND='STRONG:1.5,MODERATE:1.0,WEAK:0.5' DRY_RUN=1
 
 if [[ ${1:-} == "-h" || ${1:-} == "--help" ]]; then
   cat <<EOF
@@ -29,6 +29,8 @@ Env overrides:
   DPT           Dollars per trade (default 1000)
   DAILY_MAX     Max trades per trading day (default 5)
   MIN_MARGIN    Minimum candidate margin (default 0.00)
+  DPT_BY_BAND   Optional band → multiplier overrides (e.g. STRONG:1.5,...)
+  DRY_RUN       0/1 skip inserts, still expose final_inserts + summary (default 0)
   DEBUG         0/1 for diagnostic tables and prints (default 0)
 EOF
   exit 0
@@ -53,13 +55,18 @@ MODEL_VERSION="${MODEL_VERSION_ARG:-${MODEL_VERSION:-gpt-sent-v1}}"
 DPT="${DPT:-1000}"
 DAILY_MAX="${DAILY_MAX:-5}"
 MIN_MARGIN="${MIN_MARGIN:-0.00}"
+DPT_BY_BAND="${DPT_BY_BAND:-}"
+DRY_RUN="${DRY_RUN:-0}"
 DEBUG="${DEBUG:-0}"
 
 SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 CODE_DIR="$SCRIPT_DIR"
 
 echo "Seeding paper trades for $START_DATE..$END_DATE (model=$MODEL_VERSION)" >&2
-echo "DPT=$DPT DAILY_MAX=$DAILY_MAX MIN_MARGIN=$MIN_MARGIN DEBUG=$DEBUG" >&2
+if [[ -n "$DPT_BY_BAND" ]]; then
+  echo "Seeding with band multipliers: $DPT_BY_BAND" >&2
+fi
+echo "DPT=$DPT DAILY_MAX=$DAILY_MAX MIN_MARGIN=$MIN_MARGIN DRY_RUN=$DRY_RUN DEBUG=$DEBUG" >&2
 
 psql "$PGURI" \
   -v MODEL_VERSION="$MODEL_VERSION" \
@@ -68,6 +75,7 @@ psql "$PGURI" \
   -v DPT="$DPT" \
   -v DAILY_MAX="$DAILY_MAX" \
   -v MIN_MARGIN="$MIN_MARGIN" \
+  -v DPT_BY_BAND="$DPT_BY_BAND" \
+  -v DRY_RUN="$DRY_RUN" \
   -v DEBUG="$DEBUG" \
   -f "$CODE_DIR/seed_paper_trades_rules_only.sql"
-

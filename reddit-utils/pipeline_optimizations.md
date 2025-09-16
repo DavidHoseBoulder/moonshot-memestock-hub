@@ -109,7 +109,7 @@ CREATE INDEX IF NOT EXISTS idx_bsg_group ON backtest_sweep_grid (symbol,horizon,
   - [x] Optional random baseline matching counts per day/horizon.
   - [x] Compute `uplift = avg_ret_rule - avg_ret_baseline` (in grid outputs).
 - Validation:
-  - [ ] Include baseline and uplift columns in promotion summary.
+  - [x] Include baseline and uplift columns in promotion summary.
 
 ### 7) Score Bands and Sizing
 
@@ -121,7 +121,7 @@ CREATE INDEX IF NOT EXISTS idx_bsg_group ON backtest_sweep_grid (symbol,horizon,
   - [x] Optional: scale DPT in seeding by band factors.
   - [x] Surface promotion-report aggregates by band (counts, Sharpe, avg_ret, q-pass) for capital allocation decisions.
 - Validation:
-  - [ ] Verify inserts reflect expected DPT multipliers when enabled.
+  - [x] Verify inserts reflect expected DPT multipliers when enabled.
 
 ### 8) Nightly Health Checks (Auto-disable)
 
@@ -207,7 +207,9 @@ CREATE INDEX IF NOT EXISTS idx_bsg_group ON backtest_sweep_grid (symbol,horizon,
 - Bands: Emitted in CSV; thresholds configurable in runner via `BAND_STRONG`, `BAND_MODERATE`, `BAND_WEAK`.
 - Promotion FDR: Implemented BH-based `q_value` with `Q_MAX` gating; runner forwards `Q_MAX`.
 - Promotion report: Added `promotion_report.sql` for auditing promoted rules, neighbor counts, and FDR margins.
+- Promotion baselines: `promotion_report.sql` now surfaces naive/random baseline comparisons (per-rule and aggregate) for the promoted set.
 - Post-seeding hygiene: Tail review workflow documented in `BACKTESTING_PIPELINE.md`; manual rule tightening via direct updates to `live_sentiment_entry_rules` now part of close-out.
+- Seeding dry-run: `seed_paper_trades_rules_only.sql`/runner accept `DRY_RUN=1` plus `DPT_BY_BAND` overrides, emitting band-factor summaries without writing to `trades`.
 
 ## Pre-TA Close-Out Checklist (2025-09)
 
@@ -216,8 +218,8 @@ CREATE INDEX IF NOT EXISTS idx_bsg_group ON backtest_sweep_grid (symbol,horizon,
 - **Fold diagnostics audit** *(done)*: validation log confirms train/valid Sharpe and rank columns populate for 964 pockets; annotate unstable pockets directly from the report.
 - **LB vs. Sharpe review** *(done)*: validation log contains the LB vs. Sharpe comparison highlighting demotions (TSLA shorts, GME longs) under LB ordering.
 - **FDR tightening evidence** *(done)*: validation log reports trimmed vs. wide acceptance counts (both 345) for the window.
-- **Random baseline stub**: run `validation/validate_full_grid.sql` to capture naive vs. random uplifts and stash the log alongside the promotion report.
-- **Band-driven DPT scaling**: dry-run `seed_paper_trades_rules_only.sql` with `DPT_BY_BAND` overrides, verify qty scaling in `dbg_final`, and document toggle instructions.
+- **Random baseline stub** *(done)*: rerun `promotion_report.sql` (see `reddit-utils/promotion_report.sql`) to capture the new `Baseline uplift summary` block plus per-rule naive/random deltas (e.g., `psql "$PGURI" ... -f promotion_report.sql > reddit_work/logs/promotion_report_2025-06-01_2025-09-15.log`).
+- **Band-driven DPT scaling** *(done)*: use the new `DRY_RUN=1` runner flag with `DPT_BY_BAND` overrides (e.g., `STRONG:1.5,MODERATE:1.0,WEAK:0.5`) to validate `band_factor`/qty multipliers in-place. Diagnostics emit via `-- Final inserts band summary --` and, when `DEBUG=1`, persist to `dbg_final`.
 - **Subreddit/author enrichment prep**: plumb fields through staging tables and generate preliminary perf slices; hold off on gating until distributions reviewed.
 
 ### Validation Helpers

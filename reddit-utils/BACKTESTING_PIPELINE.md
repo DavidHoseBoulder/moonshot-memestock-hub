@@ -80,14 +80,16 @@ flowchart TD
   - Output: New/updated enabled rules for the window with metrics embedded.
 
 - Promotion Report
-  - Script: `moonshot-memestock-hub/reddit-utils/promotion_report.sql`
-  - Inputs: `backtest_sweep_results`, optional full sweep data, and the promoted rules set (`live_sentiment_entry_rules`).
-  - Output: Aggregated guardrails showing `n_rules`, Sharpe averages, FDR pass counts (`n_q_pass`), and brittleness counts per horizon/side to gate seeding.
+- Script: `moonshot-memestock-hub/reddit-utils/promotion_report.sql`
+- Inputs: `backtest_sweep_results`, optional full sweep data, and the promoted rules set (`live_sentiment_entry_rules`).
+- Output: Aggregated guardrails showing `n_rules`, Sharpe averages, FDR pass counts (`n_q_pass`), and brittleness counts per horizon/side to gate seeding.
+- Baselines: Report now prints per-rule naive/random benchmarks plus a `Baseline uplift summary` block so you can cite uplift vs. simple comparators when promoting.
 
 - Seed Paper Trades (rules-only)
-  - Script: `moonshot-memestock-hub/reddit-utils/seed_paper_trades_rules_only.sql`
-  - Input: `v_entry_candidates` filtered to model/window; priced from `enhanced_market_data`.
-  - Output: Inserts into `trades` with `mode='paper'` and `source='rules-backfill-v2'`, deduped by (symbol,side,horizon,trade_date,source).
+- Script: `moonshot-memestock-hub/reddit-utils/seed_paper_trades_rules_only.sql`
+- Input: `v_entry_candidates` filtered to model/window; priced from `enhanced_market_data`.
+- Output: Inserts into `trades` with `mode='paper'` and `source='rules-backfill-v2'`, deduped by (symbol,side,horizon,trade_date,source).
+- Dry-run: Pass `DRY_RUN=1` (optionally with `DEBUG=1`) to print band-factor summaries and materialize `dbg_final` without touching `trades`; combine with `DPT_BY_BAND='STRONG:1.5,MODERATE:1.0,WEAK:0.5'` to validate sizing.
 
 ## Runners and Typical Flow
 
