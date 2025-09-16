@@ -15,10 +15,11 @@ FROM pg_temp.stage_b64
 WHERE line <> '';
 
 -- after filling pg_temp.stage_json …
-INSERT INTO public.reddit_finance_keep_norm (id, subreddit, created_utc, title, selftext)
+INSERT INTO public.reddit_finance_keep_norm (id, subreddit, author, created_utc, title, selftext)
 SELECT DISTINCT ON (id)
   COALESCE(doc->>'post_id', doc->>'id')                           AS id,
   doc->>'subreddit'                                              AS subreddit,
+  NULLIF(doc->>'author','')                                      AS author,
   CASE
     WHEN (doc->>'created_utc') ~ '^\d+$' THEN to_timestamp((doc->>'created_utc')::bigint) AT TIME ZONE 'UTC'
     WHEN doc ? 'created_utc_iso' THEN (doc->>'created_utc_iso')::timestamptz

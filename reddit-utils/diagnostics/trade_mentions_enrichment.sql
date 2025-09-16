@@ -9,7 +9,7 @@ WITH trades_base AS (
     t.symbol,
     t.side,
     t.horizon,
-    t.model_version,
+    'n/a'::text AS model_version,
     t.trade_date,
     CASE
       WHEN t.exit_price IS NULL THEN NULL
