@@ -277,8 +277,7 @@ const TriggeredCandidatesDashboard = () => {
         entry_ts: new Date().toISOString(),
         entry_price: values.entry_price ? parseFloat(values.entry_price) : null,
         qty: parseFloat(values.qty),
-        fees_bps: values.fees_bps ? parseFloat(values.fees_bps) : 0,
-        slippage_bps: values.slippage_bps ? parseFloat(values.slippage_bps) : 0,
+        fees_total: 0, // Default to 0 fees for paper trades
         notes: values.notes || null,
         source: 'recommendation',
         status: 'OPEN',
