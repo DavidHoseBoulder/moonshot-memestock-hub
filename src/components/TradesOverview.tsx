@@ -8,7 +8,7 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sh
 import { Input } from "@/components/ui/input";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
-import { TrendingUp, TrendingDown, DollarSign, Target, ExternalLink, X, Info, Plus, Calendar, Activity, MessageSquare } from "lucide-react";
+import { TrendingUp, TrendingDown, DollarSign, Target, ExternalLink, X, Info, Plus, Calendar, Activity, MessageSquare, ChevronsUpDown, Check, ChevronLeft, ChevronRight } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Drawer, DrawerContent, DrawerHeader, DrawerTitle, DrawerClose } from "@/components/ui/drawer";
 import { Separator } from "@/components/ui/separator";
@@ -16,6 +16,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { todayInDenverDateString, formatDateInDenver, formatFullDateInDenver } from '@/utils/timezone';
@@ -126,6 +128,11 @@ const TradesOverview = ({ onSymbolSelect, onOpenChat }: TradesOverviewProps) => 
   const [isLoading, setIsLoading] = useState(true);
   const [filter, setFilter] = useState<'all' | 'paper' | 'real'>('all');
   const [sideFilter, setSideFilter] = useState<'all' | 'long' | 'short'>('all');
+  const [symbolFilter, setSymbolFilter] = useState<string>('all');
+  const [availableSymbols, setAvailableSymbols] = useState<string[]>([]);
+  const [symbolSearchOpen, setSymbolSearchOpen] = useState(false);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [tradesPerPage] = useState(12);
   const [selectedTrade, setSelectedTrade] = useState<TradeWithPnL | null>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [tradeDetailData, setTradeDetailData] = useState<TradeDetailData | null>(null);
@@ -306,8 +313,9 @@ const TradesOverview = ({ onSymbolSelect, onOpenChat }: TradesOverviewProps) => 
 
       if (tradesError) throw tradesError;
 
-      // Get unique symbols for market data
+      // Get unique symbols for market data and symbol filter
       const symbols = [...new Set((tradesData as any[] || []).map((t: any) => t.symbol))];
+      setAvailableSymbols(['all', ...symbols.sort()]);
       
       // Fetch latest market data for all symbols
       const marketDataMap: Record<string, MarketData> = {};
@@ -508,11 +516,22 @@ const TradesOverview = ({ onSymbolSelect, onOpenChat }: TradesOverviewProps) => 
     // Filter by side (long/short/all)
     const sideMatch = sideFilter === 'all' || trade.side.toLowerCase() === sideFilter;
     
-    return modeMatch && sideMatch;
+    // Filter by symbol (all or specific symbol)
+    const symbolMatch = symbolFilter === 'all' || trade.symbol === symbolFilter;
+    
+    return modeMatch && sideMatch && symbolMatch;
   });
 
   const openTrades = filteredTrades.filter(t => t.status.toLowerCase() === 'open');
-  const closedTrades = filteredTrades.filter(t => t.status.toLowerCase() === 'closed');
+  // Reverse sort closed trades to show newest first (previously showing oldest first)
+  const closedTrades = filteredTrades.filter(t => t.status.toLowerCase() === 'closed').sort((a, b) => 
+    new Date(b.exit_ts || b.created_at).getTime() - new Date(a.exit_ts || a.created_at).getTime()
+  );
+
+  // Pagination for closed trades
+  const totalClosedPages = Math.ceil(closedTrades.length / tradesPerPage);
+  const startIndex = (currentPage - 1) * tradesPerPage;
+  const paginatedClosedTrades = closedTrades.slice(startIndex, startIndex + tradesPerPage);
 
   // Calculate summaries
   const summary = {
@@ -944,18 +963,68 @@ const TradesOverview = ({ onSymbolSelect, onOpenChat }: TradesOverviewProps) => 
           </TabsList>
         </Tabs>
         
-        <div className="flex items-center gap-2">
-          <span className="text-sm text-muted-foreground whitespace-nowrap">Side:</span>
-          <Select value={sideFilter} onValueChange={(value) => setSideFilter(value as typeof sideFilter)}>
-            <SelectTrigger className="w-[140px]">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Trades</SelectItem>
-              <SelectItem value="long">Long Only</SelectItem>
-              <SelectItem value="short">Short Only</SelectItem>
-            </SelectContent>
-          </Select>
+        <div className="flex flex-wrap items-center gap-4">
+          <div className="flex items-center gap-2">
+            <span className="text-sm text-muted-foreground whitespace-nowrap">Symbol:</span>
+            <Popover open={symbolSearchOpen} onOpenChange={setSymbolSearchOpen}>
+              <PopoverTrigger asChild>
+                <Button
+                  variant="outline"
+                  role="combobox"
+                  aria-expanded={symbolSearchOpen}
+                  className="w-[160px] justify-between"
+                >
+                  {symbolFilter === 'all' ? 'All Symbols' : symbolFilter}
+                  <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-[200px] p-0">
+                <Command>
+                  <CommandInput placeholder="Search symbol..." />
+                  <CommandList>
+                    <CommandEmpty>No symbol found.</CommandEmpty>
+                    <CommandGroup>
+                      {availableSymbols.map((symbol) => (
+                        <CommandItem
+                          key={symbol}
+                          value={symbol}
+                          onSelect={(currentValue) => {
+                            setSymbolFilter(currentValue === 'all' ? 'all' : currentValue.toUpperCase());
+                            setSymbolSearchOpen(false);
+                            setCurrentPage(1); // Reset to first page when filtering
+                          }}
+                        >
+                          <Check
+                            className={`mr-2 h-4 w-4 ${
+                              symbolFilter === symbol ? "opacity-100" : "opacity-0"
+                            }`}
+                          />
+                          {symbol === 'all' ? 'All Symbols' : symbol}
+                        </CommandItem>
+                      ))}
+                    </CommandGroup>
+                  </CommandList>
+                </Command>
+              </PopoverContent>
+            </Popover>
+          </div>
+          
+          <div className="flex items-center gap-2">
+            <span className="text-sm text-muted-foreground whitespace-nowrap">Side:</span>
+            <Select value={sideFilter} onValueChange={(value) => {
+              setSideFilter(value as typeof sideFilter);
+              setCurrentPage(1); // Reset to first page when filtering
+            }}>
+              <SelectTrigger className="w-[140px]">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Trades</SelectItem>
+                <SelectItem value="long">Long Only</SelectItem>
+                <SelectItem value="short">Short Only</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
         </div>
       </div>
 
@@ -1032,9 +1101,37 @@ const TradesOverview = ({ onSymbolSelect, onOpenChat }: TradesOverviewProps) => 
           {/* Closed Trades */}
           {closedTrades.length > 0 && (
             <div>
-              <h3 className="text-lg font-semibold mb-4">Closed Trades (Last 30 Days)</h3>
+              <div className="flex justify-between items-center mb-4">
+                <h3 className="text-lg font-semibold">
+                  Closed Trades ({closedTrades.length} total)
+                  {symbolFilter !== 'all' && ` - ${symbolFilter}`}
+                </h3>
+                {totalClosedPages > 1 && (
+                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+                      disabled={currentPage === 1}
+                    >
+                      <ChevronLeft className="w-4 h-4" />
+                    </Button>
+                    <span>
+                      Page {currentPage} of {totalClosedPages}
+                    </span>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setCurrentPage(prev => Math.min(totalClosedPages, prev + 1))}
+                      disabled={currentPage === totalClosedPages}
+                    >
+                      <ChevronRight className="w-4 h-4" />
+                    </Button>
+                  </div>
+                )}
+              </div>
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {closedTrades.slice(0, 12).map(trade => (
+                {paginatedClosedTrades.map(trade => (
                   <TradeCard key={trade.trade_id} trade={trade} />
                 ))}
               </div>
