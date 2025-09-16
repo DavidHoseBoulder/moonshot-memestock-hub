@@ -636,11 +636,15 @@ const RedditSentimentHomescreen = () => {
                 <Target className="w-5 h-5" />
                  Recommended Trades
               </CardTitle>
-              {kpiData && (
-                <p className="text-sm text-muted-foreground mt-1">
-                  Candidates as of {formatDate(kpiData.candidates_as_of_date)}
-                </p>
-              )}
+               {kpiData?.candidates_as_of_date ? (
+                 <p className="text-sm text-muted-foreground mt-1">
+                   Candidates as of {formatDate(kpiData.candidates_as_of_date)}
+                 </p>
+               ) : (
+                 <p className="text-sm text-muted-foreground mt-1">
+                   Candidates as of {formatFullDateInDenver(todayInDenverDateString())}
+                 </p>
+               )}
             </div>
             <Button 
               variant="outline" 
