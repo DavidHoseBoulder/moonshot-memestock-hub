@@ -454,30 +454,138 @@ const TradesOverview = ({ onSymbolSelect, onOpenChat }: TradesOverviewProps) => 
       // Fetch trade marks for this trade and selected date
       const tradeMarks = await fetchTradeMarks(trade.trade_id.toString(), selectedDate);
       
-      // 1. Fetch signal data from reddit candidates (existing code)
+      // 1. Fetch signal data from backtest signals for the trade date
       let signalData: SignalData | null = null;
       
-      // Try today's signals first
-      const { data: todaySignals } = await supabase
-        .from('v_reddit_candidates_today')
+      // Look for signal data from the actual trade date
+      const { data: historicalSignals } = await supabase
+        .from('backtest_signals_daily')
         .select('*')
         .eq('symbol', trade.symbol)
-        .eq('horizon', trade.horizon)
+        .eq('entry_date', tradeDate)
         .maybeSingle();
       
-      if (todaySignals) {
+      if (historicalSignals) {
         signalData = {
-          n_mentions: toNumber((todaySignals as any).n_mentions),
-          min_mentions: toNumber((todaySignals as any).min_mentions),
-          used_score: toNumber((todaySignals as any).used_score),
-          pos_thresh: toNumber((todaySignals as any).pos_thresh),
-          use_weighted: (todaySignals as any).use_weighted,
+          n_mentions: toNumber((historicalSignals as any).mentions),
+          min_mentions: toNumber((historicalSignals as any).min_mentions),
+          used_score: toNumber((historicalSignals as any).signal_score),
+          pos_thresh: toNumber((historicalSignals as any).pos_thresh),
+          use_weighted: (historicalSignals as any).use_weighted,
         };
+      } else {
+        // Fallback to today's signals if no historical data
+        const { data: todaySignals } = await supabase
+          .from('v_reddit_candidates_today')
+          .select('*')
+          .eq('symbol', trade.symbol)
+          .eq('horizon', trade.horizon)
+          .maybeSingle();
+        
+        if (todaySignals) {
+          signalData = {
+            n_mentions: toNumber((todaySignals as any).n_mentions),
+            min_mentions: toNumber((todaySignals as any).min_mentions),
+            used_score: toNumber((todaySignals as any).used_score),
+            pos_thresh: toNumber((todaySignals as any).pos_thresh),
+            use_weighted: (todaySignals as any).use_weighted,
+          };
+        }
       }
 
-      // ... rest of existing mention and price history fetching code ...
+      // 2. Fetch Reddit mentions for the trade date
       const mentions: MentionData[] = [];
+      try {
+        // Get mentions from the trade date
+        const { data: mentionIds } = await supabase
+          .from('reddit_mentions')
+          .select('mention_id, doc_id, doc_type')
+          .eq('symbol', trade.symbol)
+          .gte('created_utc', `${tradeDate}T00:00:00Z`)
+          .lt('created_utc', `${tradeDate}T23:59:59Z`)
+          .limit(10);
+
+        if (mentionIds && mentionIds.length > 0) {
+          // Get sentiment data for these mentions
+          const mentionIdList = mentionIds.map(m => (m as any).mention_id);
+          const { data: sentimentData } = await supabase
+            .from('reddit_sentiment')
+            .select('mention_id, score, confidence, label')
+            .in('mention_id', mentionIdList)
+            .limit(10);
+
+          // Get post/comment content
+          const postIds = mentionIds.filter(m => (m as any).doc_type === 'post').map(m => (m as any).doc_id);
+          const commentIds = mentionIds.filter(m => (m as any).doc_type === 'comment').map(m => (m as any).doc_id);
+
+          let postsData: any[] = [];
+          let commentsData: any[] = [];
+
+          if (postIds.length > 0) {
+            const { data: posts } = await supabase
+              .from('reddit_posts')
+              .select('id, title, selftext, permalink')
+              .in('id', postIds)
+              .limit(5);
+            postsData = posts || [];
+          }
+
+          if (commentIds.length > 0) {
+            const { data: comments } = await supabase
+              .from('reddit_comments')
+              .select('comment_id, body, permalink')
+              .in('comment_id', commentIds)
+              .limit(5);
+            commentsData = comments || [];
+          }
+
+          // Combine the data
+          mentionIds.forEach((mention: any) => {
+            const sentiment = sentimentData?.find((s: any) => s.mention_id === mention.mention_id);
+            let content: any = {};
+
+            if (mention.doc_type === 'post') {
+              content = postsData.find((p: any) => p.id === mention.doc_id) || {};
+            } else {
+              content = commentsData.find((c: any) => c.comment_id === mention.doc_id) || {};
+            }
+
+            mentions.push({
+              title: content.title || 'Comment',
+              selftext: content.selftext || content.body || '',
+              permalink: content.permalink || '',
+              overall_score: sentiment?.score ? Number(sentiment.score) : undefined,
+              label: sentiment?.label || undefined,
+              confidence: sentiment?.confidence ? Number(sentiment.confidence) : undefined,
+            });
+          });
+        }
+      } catch (error) {
+        console.error('Error fetching mentions:', error);
+      }
+
+      // 3. Fetch price history since entry
       const priceHistory: MarketData[] = [];
+      try {
+        const { data: prices } = await supabase
+          .from('enhanced_market_data')
+          .select('symbol, price_close, timestamp, data_date')
+          .eq('symbol', trade.symbol)
+          .gte('data_date', tradeDate)
+          .order('data_date', { ascending: true })
+          .limit(30);
+
+        if (prices) {
+          priceHistory.push(...prices.map((p: any) => ({
+            symbol: p.symbol,
+            price: Number(p.price_close),
+            timestamp: p.timestamp,
+            data_date: p.data_date,
+          })));
+        }
+      } catch (error) {
+        console.error('Error fetching price history:', error);
+      }
 
       setTradeDetailData({
         signal: signalData || undefined,
