@@ -252,6 +252,21 @@ SQL
     ```
 
   - The latest run shows 15 promoted winners vs. 6 full-grid survivors. Full-grid mode drops brittle pockets (e.g., `AAPL 3d LONG 1/0.15`) and admits more robust cells (e.g., `HOOD 1d LONG 1/0.30`, `SOFI 5d LONG 2/0.20`), providing the validation artifact before enabling `USE_FULL_GRID` in promotion.
+- Subreddit/author enrichment
+  - Script: `diagnostics/trade_mentions_enrichment.sql`
+  - Purpose: builds views `v_trade_mentions_primary`, `v_trade_perf_by_subreddit`, and `v_trade_perf_by_author_tier` so you can track signal quality by forum/author before enabling gates.
+  - Example:
+
+    ```bash
+    psql "$PGURI" -f reddit-utils/diagnostics/trade_mentions_enrichment.sql
+
+    psql "$PGURI" <<'SQL'
+    SELECT * FROM v_trade_perf_by_subreddit ORDER BY n_trades DESC LIMIT 20;
+    SELECT * FROM v_trade_perf_by_author_tier ORDER BY n_trades DESC;
+    SQL
+    ```
+
+  - These views read from `trades` plus the enriched `reddit_mentions` metadata; keep them in the validation pack while enrichment stays observation-only.
 - Ranking: `USE_LB_RANKING=1` to order by LB instead of Sharpe in outputs/winner previews.
 - Folds & stability: `USE_FOLDS` (alias) and/or `REQUIRE_STABLE`, `FOLD_FRAC` (e.g., 0.70), `SHARPE_FRAC`, optional `REQUIRE_RANK_CONSISTENT`, `RANK_TOP_K`.
 - Bands: `BAND_STRONG`, `BAND_MODERATE`, `BAND_WEAK` — emitted as `band`.

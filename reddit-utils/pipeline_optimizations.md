@@ -140,8 +140,8 @@ CREATE INDEX IF NOT EXISTS idx_bsg_group ON backtest_sweep_grid (symbol,horizon,
 - Summary: Capture subreddit and author quality signals for diagnostics and future filters.
 - SQL touchpoints: ingestion → `reddit_mentions` → `v_entry_candidates`.
 - Tasks:
-  - [ ] Ensure `subreddit`, `author`, `author_karma`, `doc_type` flow through.
-  - [ ] Add diagnostics tables: perf by subreddit band, by author tiers.
+  - [x] Ensure `subreddit`, `author`, `author_karma`, `doc_type` flow through.
+  - [x] Add diagnostics tables: perf by subreddit band, by author tiers.
   - [ ] Do not gate rules yet; observe only.
 - Validation:
   - [ ] Perf breakdowns render with sensible distributions.
@@ -210,6 +210,7 @@ CREATE INDEX IF NOT EXISTS idx_bsg_group ON backtest_sweep_grid (symbol,horizon,
 - Promotion baselines: `promotion_report.sql` now surfaces naive/random baseline comparisons (per-rule and aggregate) for the promoted set.
 - Post-seeding hygiene: Tail review workflow documented in `BACKTESTING_PIPELINE.md`; manual rule tightening via direct updates to `live_sentiment_entry_rules` now part of close-out.
 - Seeding dry-run: `seed_paper_trades_rules_only.sql`/runner accept `DRY_RUN=1` plus `DPT_BY_BAND` overrides, emitting band-factor summaries without writing to `trades`.
+- Enrichment diagnostics: `diagnostics/trade_mentions_enrichment.sql` defines `v_trade_mentions_primary`, `v_trade_perf_by_subreddit`, and `v_trade_perf_by_author_tier` for monitoring subreddit/author signal health without gating trades yet.
 
 ## Pre-TA Close-Out Checklist (2025-09)
 
