@@ -313,9 +313,9 @@ SELECT
     WHEN 5 THEN p.close_t5
   END AS exit_close,
   CASE s.hold_days
-    WHEN 1 THEN s.dir * (p.close_t1 / p.close - 1.0)
-    WHEN 3 THEN s.dir * (p.close_t3 / p.close - 1.0)
-    WHEN 5 THEN s.dir * (p.close_t5 / p.close - 1.0)
+    WHEN 1 THEN s.dir * (p.close_t1 / NULLIF(p.close, 0) - 1.0)
+    WHEN 3 THEN s.dir * (p.close_t3 / NULLIF(p.close, 0) - 1.0)
+    WHEN 5 THEN s.dir * (p.close_t5 / NULLIF(p.close, 0) - 1.0)
   END AS fwd_ret
 FROM tmp_sig_start s
 JOIN tmp_px p
@@ -325,7 +325,9 @@ WHERE CASE s.hold_days
         WHEN 1 THEN p.close_t1
         WHEN 3 THEN p.close_t3
         WHEN 5 THEN p.close_t5
-      END IS NOT NULL;
+      END IS NOT NULL
+  AND p.close IS NOT NULL
+  AND p.close <> 0;
 
 \if :DEBUG
   SELECT 'tmp_fwd_n' AS label, COUNT(*) AS n FROM tmp_fwd;
@@ -518,9 +520,9 @@ SELECT
     WHEN 5 THEN p.close_t5
   END AS exit_close,
   CASE s.hold_days
-    WHEN 1 THEN s.dir * (p.close_t1 / p.close - 1.0)
-    WHEN 3 THEN s.dir * (p.close_t3 / p.close - 1.0)
-    WHEN 5 THEN s.dir * (p.close_t5 / p.close - 1.0)
+    WHEN 1 THEN s.dir * (p.close_t1 / NULLIF(p.close, 0) - 1.0)
+    WHEN 3 THEN s.dir * (p.close_t3 / NULLIF(p.close, 0) - 1.0)
+    WHEN 5 THEN s.dir * (p.close_t5 / NULLIF(p.close, 0) - 1.0)
   END AS fwd_ret
 FROM tmp_baseline_sig_start s
 JOIN tmp_px p ON p.symbol=s.symbol AND p.d=s.start_day
@@ -528,7 +530,9 @@ WHERE CASE s.hold_days
         WHEN 1 THEN p.close_t1
         WHEN 3 THEN p.close_t3
         WHEN 5 THEN p.close_t5
-      END IS NOT NULL;
+      END IS NOT NULL
+  AND p.close IS NOT NULL
+  AND p.close <> 0;
 
 DROP TABLE IF EXISTS tmp_baseline_agg;
 CREATE TEMP TABLE tmp_baseline_agg AS
@@ -538,12 +542,99 @@ SELECT symbol,horizon,side,
 FROM tmp_baseline_fwd
 GROUP BY 1,2,3;
 
+-- Random baseline: deterministic shuffle per (symbol,horizon,side)
+DROP TABLE IF EXISTS tmp_random_pool;
+CREATE TEMP TABLE tmp_random_pool AS
+WITH horizon_map AS (
+  SELECT '1d'::text AS horizon, 1 AS hold_days UNION ALL
+  SELECT '3d'::text AS horizon, 3 AS hold_days UNION ALL
+  SELECT '5d'::text AS horizon, 5 AS hold_days
+), side_map AS (
+  SELECT 'LONG'::text AS side, 1 AS dir UNION ALL
+  SELECT 'SHORT'::text AS side, -1 AS dir
+)
+SELECT
+  p.symbol,
+  h.horizon,
+  s.side,
+  p.d AS start_day,
+  s.dir * CASE h.hold_days
+            WHEN 1 THEN (p.close_t1 / NULLIF(p.close, 0) - 1.0)
+            WHEN 3 THEN (p.close_t3 / NULLIF(p.close, 0) - 1.0)
+            WHEN 5 THEN (p.close_t5 / NULLIF(p.close, 0) - 1.0)
+          END AS fwd_ret
+FROM tmp_px p
+CROSS JOIN horizon_map h
+CROSS JOIN side_map s
+WHERE CASE h.hold_days
+        WHEN 1 THEN p.close_t1
+        WHEN 3 THEN p.close_t3
+        WHEN 5 THEN p.close_t5
+      END IS NOT NULL
+  AND p.close IS NOT NULL
+  AND p.close <> 0;
+
+DROP TABLE IF EXISTS tmp_random_ranked;
+CREATE TEMP TABLE tmp_random_ranked AS
+SELECT
+  rp.symbol,
+  rp.horizon,
+  rp.side,
+  rp.start_day,
+  rp.fwd_ret,
+  ROW_NUMBER() OVER (
+    PARTITION BY rp.symbol, rp.horizon, rp.side
+    ORDER BY md5(rp.symbol || rp.horizon || rp.side || rp.start_day::text)
+  ) AS rand_rank
+FROM tmp_random_pool rp;
+
+DROP TABLE IF EXISTS tmp_random_baseline;
+CREATE TEMP TABLE tmp_random_baseline AS
+SELECT
+  rr.symbol,
+  rr.horizon,
+  rr.side,
+  rr.fwd_ret
+FROM tmp_random_ranked rr
+JOIN tmp_baseline_agg b
+  ON b.symbol  = rr.symbol
+ AND b.horizon = rr.horizon
+ AND b.side    = rr.side
+WHERE rr.rand_rank <= COALESCE(b.base_trades, 0);
+
+DROP TABLE IF EXISTS tmp_random_baseline_agg;
+CREATE TEMP TABLE tmp_random_baseline_agg AS
+SELECT
+  symbol,
+  horizon,
+  side,
+  COUNT(*)::int AS base_trades,
+  AVG(fwd_ret)::numeric AS base_avg_ret
+FROM tmp_random_baseline
+GROUP BY 1,2,3;
+
 -- Attach uplift to results
-ALTER TABLE tmp_results_final ADD COLUMN uplift numeric;
+ALTER TABLE tmp_results_final
+  ADD COLUMN baseline_naive_trades int,
+  ADD COLUMN baseline_naive_avg_ret numeric,
+  ADD COLUMN baseline_random_trades int,
+  ADD COLUMN baseline_random_avg_ret numeric,
+  ADD COLUMN uplift numeric,
+  ADD COLUMN uplift_random numeric;
+
 UPDATE tmp_results_final r
-SET uplift = r.avg_ret - b.base_avg_ret
+SET baseline_naive_trades   = b.base_trades,
+    baseline_naive_avg_ret  = b.base_avg_ret,
+    uplift                  = r.avg_ret - b.base_avg_ret
 FROM tmp_baseline_agg b
 WHERE b.symbol=r.symbol AND b.horizon=r.horizon AND b.side=r.side;
+
+UPDATE tmp_results_final r
+SET baseline_random_trades  = br.base_trades,
+    baseline_random_avg_ret = br.base_avg_ret,
+    uplift_random           = r.avg_ret - br.base_avg_ret
+FROM tmp_random_baseline_agg br
+WHERE br.symbol=r.symbol AND br.horizon=r.horizon AND br.side=r.side;
 
 -- Apply uplift gating if requested
 DROP TABLE IF EXISTS tmp_results_gated;
@@ -581,7 +672,13 @@ SELECT
     ELSE 'VERY_WEAK'
   END AS band,
   r.trades, r.avg_ret, r.median_ret, r.win_rate, r.stdev_ret, r.sharpe,
-  r.lb, r.uplift,
+  r.lb,
+  r.baseline_naive_trades,
+  r.baseline_naive_avg_ret,
+  r.baseline_random_trades,
+  r.baseline_random_avg_ret,
+  r.uplift,
+  r.uplift_random,
   d.train_trades, d.valid_trades, d.train_sharpe, d.valid_sharpe,
   d.r_train_rank, d.r_valid_rank,
   r.start_date, r.end_date, r.model_version

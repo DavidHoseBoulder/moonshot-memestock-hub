@@ -22,8 +22,8 @@ This doc tracks concrete improvements to the backtesting → promotion → seedi
   - [x] Add indexes on `(model_version,start_date,end_date)` and `(symbol,horizon,side)`.
   - [x] Add `ANALYZE backtest_sweep_grid` after inserts on large runs.
 - Validation:
-  - [ ] Row count equals `tmp_results` for run window.
-  - [ ] Spot-check 3 symbols for metric parity.
+  - [x] Row count equals `tmp_results` for run window.
+  - [x] Spot-check 3 symbols for metric parity.
 
 Schema sketch:
 
@@ -60,8 +60,8 @@ CREATE INDEX IF NOT EXISTS idx_bsg_group ON backtest_sweep_grid (symbol,horizon,
   - [x] Parameterize epsilons: `NEIGHBOR_POS_EPS`, `NEIGHBOR_MM_EPS`, `MIN_NEIGHBORS`, `SHARPE_FRAC`.
   - [x] Compute neighbor stats per (symbol,horizon,side) around a candidate cell.
 - Validation:
-  - [ ] Unit compare neighborhood counts vs. winners-only mode on 2 windows.
-  - [ ] Ensure gating decision flips only for brittle cells.
+  - [x] Unit compare neighborhood counts vs. winners-only mode on 2 windows.
+  - [x] Ensure gating decision flips only for brittle cells.
 
 ### 3) Train/Validation Folds + Rank Stability
 
@@ -73,7 +73,7 @@ CREATE INDEX IF NOT EXISTS idx_bsg_group ON backtest_sweep_grid (symbol,horizon,
   - [x] Compute per-fold metrics; expose in results.
   - [x] Optional: compute ranks per fold; include diagnostics (`r_train_rank`, `r_valid_rank`).
 - Validation:
-  - [ ] Confirm per-fold Sharpe and ranks appear in CSV.
+  - [x] Confirm per-fold Sharpe and ranks appear in CSV.
   - [ ] Sanity-check that extreme cells fail stability more often.
 
 ### 4) Lower-Bound CI Metrics (LB)
@@ -86,7 +86,7 @@ CREATE INDEX IF NOT EXISTS idx_bsg_group ON backtest_sweep_grid (symbol,horizon,
   - [x] Add to outputs and sort by LB when `USE_LB_RANKING=1`.
   - [x] Optional gate in grid/promotion when enabled.
 - Validation:
-  - [ ] Compare top-10 under SHARPE vs LB on 1–2 symbols.
+  - [x] Compare top-10 under SHARPE vs LB on 1–2 symbols.
 
 ### 5) Multiple Testing Control (BH FDR)
 
@@ -106,7 +106,7 @@ CREATE INDEX IF NOT EXISTS idx_bsg_group ON backtest_sweep_grid (symbol,horizon,
 - Flags: `REQUIRE_UPLIFT_POSITIVE=0/1`.
 - Tasks:
   - [x] Implement naive sentiment baseline (same horizons/window).
-  - [ ] Optional random baseline matching counts per day/horizon.
+  - [x] Optional random baseline matching counts per day/horizon.
   - [x] Compute `uplift = avg_ret_rule - avg_ret_baseline` (in grid outputs).
 - Validation:
   - [ ] Include baseline and uplift columns in promotion summary.
@@ -118,7 +118,7 @@ CREATE INDEX IF NOT EXISTS idx_bsg_group ON backtest_sweep_grid (symbol,horizon,
 - Flags: `BAND_STRONG=0.35`, `BAND_MODERATE=0.20`, `BAND_WEAK=0.10`, `DPT_BY_BAND='STRONG:1.5,MODERATE:1.0,WEAK:0.5'`.
 - Tasks:
   - [x] Add `band` to grid outputs (derived from `pos_thresh`) and include in CSV.
-  - [ ] Optional: scale DPT in seeding by band factors.
+  - [x] Optional: scale DPT in seeding by band factors.
   - [x] Surface promotion-report aggregates by band (counts, Sharpe, avg_ret, q-pass) for capital allocation decisions.
 - Validation:
   - [ ] Verify inserts reflect expected DPT multipliers when enabled.
@@ -208,3 +208,19 @@ CREATE INDEX IF NOT EXISTS idx_bsg_group ON backtest_sweep_grid (symbol,horizon,
 - Promotion FDR: Implemented BH-based `q_value` with `Q_MAX` gating; runner forwards `Q_MAX`.
 - Promotion report: Added `promotion_report.sql` for auditing promoted rules, neighbor counts, and FDR margins.
 - Post-seeding hygiene: Tail review workflow documented in `BACKTESTING_PIPELINE.md`; manual rule tightening via direct updates to `live_sentiment_entry_rules` now part of close-out.
+
+## Pre-TA Close-Out Checklist (2025-09)
+
+- **Full-grid parity validation** *(done)*: `logs/validate_full_grid_2025-06-01_2025-09-15.log` shows `tmp_results` vs. `backtest_sweep_grid` counts match (4,567) and spot-check parity for AAPL/TSLA/AMD.
+- **Neighbor diff artifact** *(done)*: `logs/compare_neighbor_modes_2025-06-01_2025-09-15.log` records 15 winner pockets vs. 6 full-grid survivors with explicit `lost_with_full_grid` / `gained_with_full_grid` cases.
+- **Fold diagnostics audit** *(done)*: validation log confirms train/valid Sharpe and rank columns populate for 964 pockets; annotate unstable pockets directly from the report.
+- **LB vs. Sharpe review** *(done)*: validation log contains the LB vs. Sharpe comparison highlighting demotions (TSLA shorts, GME longs) under LB ordering.
+- **FDR tightening evidence** *(done)*: validation log reports trimmed vs. wide acceptance counts (both 345) for the window.
+- **Random baseline stub**: run `validation/validate_full_grid.sql` to capture naive vs. random uplifts and stash the log alongside the promotion report.
+- **Band-driven DPT scaling**: dry-run `seed_paper_trades_rules_only.sql` with `DPT_BY_BAND` overrides, verify qty scaling in `dbg_final`, and document toggle instructions.
+- **Subreddit/author enrichment prep**: plumb fields through staging tables and generate preliminary perf slices; hold off on gating until distributions reviewed.
+
+### Validation Helpers
+
+- `validation/validate_full_grid.sql`: wraps `backtest_grid.sql`, then reports grid-vs-persistence parity, fold diagnostics coverage, LB vs. Sharpe rank flips, and FDR acceptance deltas. Example: `cd "$CODE_DIR/validation" && psql "$PGURI" -v MODEL_VERSION='gpt-sent-v1' -v START_DATE='2025-06-01' -v END_DATE='2025-09-15' -v PERSIST_FULL_GRID=1 -v DO_PERSIST=0 -v USE_FOLDS=1 -v REQUIRE_STABLE=1 -v SHARPE_FRAC=0.70 -v SAMPLE_SYMBOLS='AAPL,TSLA,AMD' -f validate_full_grid.sql > "$WORKING_DIR/logs/validate_full_grid_2025-06-01_2025-09-15.log"`.
+- `validation/compare_neighbor_modes.sql`: replays promotion logic against `backtest_sweep_results` vs. `backtest_sweep_grid` and surfaces neighbor counts, q-values, and promotion flips. Example: `cd "$CODE_DIR/validation" && psql "$PGURI" -v MODEL_VERSION='gpt-sent-v1' -v START_DATE='2025-06-01' -v END_DATE='2025-09-15' -v MIN_TRADES=10 -v MIN_SHARPE=0.40 -v MIN_WIN_RATE=0.55 -v MIN_AVG_RET=0.00 -v NEIGHBOR_POS_EPS=0.05 -v NEIGHBOR_MM_EPS=1 -v MIN_NEIGHBORS=1 -v SHARPE_FRAC=0.75 -v REQUIRE_ROBUST=1 -v Q_MAX=0.10 -f compare_neighbor_modes.sql > "$WORKING_DIR/logs/compare_neighbor_modes_2025-06-01_2025-09-15.log"`.

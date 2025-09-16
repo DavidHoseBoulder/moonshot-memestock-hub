@@ -198,6 +198,58 @@ SQL
 - Grid sweep lists: `MIN_MENTIONS_LIST`, `POS_THRESH_LIST`, `HORIZONS`, `SIDES`.
 - Quality gates: `MIN_TRADES`, `MIN_SHARPE`. Optional LB gating `REQUIRE_LB_POSITIVE` with `LB_Z` (default 1.64).
 - Baseline uplift gating: `REQUIRE_UPLIFT_POSITIVE`.
+
+## Validation Helpers
+
+- Full-grid parity and diagnostics
+  - Script: `validation/validate_full_grid.sql`
+  - Purpose: reruns `backtest_grid.sql` in-session, diffing `tmp_results` vs. `backtest_sweep_grid`, checking fold coverage, surfacing LB vs. Sharpe rank flips, and reporting BH FDR acceptance deltas.
+  - Example:
+
+    ```bash
+    cd "$CODE_DIR/validation" && \
+    psql "$PGURI" \
+      -v MODEL_VERSION='gpt-sent-v1' \
+      -v START_DATE='2025-06-01' \
+      -v END_DATE='2025-09-15' \
+      -v PERSIST_FULL_GRID=1 \
+      -v DO_PERSIST=0 \
+      -v USE_FOLDS=1 \
+      -v REQUIRE_STABLE=1 \
+      -v SHARPE_FRAC=0.70 \
+      -v SAMPLE_SYMBOLS='AAPL,TSLA,AMD' \
+      -f validate_full_grid.sql \
+      > "$WORKING_DIR/logs/validate_full_grid_2025-06-01_2025-09-15.log"
+    ```
+
+  - The 2025-06-01→2025-09-15 log confirms `tmp_results_count = persisted_count = 4567`, fold diagnostics on 964 pockets, LB demotions of brittle TSLA/GME rows, and trimmed vs. wide FDR acceptance both equal to 345.
+
+- Winners vs. full-grid neighbor comparison
+  - Script: `validation/compare_neighbor_modes.sql`
+  - Purpose: replays promotion filters against `backtest_sweep_results` and `backtest_sweep_grid`, emitting summary counts plus `lost_with_full_grid` / `gained_with_full_grid` diffs.
+  - Example:
+
+    ```bash
+    cd "$CODE_DIR/validation" && \
+    psql "$PGURI" \
+      -v MODEL_VERSION='gpt-sent-v1' \
+      -v START_DATE='2025-06-01' \
+      -v END_DATE='2025-09-15' \
+      -v MIN_TRADES=10 \
+      -v MIN_SHARPE=0.40 \
+      -v MIN_WIN_RATE=0.55 \
+      -v MIN_AVG_RET=0.00 \
+      -v NEIGHBOR_POS_EPS=0.05 \
+      -v NEIGHBOR_MM_EPS=1 \
+      -v MIN_NEIGHBORS=1 \
+      -v SHARPE_FRAC=0.75 \
+      -v REQUIRE_ROBUST=1 \
+      -v Q_MAX=0.10 \
+      -f compare_neighbor_modes.sql \
+      > "$WORKING_DIR/logs/compare_neighbor_modes_2025-06-01_2025-09-15.log"
+    ```
+
+  - The latest run shows 15 promoted winners vs. 6 full-grid survivors. Full-grid mode drops brittle pockets (e.g., `AAPL 3d LONG 1/0.15`) and admits more robust cells (e.g., `HOOD 1d LONG 1/0.30`, `SOFI 5d LONG 2/0.20`), providing the validation artifact before enabling `USE_FULL_GRID` in promotion.
 - Ranking: `USE_LB_RANKING=1` to order by LB instead of Sharpe in outputs/winner previews.
 - Folds & stability: `USE_FOLDS` (alias) and/or `REQUIRE_STABLE`, `FOLD_FRAC` (e.g., 0.70), `SHARPE_FRAC`, optional `REQUIRE_RANK_CONSISTENT`, `RANK_TOP_K`.
 - Bands: `BAND_STRONG`, `BAND_MODERATE`, `BAND_WEAK` — emitted as `band`.
