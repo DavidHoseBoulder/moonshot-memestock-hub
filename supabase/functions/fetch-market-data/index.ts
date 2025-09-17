@@ -47,6 +47,8 @@ Deno.serve(async (req) => {
         const period1 = Math.floor((Date.now() - (days * 24 * 60 * 60 * 1000)) / 1000)
         const period2 = Math.floor(Date.now() / 1000)
         
+        console.log(`Period1: ${new Date(period1 * 1000).toISOString()}, Period2: ${new Date(period2 * 1000).toISOString()}`)
+        
         const yahooUrl = `https://query1.finance.yahoo.com/v8/finance/chart/${symbol}?period1=${period1}&period2=${period2}&interval=1d`
         
         console.log(`Fetching data for ${symbol} from Yahoo Finance`)
@@ -118,7 +120,7 @@ Deno.serve(async (req) => {
         .from('enhanced_market_data')
         .upsert(enhancedData, { 
           onConflict: 'symbol,data_date',
-          ignoreDuplicates: true 
+          ignoreDuplicates: false 
         })
 
       if (dbError) {
