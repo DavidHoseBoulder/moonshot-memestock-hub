@@ -94,10 +94,10 @@ moonshot-memestock-hub/reddit-utils/reddit_pipeline.sh \
 ## Stages
 
 - `fetch_posts`: Deno script reads `SUBREDDITS`, `START_DATE`, `END_DATE`; writes NDJSON to `OUT_DIR/<sub>/<YYYY-MM-DD>.ndjson`.
-- `load_posts`: Cleans and loads posts NDJSON using `load_reddit_posts.sql`.
+- `load_posts`: Cleans and loads posts NDJSON using `load_reddit_posts.sql` (persists `subreddit`, `author`, title/body, score fields into `reddit_finance_keep_norm`).
 - `fetch_comments`: Deno script reads `SUBREDDITS` (sourced from `COMMENTS_FILTER`), `START_DATE`, `END_DATE`; writes NDJSON to `OUT_COMMENTS_DIR/<sub>/<YYYY-MM-DD>.ndjson`.
 - `load_comments`: Normalizes and loads comments NDJSON using `load_reddit_comments.sql`.
-- `build_mentions`: Executes `insert_mentions_window.sql` over the date window; populates `reddit_mentions`.
+- `build_mentions`: Executes `insert_mentions_window.sql` over the date window; populates `reddit_mentions` (now includes `doc_type`, `doc_id`, `subreddit`, `author`, `author_karma` when available).
 - `score`: Runs `reddit_score_mentions.ts` (OpenAI); writes per-mention sentiment back to DB.
 - `signals`: Touches and prints `v_reddit_daily_signals` counts for sanity.
 
@@ -107,7 +107,10 @@ moonshot-memestock-hub/reddit-utils/reddit_pipeline.sh \
   - `WORKING_DIR/out/<sub>/<YYYY-MM-DD>.ndjson`
   - `WORKING_DIR/out_comments/<sub>/<YYYY-MM-DD>.ndjson`
 - Tables/Views (typical):
-  - `reddit_finance_keep_norm`, `reddit_comments[_clean]`, `reddit_mentions`, `v_scoring_posts`, `v_reddit_daily_signals`
+  - `reddit_finance_keep_norm` (post metadata including `author`)
+  - `reddit_comments[_clean]` (comment metadata with `author`)
+  - `reddit_mentions` (symbol mentions carrying doc metadata + author fields)
+  - `v_scoring_posts`, `v_reddit_daily_signals`
 
 ## Scheduling
 

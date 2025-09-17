@@ -30,6 +30,11 @@ SELECT DISTINCT ON (id)
 FROM pg_temp.stage_json
 WHERE jsonb_typeof(doc) = 'object'
 ORDER BY id
-ON CONFLICT (id) DO NOTHING;
+ON CONFLICT (id) DO UPDATE
+  SET subreddit   = EXCLUDED.subreddit,
+      author      = EXCLUDED.author,
+      created_utc = EXCLUDED.created_utc,
+      title       = EXCLUDED.title,
+      selftext    = EXCLUDED.selftext;
 
 COMMIT;
