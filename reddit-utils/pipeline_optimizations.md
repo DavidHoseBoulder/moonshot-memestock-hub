@@ -142,9 +142,9 @@ CREATE INDEX IF NOT EXISTS idx_bsg_group ON backtest_sweep_grid (symbol,horizon,
 - Tasks:
   - [x] Ensure `subreddit`, `author`, `author_karma`, `doc_type` flow through.
   - [x] Add diagnostics tables: perf by subreddit band, by author tiers.
-  - [ ] Do not gate rules yet; observe only.
+  - [x] Do not gate rules yet; observe only.
 - Validation:
-  - [ ] Perf breakdowns render with sensible distributions.
+  - [x] Perf breakdowns render with sensible distributions.
 
 ### 10) Traditional TA Gates (volume_zscore & RSI)
 
