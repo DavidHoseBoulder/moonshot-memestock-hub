@@ -74,9 +74,85 @@ export type Database = {
         }
         Relationships: []
       }
+      backtest_sweep_grid: {
+        Row: {
+          avg_ret: number | null
+          baseline_naive_avg_ret: number | null
+          baseline_naive_trades: number | null
+          baseline_random_avg_ret: number | null
+          baseline_random_trades: number | null
+          created_at: string | null
+          end_date: string
+          horizon: string
+          median_ret: number | null
+          min_mentions: number
+          model_version: string
+          pos_thresh: number
+          sharpe: number | null
+          side: string
+          start_date: string
+          stdev_ret: number | null
+          symbol: string
+          trades: number
+          uplift: number | null
+          uplift_random: number | null
+          win_rate: number | null
+        }
+        Insert: {
+          avg_ret?: number | null
+          baseline_naive_avg_ret?: number | null
+          baseline_naive_trades?: number | null
+          baseline_random_avg_ret?: number | null
+          baseline_random_trades?: number | null
+          created_at?: string | null
+          end_date: string
+          horizon: string
+          median_ret?: number | null
+          min_mentions: number
+          model_version: string
+          pos_thresh: number
+          sharpe?: number | null
+          side: string
+          start_date: string
+          stdev_ret?: number | null
+          symbol: string
+          trades: number
+          uplift?: number | null
+          uplift_random?: number | null
+          win_rate?: number | null
+        }
+        Update: {
+          avg_ret?: number | null
+          baseline_naive_avg_ret?: number | null
+          baseline_naive_trades?: number | null
+          baseline_random_avg_ret?: number | null
+          baseline_random_trades?: number | null
+          created_at?: string | null
+          end_date?: string
+          horizon?: string
+          median_ret?: number | null
+          min_mentions?: number
+          model_version?: string
+          pos_thresh?: number
+          sharpe?: number | null
+          side?: string
+          start_date?: string
+          stdev_ret?: number | null
+          symbol?: string
+          trades?: number
+          uplift?: number | null
+          uplift_random?: number | null
+          win_rate?: number | null
+        }
+        Relationships: []
+      }
       backtest_sweep_results: {
         Row: {
           avg_ret: number | null
+          baseline_naive_avg_ret: number | null
+          baseline_naive_trades: number | null
+          baseline_random_avg_ret: number | null
+          baseline_random_trades: number | null
           created_at: string
           end_date: string | null
           horizon: string
@@ -90,11 +166,17 @@ export type Database = {
           stdev_ret: number | null
           symbol: string
           trades: number
+          uplift: number | null
+          uplift_random: number | null
           use_weighted: boolean
           win_rate: number | null
         }
         Insert: {
           avg_ret?: number | null
+          baseline_naive_avg_ret?: number | null
+          baseline_naive_trades?: number | null
+          baseline_random_avg_ret?: number | null
+          baseline_random_trades?: number | null
           created_at?: string
           end_date?: string | null
           horizon: string
@@ -108,11 +190,17 @@ export type Database = {
           stdev_ret?: number | null
           symbol: string
           trades: number
+          uplift?: number | null
+          uplift_random?: number | null
           use_weighted: boolean
           win_rate?: number | null
         }
         Update: {
           avg_ret?: number | null
+          baseline_naive_avg_ret?: number | null
+          baseline_naive_trades?: number | null
+          baseline_random_avg_ret?: number | null
+          baseline_random_trades?: number | null
           created_at?: string
           end_date?: string | null
           horizon?: string
@@ -126,6 +214,8 @@ export type Database = {
           stdev_ret?: number | null
           symbol?: string
           trades?: number
+          uplift?: number | null
+          uplift_random?: number | null
           use_weighted?: boolean
           win_rate?: number | null
         }
@@ -197,6 +287,72 @@ export type Database = {
         }
         Relationships: []
       }
+      cmp_per_symbol_baseline: {
+        Row: {
+          avg_ret: number | null
+          horizon: string | null
+          n_trades: number | null
+          sharpe: number | null
+          side: string | null
+          symbol: string | null
+          vol: number | null
+          win_rate: number | null
+        }
+        Insert: {
+          avg_ret?: number | null
+          horizon?: string | null
+          n_trades?: number | null
+          sharpe?: number | null
+          side?: string | null
+          symbol?: string | null
+          vol?: number | null
+          win_rate?: number | null
+        }
+        Update: {
+          avg_ret?: number | null
+          horizon?: string | null
+          n_trades?: number | null
+          sharpe?: number | null
+          side?: string | null
+          symbol?: string | null
+          vol?: number | null
+          win_rate?: number | null
+        }
+        Relationships: []
+      }
+      cmp_per_symbol_gated: {
+        Row: {
+          avg_ret: number | null
+          horizon: string | null
+          n_trades: number | null
+          sharpe: number | null
+          side: string | null
+          symbol: string | null
+          vol: number | null
+          win_rate: number | null
+        }
+        Insert: {
+          avg_ret?: number | null
+          horizon?: string | null
+          n_trades?: number | null
+          sharpe?: number | null
+          side?: string | null
+          symbol?: string | null
+          vol?: number | null
+          win_rate?: number | null
+        }
+        Update: {
+          avg_ret?: number | null
+          horizon?: string | null
+          n_trades?: number | null
+          sharpe?: number | null
+          side?: string | null
+          symbol?: string | null
+          vol?: number | null
+          win_rate?: number | null
+        }
+        Relationships: []
+      }
       daily_trade_marks: {
         Row: {
           created_at: string
@@ -242,6 +398,291 @@ export type Database = {
           symbol?: string
           trade_id?: string
           unrealized_pnl?: number | null
+        }
+        Relationships: []
+      }
+      dbg_filtered: {
+        Row: {
+          avg_score: number | null
+          band: string | null
+          horizon: string | null
+          margin: number | null
+          min_mentions: number | null
+          model_version: string | null
+          n_mentions: number | null
+          pos_thresh: number | null
+          side: string | null
+          symbol: string | null
+          trade_date: string | null
+          use_weighted: boolean | null
+          used_score: number | null
+        }
+        Insert: {
+          avg_score?: number | null
+          band?: string | null
+          horizon?: string | null
+          margin?: number | null
+          min_mentions?: number | null
+          model_version?: string | null
+          n_mentions?: number | null
+          pos_thresh?: number | null
+          side?: string | null
+          symbol?: string | null
+          trade_date?: string | null
+          use_weighted?: boolean | null
+          used_score?: number | null
+        }
+        Update: {
+          avg_score?: number | null
+          band?: string | null
+          horizon?: string | null
+          margin?: number | null
+          min_mentions?: number | null
+          model_version?: string | null
+          n_mentions?: number | null
+          pos_thresh?: number | null
+          side?: string | null
+          symbol?: string | null
+          trade_date?: string | null
+          use_weighted?: boolean | null
+          used_score?: number | null
+        }
+        Relationships: []
+      }
+      dbg_final: {
+        Row: {
+          band: string | null
+          band_factor: number | null
+          entry_d: string | null
+          entry_price: number | null
+          exit_d: string | null
+          exit_price: number | null
+          horizon: string | null
+          margin: number | null
+          min_mentions: number | null
+          model_version: string | null
+          pos_thresh: number | null
+          qty: number | null
+          side: string | null
+          symbol: string | null
+          trade_date: string | null
+          use_weighted: boolean | null
+          used_score: number | null
+        }
+        Insert: {
+          band?: string | null
+          band_factor?: number | null
+          entry_d?: string | null
+          entry_price?: number | null
+          exit_d?: string | null
+          exit_price?: number | null
+          horizon?: string | null
+          margin?: number | null
+          min_mentions?: number | null
+          model_version?: string | null
+          pos_thresh?: number | null
+          qty?: number | null
+          side?: string | null
+          symbol?: string | null
+          trade_date?: string | null
+          use_weighted?: boolean | null
+          used_score?: number | null
+        }
+        Update: {
+          band?: string | null
+          band_factor?: number | null
+          entry_d?: string | null
+          entry_price?: number | null
+          exit_d?: string | null
+          exit_price?: number | null
+          horizon?: string | null
+          margin?: number | null
+          min_mentions?: number | null
+          model_version?: string | null
+          pos_thresh?: number | null
+          qty?: number | null
+          side?: string | null
+          symbol?: string | null
+          trade_date?: string | null
+          use_weighted?: boolean | null
+          used_score?: number | null
+        }
+        Relationships: []
+      }
+      dbg_priced: {
+        Row: {
+          avg_score: number | null
+          band: string | null
+          entry_d: string | null
+          entry_price: number | null
+          exit_d: string | null
+          exit_price: number | null
+          horizon: string | null
+          margin: number | null
+          min_mentions: number | null
+          model_version: string | null
+          n_mentions: number | null
+          pos_thresh: number | null
+          side: string | null
+          symbol: string | null
+          trade_date: string | null
+          use_weighted: boolean | null
+          used_score: number | null
+        }
+        Insert: {
+          avg_score?: number | null
+          band?: string | null
+          entry_d?: string | null
+          entry_price?: number | null
+          exit_d?: string | null
+          exit_price?: number | null
+          horizon?: string | null
+          margin?: number | null
+          min_mentions?: number | null
+          model_version?: string | null
+          n_mentions?: number | null
+          pos_thresh?: number | null
+          side?: string | null
+          symbol?: string | null
+          trade_date?: string | null
+          use_weighted?: boolean | null
+          used_score?: number | null
+        }
+        Update: {
+          avg_score?: number | null
+          band?: string | null
+          entry_d?: string | null
+          entry_price?: number | null
+          exit_d?: string | null
+          exit_price?: number | null
+          horizon?: string | null
+          margin?: number | null
+          min_mentions?: number | null
+          model_version?: string | null
+          n_mentions?: number | null
+          pos_thresh?: number | null
+          side?: string | null
+          symbol?: string | null
+          trade_date?: string | null
+          use_weighted?: boolean | null
+          used_score?: number | null
+        }
+        Relationships: []
+      }
+      dbg_ranked: {
+        Row: {
+          avg_score: number | null
+          band: string | null
+          entry_d: string | null
+          entry_price: number | null
+          exit_d: string | null
+          exit_price: number | null
+          horizon: string | null
+          margin: number | null
+          min_mentions: number | null
+          model_version: string | null
+          n_mentions: number | null
+          pos_thresh: number | null
+          rn: number | null
+          side: string | null
+          symbol: string | null
+          trade_date: string | null
+          use_weighted: boolean | null
+          used_score: number | null
+        }
+        Insert: {
+          avg_score?: number | null
+          band?: string | null
+          entry_d?: string | null
+          entry_price?: number | null
+          exit_d?: string | null
+          exit_price?: number | null
+          horizon?: string | null
+          margin?: number | null
+          min_mentions?: number | null
+          model_version?: string | null
+          n_mentions?: number | null
+          pos_thresh?: number | null
+          rn?: number | null
+          side?: string | null
+          symbol?: string | null
+          trade_date?: string | null
+          use_weighted?: boolean | null
+          used_score?: number | null
+        }
+        Update: {
+          avg_score?: number | null
+          band?: string | null
+          entry_d?: string | null
+          entry_price?: number | null
+          exit_d?: string | null
+          exit_price?: number | null
+          horizon?: string | null
+          margin?: number | null
+          min_mentions?: number | null
+          model_version?: string | null
+          n_mentions?: number | null
+          pos_thresh?: number | null
+          rn?: number | null
+          side?: string | null
+          symbol?: string | null
+          trade_date?: string | null
+          use_weighted?: boolean | null
+          used_score?: number | null
+        }
+        Relationships: []
+      }
+      dbg_sched: {
+        Row: {
+          avg_score: number | null
+          band: string | null
+          entry_d: string | null
+          exit_d: string | null
+          horizon: string | null
+          margin: number | null
+          min_mentions: number | null
+          model_version: string | null
+          n_mentions: number | null
+          pos_thresh: number | null
+          side: string | null
+          symbol: string | null
+          trade_date: string | null
+          use_weighted: boolean | null
+          used_score: number | null
+        }
+        Insert: {
+          avg_score?: number | null
+          band?: string | null
+          entry_d?: string | null
+          exit_d?: string | null
+          horizon?: string | null
+          margin?: number | null
+          min_mentions?: number | null
+          model_version?: string | null
+          n_mentions?: number | null
+          pos_thresh?: number | null
+          side?: string | null
+          symbol?: string | null
+          trade_date?: string | null
+          use_weighted?: boolean | null
+          used_score?: number | null
+        }
+        Update: {
+          avg_score?: number | null
+          band?: string | null
+          entry_d?: string | null
+          exit_d?: string | null
+          horizon?: string | null
+          margin?: number | null
+          min_mentions?: number | null
+          model_version?: string | null
+          n_mentions?: number | null
+          pos_thresh?: number | null
+          side?: string | null
+          symbol?: string | null
+          trade_date?: string | null
+          use_weighted?: boolean | null
+          used_score?: number | null
         }
         Relationships: []
       }
@@ -451,6 +892,7 @@ export type Database = {
           notes: string | null
           pos_thresh: number
           priority: number
+          q_value: number | null
           sharpe: number | null
           side: string
           start_date: string | null
@@ -472,6 +914,7 @@ export type Database = {
           notes?: string | null
           pos_thresh: number
           priority?: number
+          q_value?: number | null
           sharpe?: number | null
           side?: string
           start_date?: string | null
@@ -493,6 +936,7 @@ export type Database = {
           notes?: string | null
           pos_thresh?: number
           priority?: number
+          q_value?: number | null
           sharpe?: number | null
           side?: string
           start_date?: string | null
@@ -566,6 +1010,21 @@ export type Database = {
           trades?: number | null
           use_weighted?: boolean | null
           win_rate?: number | null
+        }
+        Relationships: []
+      }
+      market_holidays_us: {
+        Row: {
+          holiday: string
+          name: string | null
+        }
+        Insert: {
+          holiday: string
+          name?: string | null
+        }
+        Update: {
+          holiday?: string
+          name?: string | null
         }
         Relationships: []
       }
@@ -676,6 +1135,7 @@ export type Database = {
       }
       reddit_finance_keep_norm: {
         Row: {
+          author: string | null
           created_utc: string | null
           id: string | null
           num_comments: number | null
@@ -687,6 +1147,7 @@ export type Database = {
           title: string | null
         }
         Insert: {
+          author?: string | null
           created_utc?: string | null
           id?: string | null
           num_comments?: number | null
@@ -698,6 +1159,7 @@ export type Database = {
           title?: string | null
         }
         Update: {
+          author?: string | null
           created_utc?: string | null
           id?: string | null
           num_comments?: number | null
@@ -710,8 +1172,70 @@ export type Database = {
         }
         Relationships: []
       }
+      reddit_heuristics: {
+        Row: {
+          effective_at: string
+          id: number
+          is_active: boolean
+          min_confidence_score: number
+          min_trades: number
+          model_version: string | null
+          recency_break_1_days: number
+          recency_break_2_days: number
+          recency_score_fresh: number
+          recency_score_ok: number
+          recency_score_stale: number
+          sample_cap_trades: number
+          weight_recency: number
+          weight_sample: number
+          weight_strength: number
+          weight_win_ci: number
+          z_score: number
+        }
+        Insert: {
+          effective_at?: string
+          id?: number
+          is_active?: boolean
+          min_confidence_score?: number
+          min_trades?: number
+          model_version?: string | null
+          recency_break_1_days?: number
+          recency_break_2_days?: number
+          recency_score_fresh?: number
+          recency_score_ok?: number
+          recency_score_stale?: number
+          sample_cap_trades?: number
+          weight_recency?: number
+          weight_sample?: number
+          weight_strength?: number
+          weight_win_ci?: number
+          z_score?: number
+        }
+        Update: {
+          effective_at?: string
+          id?: number
+          is_active?: boolean
+          min_confidence_score?: number
+          min_trades?: number
+          model_version?: string | null
+          recency_break_1_days?: number
+          recency_break_2_days?: number
+          recency_score_fresh?: number
+          recency_score_ok?: number
+          recency_score_stale?: number
+          sample_cap_trades?: number
+          weight_recency?: number
+          weight_sample?: number
+          weight_strength?: number
+          weight_win_ci?: number
+          z_score?: number
+        }
+        Relationships: []
+      }
       reddit_mentions: {
         Row: {
+          author: string | null
+          author_karma: number | null
           content_len: number | null
           created_utc: string
           disambig_rule: string
@@ -720,9 +1244,12 @@ export type Database = {
           match_source: string
           mention_id: number
           post_id: string | null
+          subreddit: string | null
           symbol: string
         }
         Insert: {
+          author?: string | null
+          author_karma?: number | null
           content_len?: number | null
           created_utc: string
           disambig_rule: string
@@ -731,9 +1258,12 @@ export type Database = {
           match_source: string
           mention_id?: number
           post_id?: string | null
+          subreddit?: string | null
           symbol: string
         }
         Update: {
+          author?: string | null
+          author_karma?: number | null
           content_len?: number | null
           created_utc?: string
           disambig_rule?: string
@@ -742,31 +1272,10 @@ export type Database = {
           match_source?: string
           mention_id?: number
           post_id?: string | null
+          subreddit?: string | null
           symbol?: string
         }
-        Relationships: [
-          {
-            foreignKeyName: "reddit_mentions_post_id_fkey"
-            columns: ["post_id"]
-            isOneToOne: false
-            referencedRelation: "reddit_finance_keep_norm"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "reddit_mentions_post_id_fkey"
-            columns: ["post_id"]
-            isOneToOne: false
-            referencedRelation: "reddit_posts"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "reddit_mentions_post_id_fkey"
-            columns: ["post_id"]
-            isOneToOne: false
-            referencedRelation: "v_post_attrs"
-            referencedColumns: ["post_id"]
-          },
-        ]
+        Relationships: []
       }
       reddit_posts_stage: {
         Row: {
@@ -1288,15 +1797,63 @@ export type Database = {
         Relationships: []
       }
       tmp_cal: {
-        Row: {}
-        Insert: {}
-        Update: {}
+        Row: {
+          data_date: string | null
+        }
+        Insert: {
+          data_date?: string | null
+        }
+        Update: {
+          data_date?: string | null
+        }
         Relationships: []
       }
       tmp_entries: {
-        Row: {}
-        Insert: {}
-        Update: {}
+        Row: {
+          entry_date: string | null
+          exit_date: string | null
+          horizon: string | null
+          side: string | null
+          symbol: string | null
+          trade_date: string | null
+        }
+        Insert: {
+          entry_date?: string | null
+          exit_date?: string | null
+          horizon?: string | null
+          side?: string | null
+          symbol?: string | null
+          trade_date?: string | null
+        }
+        Update: {
+          entry_date?: string | null
+          exit_date?: string | null
+          horizon?: string | null
+          side?: string | null
+          symbol?: string | null
+          trade_date?: string | null
+        }
+        Relationships: []
+      }
+      tmp_trades: {
+        Row: {
+          fwd_ret: number | null
+          horizon: string | null
+          start_day: string | null
+          symbol: string | null
+        }
+        Insert: {
+          fwd_ret?: number | null
+          horizon?: string | null
+          start_day?: string | null
+          symbol?: string | null
+        }
+        Update: {
+          fwd_ret?: number | null
+          horizon?: string | null
+          start_day?: string | null
+          symbol?: string | null
+        }
         Relationships: []
       }
       trades: {
@@ -1647,6 +2204,25 @@ export type Database = {
         }
         Relationships: []
       }
+      v_entry_candidates: {
+        Row: {
+          avg_score: number | null
+          confidence: number | null
+          horizon: string | null
+          margin: number | null
+          min_mentions: number | null
+          model_version: string | null
+          n_mentions: number | null
+          pos_thresh: number | null
+          score: number | null
+          side: string | null
+          symbol: string | null
+          trade_date: string | null
+          use_weighted: boolean | null
+          used_score: number | null
+        }
+        Relationships: []
+      }
       v_home_kpis: {
         Row: {
           avg_realized_pct: number | null
@@ -1940,29 +2516,7 @@ export type Database = {
           symbol: string | null
           title: string | null
         }
-        Relationships: [
-          {
-            foreignKeyName: "reddit_mentions_post_id_fkey"
-            columns: ["post_id"]
-            isOneToOne: false
-            referencedRelation: "reddit_finance_keep_norm"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "reddit_mentions_post_id_fkey"
-            columns: ["post_id"]
-            isOneToOne: false
-            referencedRelation: "reddit_posts"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "reddit_mentions_post_id_fkey"
-            columns: ["post_id"]
-            isOneToOne: false
-            referencedRelation: "v_post_attrs"
-            referencedColumns: ["post_id"]
-          },
-        ]
+        Relationships: []
       }
       v_reddit_mentions_aug: {
         Row: {
@@ -1978,29 +2532,7 @@ export type Database = {
           symbol: string | null
           title: string | null
         }
-        Relationships: [
-          {
-            foreignKeyName: "reddit_mentions_post_id_fkey"
-            columns: ["post_id"]
-            isOneToOne: false
-            referencedRelation: "reddit_finance_keep_norm"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "reddit_mentions_post_id_fkey"
-            columns: ["post_id"]
-            isOneToOne: false
-            referencedRelation: "reddit_posts"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "reddit_mentions_post_id_fkey"
-            columns: ["post_id"]
-            isOneToOne: false
-            referencedRelation: "v_post_attrs"
-            referencedColumns: ["post_id"]
-          },
-        ]
+        Relationships: []
       }
       v_reddit_mentions_july: {
         Row: {
@@ -2016,29 +2548,7 @@ export type Database = {
           symbol: string | null
           title: string | null
         }
-        Relationships: [
-          {
-            foreignKeyName: "reddit_mentions_post_id_fkey"
-            columns: ["post_id"]
-            isOneToOne: false
-            referencedRelation: "reddit_finance_keep_norm"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "reddit_mentions_post_id_fkey"
-            columns: ["post_id"]
-            isOneToOne: false
-            referencedRelation: "reddit_posts"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "reddit_mentions_post_id_fkey"
-            columns: ["post_id"]
-            isOneToOne: false
-            referencedRelation: "v_post_attrs"
-            referencedColumns: ["post_id"]
-          },
-        ]
+        Relationships: []
       }
       v_reddit_mentions_june: {
         Row: {
@@ -2054,29 +2564,7 @@ export type Database = {
           symbol: string | null
           title: string | null
         }
-        Relationships: [
-          {
-            foreignKeyName: "reddit_mentions_post_id_fkey"
-            columns: ["post_id"]
-            isOneToOne: false
-            referencedRelation: "reddit_finance_keep_norm"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "reddit_mentions_post_id_fkey"
-            columns: ["post_id"]
-            isOneToOne: false
-            referencedRelation: "reddit_posts"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "reddit_mentions_post_id_fkey"
-            columns: ["post_id"]
-            isOneToOne: false
-            referencedRelation: "v_post_attrs"
-            referencedColumns: ["post_id"]
-          },
-        ]
+        Relationships: []
       }
       v_reddit_monitoring_signals: {
         Row: {
@@ -2171,6 +2659,53 @@ export type Database = {
         }
         Relationships: []
       }
+      v_trade_mentions_primary: {
+        Row: {
+          horizon: string | null
+          model_version: string | null
+          primary_author: string | null
+          primary_author_karma: number | null
+          primary_author_mentions: number | null
+          primary_author_share: number | null
+          primary_sub_mentions: number | null
+          primary_sub_share: number | null
+          primary_subreddit: string | null
+          realized_pct: number | null
+          side: string | null
+          symbol: string | null
+          total_author_mentions: number | null
+          total_sub_mentions: number | null
+          trade_date: string | null
+          trade_id: string | null
+        }
+        Relationships: []
+      }
+      v_trade_perf_by_author_tier: {
+        Row: {
+          author_tier: string | null
+          avg_primary_author_share: number | null
+          avg_ret: number | null
+          horizon: string | null
+          model_version: string | null
+          n_trades: number | null
+          side: string | null
+          win_rate: number | null
+        }
+        Relationships: []
+      }
+      v_trade_perf_by_subreddit: {
+        Row: {
+          avg_primary_sub_share: number | null
+          avg_ret: number | null
+          horizon: string | null
+          model_version: string | null
+          n_trades: number | null
+          primary_subreddit: string | null
+          side: string | null
+          win_rate: number | null
+        }
+        Relationships: []
+      }
       v_triggered_with_backtest: {
         Row: {
           avg_ret: number | null
@@ -2208,6 +2743,10 @@ export type Database = {
         Args: { p_line: string; p_rn: number }
         Returns: Json
       }
+      add_trading_days: {
+        Args: { d: string; n: number }
+        Returns: string
+      }
       backfill_reddit_mentions: {
         Args: { p_end: string; p_start: string }
         Returns: undefined
@@ -2233,6 +2772,32 @@ export type Database = {
           title: string
         }[]
       }
+      fn_recommended_trades_conf: {
+        Args: { p_date?: string }
+        Returns: {
+          avg_ret: number
+          confidence_label: string
+          confidence_score: number
+          end_date: string
+          grade: string
+          grade_explain: string
+          has_open_any: boolean
+          has_open_paper: boolean
+          has_open_real: boolean
+          horizon: string
+          mentions: number
+          min_mentions: number
+          rule_threshold: number
+          score: number
+          sharpe: number
+          side: string
+          start_date: string
+          symbol: string
+          trades: number
+          triggered_at: string
+          win_rate: number
+        }[]
+      }
       from_epochish: {
         Args: { txt: string }
         Returns: string
@@ -2255,6 +2820,14 @@ export type Database = {
       }
       is_market_data_fresh: {
         Args: { hours_threshold?: number; symbol_param: string }
+        Returns: boolean
+      }
+      is_market_open: {
+        Args: { ts: string }
+        Returns: boolean
+      }
+      is_trading_day: {
+        Args: { d: string }
         Returns: boolean
       }
       json_try: {
