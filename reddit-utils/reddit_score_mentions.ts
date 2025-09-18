@@ -68,6 +68,14 @@ function clean(s) {
     .trim();
 }
 
+function clampNumber(val: unknown, min: number, max: number, fallback: number) {
+  const n = Number(val);
+  if (!Number.isFinite(n)) return fallback;
+  if (n < min) return min;
+  if (n > max) return max;
+  return n;
+}
+
 // --- helper: strip code fences the model might add ---
 function stripFences(s: string): string {
   let t = s?.trim() ?? "";
@@ -168,10 +176,15 @@ Rules:
       try { parsed = JSON.parse(txt); }
       catch { throw new Error("Model did not return valid JSON. See RAW_MODEL_JSON above."); }
 
+      const lblRaw = String(parsed.label ?? "neu").toLowerCase();
+      const lbl = lblRaw === "positive" ? "pos"
+        : lblRaw === "negative" ? "neg"
+        : (lblRaw === "pos" || lblRaw === "neg" || lblRaw === "neu") ? lblRaw
+        : "neu";
       return {
-        overall_score: Number(parsed.overall_score ?? 0),
-        label: String(parsed.label ?? "neu"),
-        confidence: Number(parsed.confidence ?? 0.5),
+        overall_score: clampNumber(parsed.overall_score, -1, 1, 0),
+        label: lbl,
+        confidence: clampNumber(parsed.confidence, 0, 1, 0.5),
         rationale: String(parsed.rationale ?? "n/a").slice(0, 300),
       };
     } catch (err) {
@@ -307,14 +320,14 @@ async function scoreBatch(items: Array<{
     }
   };
 
-  function cleanResult(o: any) {
+function cleanResult(o: any) {
   const mid = String(o?.mention_id ?? "").trim();
   const lbl = String(o?.label ?? o?.sentiment ?? "neu").toLowerCase();
   return {
     mention_id: mid,
-    overall_score: Number(o?.overall_score ?? 0),
+    overall_score: clampNumber(o?.overall_score, -1, 1, 0),
     label: lbl === "positive" ? "pos" : lbl === "negative" ? "neg" : (lbl === "pos" || lbl === "neg" || lbl === "neu" ? lbl : "neu"),
-    confidence: Math.max(0, Math.min(1, Number(o?.confidence ?? 0.5))),
+    confidence: clampNumber(o?.confidence, 0, 1, 0.5),
     rationale: String(o?.rationale ?? "").slice(0, 300),
   };
 }
