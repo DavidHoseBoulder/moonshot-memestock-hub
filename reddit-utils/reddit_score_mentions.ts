@@ -25,7 +25,8 @@ const SLEEP_MS       = Number(Deno.env.get("SLEEP_MS") ?? 300);
 const OPENAI_MODEL   = Deno.env.get("OPENAI_MODEL") ?? "gpt-4o-mini";
 
 // comma-separated symbols or empty => null
-const SYMBOLS    = (Deno.env.get("SYMBOLS") ?? "").trim();
+const rawSymbols = (Deno.env.get("SYMBOLS") ?? "").trim();
+const SYMBOLS = /^(?:null|none|\[\])$/i.test(rawSymbols) ? "" : rawSymbols;
 // SYMBOLS_ARR: null if empty; else uppercase array
 const SYMBOLS_ARR = SYMBOLS
   ? SYMBOLS.split(",").map(s => s.trim()).filter(Boolean).map(s => s.toUpperCase())
@@ -600,4 +601,3 @@ await pool.end();
 function replace(arg0: RegExp, arg1: string) {
   throw new Error("Function not implemented.");
 }
-
