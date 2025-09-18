@@ -1,8 +1,10 @@
+\set ON_ERROR_STOP on
+
 BEGIN;
 SET client_min_messages = warning;
 SET search_path = public;
 
--- 1) Load the already-cleaned file (ALWAYS the fixed path)
+-- 1) Load the already-cleaned file (always the fixed path)
 DROP TABLE IF EXISTS pg_temp.stage_lines;
 CREATE TEMP TABLE pg_temp.stage_lines(line text) ON COMMIT DROP;
 
@@ -89,6 +91,16 @@ WHERE jsonb_typeof(doc) = 'object'
      OR (doc ? 'created_utc_iso')
       )
   AND coalesce(doc->>'body','') <> ''
-ON CONFLICT (comment_id) DO NOTHING;
+ON CONFLICT (comment_id) DO UPDATE
+  SET post_id      = COALESCE(EXCLUDED.post_id, reddit_comments.post_id),
+      subreddit    = EXCLUDED.subreddit,
+      author       = COALESCE(EXCLUDED.author, reddit_comments.author),
+      body         = EXCLUDED.body,
+      created_utc  = COALESCE(EXCLUDED.created_utc, reddit_comments.created_utc),
+      score        = COALESCE(EXCLUDED.score, reddit_comments.score),
+      parent_id    = COALESCE(EXCLUDED.parent_id, reddit_comments.parent_id),
+      depth        = COALESCE(EXCLUDED.depth, reddit_comments.depth),
+      is_submitter = COALESCE(EXCLUDED.is_submitter, reddit_comments.is_submitter),
+      permalink    = COALESCE(EXCLUDED.permalink, reddit_comments.permalink);
 -- ... continue with your INSERTs into final tables ...
 COMMIT;

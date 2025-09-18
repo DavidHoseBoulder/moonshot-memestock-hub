@@ -103,10 +103,18 @@ tomorrow_utc() {
 # ======================================
 # Parse args
 # ======================================
-START_DATE=""
-END_DATE=""
-ONLY=""
-FROM_STAGE=""
+START_DATE="${START_DATE:-}"
+END_DATE="${END_DATE:-}"
+ONLY="${ONLY:-}"
+FROM_STAGE="${FROM_STAGE:-}"
+
+# Normalize any env-provided dates so they behave like CLI input does.
+if [[ -n "$START_DATE" ]]; then
+  START_DATE="$(iso_date "$START_DATE")"
+fi
+if [[ -n "$END_DATE" ]]; then
+  END_DATE="$(iso_date "$END_DATE")"
+fi
 
 while [[ $# -gt 0 ]]; do
   case "$1" in

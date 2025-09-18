@@ -92,7 +92,23 @@ JOIN public.ticker_universe u
   ON upper(c.sym) = upper(u.symbol)
 WHERE COALESCE(u.active, true)
   AND c.doc_id IS NOT NULL
-ON CONFLICT (doc_type, doc_id, symbol) DO NOTHING;
+ON CONFLICT (doc_type, doc_id, symbol) DO UPDATE
+  SET subreddit      = EXCLUDED.subreddit,
+      author         = EXCLUDED.author,
+      author_karma   = EXCLUDED.author_karma,
+      created_utc    = EXCLUDED.created_utc,
+      match_source   = EXCLUDED.match_source,
+      disambig_rule  = EXCLUDED.disambig_rule,
+      content_len    = EXCLUDED.content_len;
+-- REPLACE with upsert to refresh metadata
+--ON CONFLICT (doc_type, doc_id, symbol) DO UPDATE
+--  SET created_utc    = EXCLUDED.created_utc,
+--      match_source   = EXCLUDED.match_source,
+--      disambig_rule  = EXCLUDED.disambig_rule,
+--      content_len    = EXCLUDED.content_len,
+--      subreddit      = EXCLUDED.subreddit,
+--      author         = EXCLUDED.author,
+--      author_karma   = EXCLUDED.author_karma;
 
 -- ==============
 -- 2) KEYWORDS (whole-word symbols) in posts AND comments
@@ -192,7 +208,14 @@ SELECT
   NULLIF(h.author,'')::text,
   h.author_karma
 FROM kw_hits h
-ON CONFLICT (doc_type, doc_id, symbol) DO NOTHING;
+ON CONFLICT (doc_type, doc_id, symbol) DO UPDATE
+  SET subreddit      = EXCLUDED.subreddit,
+      author         = EXCLUDED.author,
+      author_karma   = EXCLUDED.author_karma,
+      created_utc    = EXCLUDED.created_utc,
+      match_source   = EXCLUDED.match_source,
+      disambig_rule  = EXCLUDED.disambig_rule,
+      content_len    = EXCLUDED.content_len;
 
 COMMIT;
 
