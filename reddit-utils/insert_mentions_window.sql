@@ -72,26 +72,58 @@ ctags AS (
   SELECT * FROM ctags_title
   UNION ALL
   SELECT * FROM ctags_body
+),
+cashtag_rows AS (
+  SELECT
+    c.doc_type,
+    c.doc_id,
+    c.post_id,
+    u.symbol,
+    c.created_utc,
+    c.src,
+    'cashtag'::text AS disambig_rule,
+    c.content_len,
+    c.subreddit,
+    NULLIF(c.author,'')::text AS author,
+    c.author_karma
+  FROM ctags c
+  JOIN public.ticker_universe u
+    ON upper(c.sym) = upper(u.symbol)
+  WHERE COALESCE(u.active, true)
+    AND c.doc_id IS NOT NULL
 )
 INSERT INTO public.reddit_mentions
   (doc_type, doc_id, post_id, symbol, created_utc, match_source, disambig_rule, content_len, subreddit, author, author_karma)
-SELECT
-  c.doc_type,
-  c.doc_id,
-  c.post_id,
-  u.symbol,
-  c.created_utc,
-  c.src,
-  'cashtag',
-  c.content_len,
-  c.subreddit,
-  NULLIF(c.author,'')::text,
-  c.author_karma
-FROM ctags c
-JOIN public.ticker_universe u
-  ON upper(c.sym) = upper(u.symbol)
-WHERE COALESCE(u.active, true)
-  AND c.doc_id IS NOT NULL
+SELECT DISTINCT ON (doc_type, doc_id, symbol)
+  doc_type,
+  doc_id,
+  post_id,
+  symbol,
+  created_utc,
+  match_source,
+  disambig_rule,
+  content_len,
+  subreddit,
+  author,
+  author_karma
+FROM (
+  SELECT
+    r.doc_type,
+    r.doc_id,
+    r.post_id,
+    r.symbol,
+    r.created_utc,
+    r.src            AS match_source,
+    r.disambig_rule,
+    r.content_len,
+    r.subreddit,
+    r.author,
+    r.author_karma,
+    CASE WHEN r.src = 'title' THEN 0 ELSE 1 END AS src_rank,
+    CASE WHEN r.author IS NULL OR r.author = '' THEN 1 ELSE 0 END AS anon_rank
+  FROM cashtag_rows r
+) ranked
+ORDER BY doc_type, doc_id, symbol, src_rank, anon_rank
 ON CONFLICT (doc_type, doc_id, symbol) DO UPDATE
   SET subreddit      = EXCLUDED.subreddit,
       author         = EXCLUDED.author,
@@ -196,18 +228,53 @@ kw_hits AS (
     k.symbol
   FROM kw_candidates k
   WHERE k.text_all ~* k.pat
+),
+keyword_rows AS (
+  SELECT
+    h.doc_type,
+    h.doc_id,
+    h.post_id,
+    h.symbol,
+    h.created_utc,
+    CASE WHEN h.doc_type='post' THEN 'title_body' ELSE 'body' END AS match_source,
+    'keywords'::text AS disambig_rule,
+    h.content_len,
+    h.subreddit,
+    NULLIF(h.author,'')::text AS author,
+    h.author_karma
+  FROM kw_hits h
 )
 INSERT INTO public.reddit_mentions
   (doc_type, doc_id, post_id, symbol, created_utc, match_source, disambig_rule, content_len, subreddit, author, author_karma)
-SELECT
-  h.doc_type, h.doc_id, h.post_id, h.symbol, h.created_utc,
-  CASE WHEN h.doc_type='post' THEN 'title_body' ELSE 'body' END AS match_source,
-  'keywords',
-  h.content_len,
-  h.subreddit,
-  NULLIF(h.author,'')::text,
-  h.author_karma
-FROM kw_hits h
+SELECT DISTINCT ON (doc_type, doc_id, symbol)
+  doc_type,
+  doc_id,
+  post_id,
+  symbol,
+  created_utc,
+  match_source,
+  disambig_rule,
+  content_len,
+  subreddit,
+  author,
+  author_karma
+FROM (
+  SELECT
+    r.doc_type,
+    r.doc_id,
+    r.post_id,
+    r.symbol,
+    r.created_utc,
+    r.match_source,
+    r.disambig_rule,
+    r.content_len,
+    r.subreddit,
+    r.author,
+    r.author_karma,
+    CASE WHEN r.author IS NULL OR r.author = '' THEN 1 ELSE 0 END AS anon_rank
+  FROM keyword_rows r
+) ranked
+ORDER BY doc_type, doc_id, symbol, anon_rank
 ON CONFLICT (doc_type, doc_id, symbol) DO UPDATE
   SET subreddit      = EXCLUDED.subreddit,
       author         = EXCLUDED.author,
