@@ -45,7 +45,14 @@ SELECT DISTINCT ON (id)
   COALESCE(doc->>'post_id', doc->>'id')                           AS post_id
 FROM pg_temp.stage_json
 WHERE jsonb_typeof(doc) = 'object'
-ORDER BY id
+ORDER BY
+  id,
+  (NULLIF(doc->>'author','') IS NULL),
+  CASE
+    WHEN doc ? 'created_utc' AND (doc->>'created_utc') ~ '^\\d+$'
+      THEN (doc->>'created_utc')::bigint
+    ELSE NULL
+  END DESC
 ON CONFLICT (id) DO UPDATE
   SET subreddit   = EXCLUDED.subreddit,
       author      = COALESCE(EXCLUDED.author, reddit_finance_keep_norm.author),

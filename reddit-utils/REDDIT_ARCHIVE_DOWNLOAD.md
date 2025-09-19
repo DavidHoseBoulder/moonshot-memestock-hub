@@ -7,15 +7,40 @@ backfills offline.
 
 ## Overview
 
-1. **Download & stage** the raw archive (`.jsonl.gz` / `.zst`).
-2. **Filter** the dump to the subreddits we track.
-3. **Sanitize** JSON so every line is valid NDJSON.
-4. **Prepare** the loader input (base64 for posts, raw NDJSON for comments).
-5. **Load** via the existing SQL scripts with statement timeouts disabled.
-6. **Verify** counts & spot-check for off-list subreddits.
-7. **Clean up** partial loads and temporary files.
+0. **Download & stage** the raw archive (`.jsonl.gz` / `.zst`).
+1. **Filter** the dump to the subreddits we track.
+2. **Sanitize** JSON so every line is valid NDJSON.
+3. **Prepare** the loader input (base64 for posts, raw NDJSON for comments).
+4. **Load** via the existing SQL scripts with statement timeouts disabled.
+5. **Verify** counts & spot-check for off-list subreddits.
+6. **Clean up** partial loads and temporary files.
 
 As of this writing step 1 (downloads for 2025-06 & 2025-07) is complete.
+
+## 0. Download the archive via Academic Torrents
+
+All historical dumps live on [Academic Torrents](https://academictorrents.com).
+Example (June 2025 submissions/comments):
+
+1. Download the `.torrent` metadata file, e.g.
+   `https://academictorrents.com/download/bec5590bd3bc6c0f2d868f36ec92bec1aff4480e.torrent`.
+2. Use your preferred CLI client to fetch the payload to the 4 TB staging disks.
+   Two options that work well:
+
+   ```bash
+   # Using aria2c (stops seeding immediately)
+   cd /Volumes/SanDisk\ 4TB
+   aria2c --seed-time=0 --max-connection-per-server=16 \
+          --dir=. bec5590bd3bc6c0f2d868f36ec92bec1aff4480e.torrent
+
+   # OR using transmission-cli (keeps seeding until Ctrl-C)
+   transmission-cli -w /Volumes/SanDisk\ 4TB \
+     bec5590bd3bc6c0f2d868f36ec92bec1aff4480e.torrent
+   ```
+
+3. After the download completes, confirm the expected files exist (e.g.
+   `comments-RC_2025-06.jsonl.gz`, `submissions-RC_2025-06.jsonl.gz`) and keep
+   the torrent seeding if you want to contribute bandwidth.
 
 ## Prerequisites
 
@@ -25,23 +50,28 @@ As of this writing step 1 (downloads for 2025-06 & 2025-07) is complete.
 - Disable `statement_timeout` in the session: `psql "$PGURI" -c "SET
   statement_timeout = 0;"` before running the SQL loaders.
 
-## 1. Filter by Subreddit
+## 1. Filter (and optionally sanitize/load) by Subreddit
 
 Use `reddit-utils/filter_subreddits.sh`. It accepts `.ndjson`, `.jsonl`,
-`.jsonl.gz`, and `.zst` and writes filtered NDJSON.
+`.jsonl.gz`, and `.zst`, filters to the subs listed in `$SUBREDDITS`, and writes
+NDJSON. Add `--sanitize` to escape embedded newlines in the same pass, and
+append `--load-comments` or `--load-posts` to call the existing SQL loaders
+right after the file is written.
 
 ```bash
 SUBREDDITS="$SUBREDDITS" \
-reddit-utils/filter_subreddits.sh \
+reddit-utils/filter_subreddits.sh --sanitize \
   comments-RC_2025-06.jsonl.gz \
   /tmp/comments-2025-06-filtered.ndjson
 ```
 
-Repeat for posts (`submissions-*.jsonl.gz`) or the July archives. The helper
-reads the comma-separated `$SUBREDDITS` from `.env`, strips whitespace, and
-drops any row whose `subreddit` is not in the allowlist.
+Repeat for posts (`submissions-*.jsonl.gz`) or other months. The helper reads
+the comma-separated `$SUBREDDITS` from `.env`, trims whitespace, and rejects any
+row whose `subreddit` is not in the allowlist.
 
-## 2. Sanitize JSON
+If you skip `--sanitize`, run the normalization step manually as shown below.
+
+## 2. Sanitize JSON (manual option)
 
 Normalize strings so embedded newlines are escaped and arrays are flattened to
 one JSON object per line (matches `reddit_pipeline.sh`).
@@ -75,6 +105,9 @@ find them without editing (or update the loaders with the new path).
 
 - **Comments**: Already NDJSON; no base64 step required. Copy or rename the
   sanitized file to `/tmp/reddit_clean.ndjson` if using the hardcoded loader.
+
+If you invoked `filter_subreddits.sh --load-posts/--load-comments`, these
+conversion and copy steps are handled automatically.
 
 ## 4. Load into Postgres
 

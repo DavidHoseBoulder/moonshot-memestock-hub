@@ -59,10 +59,7 @@ INSERT INTO public.reddit_comments (
 )
 SELECT
   doc->>'id'                                                          AS comment_id,
-  COALESCE(
-    doc->>'post_id',
-    (regexp_match(doc->>'permalink','^/r/[^/]+/comments/([^/]+)'))[1]
-  )                                                                   AS post_id,
+  derived.post_id                                                     AS post_id,
   COALESCE(doc->>'subreddit','unknown')                               AS subreddit,
   NULLIF(doc->>'author','')                                           AS author,
   COALESCE(doc->>'body','')                                           AS body,
@@ -83,6 +80,13 @@ SELECT
   END                                                                 AS is_submitter,
   NULLIF(doc->>'permalink','')                                        AS permalink
 FROM pg_temp.stage_json
+CROSS JOIN LATERAL (
+  SELECT COALESCE(
+           doc->>'post_id',
+           (regexp_match(coalesce(doc->>'permalink',''), '^/r/[^/]+/comments/([^/]+)'))[1],
+           (regexp_match(coalesce(doc->>'link_id',''), '^(?:t3_)?([A-Za-z0-9_]+)$'))[1]
+         ) AS post_id
+) AS derived
 WHERE jsonb_typeof(doc) = 'object'
   AND doc ? 'id'
   AND coalesce(doc->>'id','') <> ''
