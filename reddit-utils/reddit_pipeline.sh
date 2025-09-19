@@ -2,14 +2,14 @@
 set -euo pipefail
 
 # ======================================
-# Bootstrap env and directories
+# Bootstrap env and directories (COMMENTED OUT)
 # ======================================
 # Source ~/.env if present so PGURI, SUBREDDITS, etc. load in
-if [[ -f "$HOME/.env" ]]; then
-  set -a
-  . "$HOME/.env"
-  set +a
-fi
+# if [[ -f "$HOME/.env" ]]; then
+#   set -a
+#  . "$HOME/.env"
+#   set +a
+# fi
 
 : "${PGURI:?PGURI must be set (postgres connection string)}"
 
