@@ -25,6 +25,10 @@ DEBUG=${DEBUG:-"0"}
 # All outputs live under WORKING_DIR
 OUT_DIR=${OUT_DIR:-"$WORKING_DIR/out"}
 OUT_COMMENTS_DIR=${OUT_COMMENTS_DIR:-"$WORKING_DIR/out_comments"}
+# Scratch file used when piping data between stages. SQL loaders currently read
+# their hardcoded /tmp targets directly, but keeping the variable lets us point
+# the pipeline elsewhere if those scripts are updated.
+CLEANED_REDDIT_JSON_FILE=${CLEANED_REDDIT_JSON_FILE:-"/tmp/reddit_clean.b64"}
 
 # Hardcoded asset paths (prefer CODE_DIR)
 LOAD_POSTS_SQL="$CODE_DIR/load_reddit_posts.sql"
@@ -156,21 +160,25 @@ if [[ -n "$ONLY" && -n "$FROM_STAGE" ]]; then
   exit 3
 fi
 
-if [[ -n "$ONLY" ]]; then
-  IFS=',' read -r -a requested <<<"$(printf '%s' "$ONLY" | normalize_csv)"
-  # Validate
-  declare -A seen=()
-  STAGES_TO_RUN=()
-  for s in "${requested[@]}"; do
-    seen["$s"]=1
-  done
-  for s in "${ALL_STAGES[@]}"; do
-    if [[ -n "${seen[$s]:-}" ]]; then STAGES_TO_RUN+=("$s"); fi
-  done
-  if [[ ${#STAGES_TO_RUN[@]} -eq 0 ]]; then
-    say "ERROR: --only did not match any known stages."
-    exit 4
-  fi
+  if [[ -n "$ONLY" ]]; then
+    IFS=',' read -r -a requested <<<"$(printf '%s' "$ONLY" | normalize_csv)"
+    # Validate
+    STAGES_TO_RUN=()
+    matched=0
+    for s in "${ALL_STAGES[@]}"; do
+      for r in "${requested[@]}"; do
+        [[ -z "$r" ]] && continue
+        if [[ "$s" == "$r" ]]; then
+          STAGES_TO_RUN+=("$s")
+          matched=$((matched + 1))
+          break
+        fi
+      done
+    done
+    if [[ $matched -eq 0 ]]; then
+      say "ERROR: --only did not match any known stages."
+      exit 4
+    fi
 elif [[ -n "$FROM_STAGE" ]]; then
   FROM_STAGE="$(printf '%s' "$FROM_STAGE" | normalize_csv)"
   found=""
@@ -233,11 +241,11 @@ load_posts() {
         say "BEGIN load $f"
 
         # One-object-per-line → one-base64-line-per-object
-        if ! jq -rc 'if type=="array" then .[] else . end | @base64' "$f" > /tmp/reddit_clean.b64 ; then
+        if ! jq -rc 'if type=="array" then .[] else . end | @base64' "$f" > "$CLEANED_REDDIT_JSON_FILE" ; then
           echo "  (skip) jq parse error" ; continue
         fi
 
-        clean_lines=$(wc -l < /tmp/reddit_clean.b64 || echo 0)
+        clean_lines=$(wc -l < "$CLEANED_REDDIT_JSON_FILE" || echo 0)
         orig_lines=$(wc -l < "$f" || echo 0)
         echo "  kept ${clean_lines}/${orig_lines} lines (dropped $((orig_lines - clean_lines)))"
 
@@ -245,7 +253,7 @@ load_posts() {
 
         psql "$PGURI" -v ON_ERROR_STOP=1 -X \
           -v DEBUG="$DEBUG" \
-          -v FPATH="/tmp/reddit_clean.b64" \
+          -v CLEANED_REDDIT_JSON_FILE="$CLEANED_REDDIT_JSON_FILE" \
           -f "$LOAD_POSTS_SQL"
 
         say "DONE load $f"
@@ -292,11 +300,11 @@ load_comments() {
               else .
               end
             )
-        ' "$f" > /tmp/reddit_clean.ndjson ; then
+        ' "$f" > "$CLEANED_REDDIT_JSON_FILE" ; then
           echo "  (skip) jq parse error" ; continue
         fi
 
-        clean_lines=$(wc -l < /tmp/reddit_clean.ndjson || echo 0)
+        clean_lines=$(wc -l < "$CLEANED_REDDIT_JSON_FILE" || echo 0)
         orig_lines=$(wc -l < "$f" || echo 0)
         echo "  kept ${clean_lines}/${orig_lines} lines (dropped $((orig_lines - clean_lines)))"
 
@@ -305,7 +313,7 @@ load_comments() {
         psql "$PGURI" -v ON_ERROR_STOP=1 -X \
           -v DEBUG="$DEBUG" \
           -v sub="$sub" \
-          -v FPATH="/tmp/reddit_clean.ndjson" \
+          -v CLEANED_REDDIT_JSON_FILE="$CLEANED_REDDIT_JSON_FILE" \
           -f "$LOAD_COMMENTS_SQL"
 
         say "DONE load $f"
