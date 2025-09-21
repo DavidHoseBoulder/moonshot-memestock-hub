@@ -95,13 +95,58 @@ detect_last_date_in_db() {
   "
 }
 
+# Portable date helper: prefer GNU date, fall back to python shim
+_date_iso_utc() {
+  local expr="$1"
+  if command -v gdate >/dev/null 2>&1; then
+    gdate -u -d "$expr" +"%Y-%m-%d"
+  else
+    python3 - "$expr" <<'PY'
+import sys
+from datetime import datetime, timedelta, timezone
+
+expr = sys.argv[1].strip()
+now = datetime.now(timezone.utc)
+
+aliases = {
+    "today": 0,
+    "now": 0,
+    "tomorrow": 1,
+    "yesterday": -1,
+}
+
+if expr in aliases:
+    dt = now + timedelta(days=aliases[expr])
+else:
+    try:
+        dt = datetime.fromisoformat(expr)
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        else:
+            dt = dt.astimezone(timezone.utc)
+    except ValueError:
+        # Support bare YYYYMMDD or other simple forms
+        for fmt in ("%Y-%m-%d", "%Y%m%d"):
+            try:
+                dt = datetime.strptime(expr, fmt).replace(tzinfo=timezone.utc)
+                break
+            except ValueError:
+                continue
+        else:
+            print(expr, file=sys.stderr)
+            raise
+
+print(dt.strftime("%Y-%m-%d"))
+PY
+  fi
+}
+
 # ISO helpers
 iso_date() {
-  # prints YYYY-MM-DD for given input "YYYY-MM-DD"
-  date -u -d "$1" +"%Y-%m-%d"
+  _date_iso_utc "$1"
 }
 tomorrow_utc() {
-  date -u -d "tomorrow" +"%Y-%m-%d"
+  _date_iso_utc "tomorrow"
 }
 
 # ======================================

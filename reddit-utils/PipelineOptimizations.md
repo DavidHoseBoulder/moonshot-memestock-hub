@@ -10,6 +10,23 @@ This doc tracks concrete improvements to the backtesting → promotion → seedi
 
 ## Workstreams
 
+### 8) Mentions Build Performance (cashtags + keywords)
+
+- Summary: Optimize `insert_mentions_window.sql` to reduce regex load and rescans; speed up backfills and metadata propagation (author/subreddit/karma).
+- Changes (2025-09-21):
+  - Stage posts/comments once per window into a temp table `tmp_base_docs`; reuse for both cashtag and keyword paths.
+  - Posts source: switch to `v_scoring_posts_union_src` and dedupe within-window via `SELECT DISTINCT ON (post_id) ... ORDER BY created_utc DESC` after filtering by date.
+  - Cashtags: prefilter with `LIKE '%$%'` via filtered CTEs so LATERAL regexp only runs when text contains a dollar sign.
+  - Keywords: replace cross-join with tokenization + join to `ticker_universe`; dedupe tokens per doc before join.
+  - Upserts: `ON CONFLICT` refreshes metadata and now includes a `WHERE ... IS DISTINCT FROM ...` guard to avoid no-op updates.
+  - Session knobs: `SET LOCAL work_mem = '128MB'; SET LOCAL jit = off;` and `ANALYZE tmp_base_docs` for better in-memory sorts and planning.
+- Results:
+  - v3 EXPLAIN shows sub-second execution per day; cashtags ~6 ms, keywords ~600 ms on ~2.5k-doc day; in-memory sorts, no external merges.
+  - Full-day backfill windows (30–90 days) complete quickly; re-runs cleanly propagate late author metadata.
+- Follow-ups:
+  - Keep EXPLAIN scripts out of repo; re-generate ad hoc when profiling.
+  - Consider `VACUUM (ANALYZE) public.reddit_mentions` after large backfills.
+
 ### 1) Full-Grid Persistence
 
 - Summary: Persist the entire sweep grid so promotion can evaluate neighborhoods against full data, not only winners.
@@ -135,16 +152,24 @@ CREATE INDEX IF NOT EXISTS idx_bsg_group ON backtest_sweep_grid (symbol,horizon,
 - Validation:
   - [ ] Backfill test on historical live rules and inspect diffs.
 
-### 9) Subreddit/Author Enrichment
+### 9) Subreddit/Author Enrichment & Author Coverage Controls
 
-- Summary: Capture subreddit and author quality signals for diagnostics and future filters.
-- SQL touchpoints: ingestion → `reddit_mentions` → `v_entry_candidates`.
+- Summary: Capture subreddit and author quality signals for diagnostics, persist coverage stats, and make author-aware filters available to backtests.
+- SQL touchpoints: ingestion → `reddit_mentions` → `v_entry_candidates`, `backtest_grid.sql`, promotion helpers.
+- Flags (proposed): `REQUIRE_AUTHOR_PRESENT=0/1`, `MIN_AUTHOR_COVERAGE=0.50`, `AUTHOR_TIER_WEIGHTING='A:1.0,B:0.8,C:0.5'`.
 - Tasks:
   - [x] Ensure `subreddit`, `author`, `author_karma`, `doc_type` flow through.
   - [x] Add diagnostics tables: perf by subreddit band, by author tiers.
-  - [x] Do not gate rules yet; observe only.
+  - [ ] Persist author coverage metrics per backtest window (e.g., `author_coverage_pct`, `missing_author_count`).
+  - [ ] Parameterize optional backtest filters:
+    - `REQUIRE_AUTHOR_PRESENT=1` → drop signals with blank authors.
+    - `MIN_AUTHOR_COVERAGE` → abort or flag windows below threshold.
+    - Optional tier-weighting in aggregation (`AUTHOR_TIER_WEIGHTING`).
+  - [ ] Surface coverage + tier mix in promotion reports and seed notes.
 - Validation:
   - [x] Perf breakdowns render with sensible distributions.
+  - [ ] Backtest run with `REQUIRE_AUTHOR_PRESENT=1` completes and logs coverage deltas.
+  - [ ] Coverage metrics align with Supabase checks (spot 2–3 windows).
 
 ### 10) Traditional TA Gates (volume_zscore & RSI)
 
