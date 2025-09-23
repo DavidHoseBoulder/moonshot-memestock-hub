@@ -594,12 +594,17 @@ JOIN tmp_consistent_set c USING (symbol,horizon,side,min_mentions,pos_thresh);
 
 -- Switch view depending on flags
 DROP TABLE IF EXISTS tmp_results_final;
-CREATE TEMP TABLE tmp_results_final AS
-SELECT * FROM (
-  SELECT * FROM tmp_results WHERE (:'REQUIRE_STABLE')::int = 0 AND (:'REQUIRE_RANK_CONSISTENT')::int = 0
-  UNION ALL
-  SELECT * FROM tmp_results_filtered WHERE (:'REQUIRE_STABLE')::int = 1 OR (:'REQUIRE_RANK_CONSISTENT')::int = 1
-) u;
+CREATE TEMP TABLE tmp_results_final (LIKE tmp_results INCLUDING ALL);
+
+INSERT INTO tmp_results_final
+SELECT * FROM tmp_results
+WHERE (:'REQUIRE_STABLE')::int = 0
+  AND (:'REQUIRE_RANK_CONSISTENT')::int = 0;
+
+INSERT INTO tmp_results_final
+SELECT * FROM tmp_results_filtered
+WHERE (:'REQUIRE_STABLE')::int = 1
+   OR (:'REQUIRE_RANK_CONSISTENT')::int = 1;
 
 -- ================================
 -- 11) Baseline uplift (optional gating)

@@ -204,11 +204,11 @@ function sleep(ms: number) { return new Promise(res => setTimeout(res, ms)); }
 // Upsert into reddit_sentiment; write overall_score and mirror it into legacy score
 const UPSERT_SQL = `
 INSERT INTO reddit_sentiment
-  (mention_id, model_version, overall_score, label, confidence, rationale)
-VALUES ($1::bigint, $2, $3, $4, $5, $6)
+  (mention_id, model_version, overall_score, label, confidence, rationale, score)
+VALUES ($1::bigint, $2, $3, $4, $5, $6, $7)
 ON CONFLICT (model_version, mention_id) DO UPDATE
 SET overall_score = EXCLUDED.overall_score,
-    score         = EXCLUDED.overall_score,  -- keep legacy "score" in sync
+    score         = EXCLUDED.score,          -- keep legacy "score" in sync
     label         = EXCLUDED.label,
     confidence    = EXCLUDED.confidence,
     rationale     = EXCLUDED.rationale;
@@ -557,6 +557,7 @@ for (const grp of chunk(rows, MICRO_BATCH)) {
         scored.label,
         scored.confidence,
         scored.rationale,
+        scored.overall_score,
       ]);
       processed++;
     }
