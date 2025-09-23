@@ -105,6 +105,15 @@
 \if :{?BAND_MODERATE}          \else \set BAND_MODERATE           0.20         \endif
 \if :{?BAND_WEAK}              \else \set BAND_WEAK               0.10         \endif
 
+-- Optional TA gates
+\if :{?MIN_VOLUME_Z}       \else \set MIN_VOLUME_Z        'NULL' \endif
+\if :{?MIN_VOLUME_RATIO}  \else \set MIN_VOLUME_RATIO    'NULL' \endif
+\if :{?MIN_VOLUME_SHARE}  \else \set MIN_VOLUME_SHARE    'NULL' \endif
+\if :{?VOLUME_RATIO_PCTL} \else \set VOLUME_RATIO_PCTL   'NULL' \endif
+\if :{?VOLUME_SHARE_PCTL} \else \set VOLUME_SHARE_PCTL   'NULL' \endif
+\if :{?RSI_LONG_MAX}      \else \set RSI_LONG_MAX       'NULL' \endif
+\if :{?RSI_SHORT_MIN}     \else \set RSI_SHORT_MIN      'NULL' \endif
+
 -- ================================
 -- 1) Base scored mentions (window, conf gate, optional symbol filter)
 -- ================================
@@ -183,12 +192,33 @@ SELECT
   d.pos_rate,
   d.neg_rate,
   f.volume_zscore_20,
+  f.volume_ratio_avg_20,
+  f.volume_share_20,
   f.rsi_14
 FROM tmp_daily d
 LEFT JOIN v_market_rolling_features f
   ON f.symbol = d.symbol
  AND f.data_date = d.d
 WHERE COALESCE(d.avg_abs,0) >= (:'AVG_ABS_MIN')::numeric;
+
+-- Optional per-symbol volume percentile thresholds
+DROP TABLE IF EXISTS tmp_symbol_volume_thresholds;
+CREATE TEMP TABLE tmp_symbol_volume_thresholds AS
+SELECT
+  symbol,
+  CASE
+    WHEN NULLIF(:'VOLUME_RATIO_PCTL','NULL') IS NULL THEN NULL
+    ELSE PERCENTILE_CONT(NULLIF(:'VOLUME_RATIO_PCTL','NULL')::numeric)
+           WITHIN GROUP (ORDER BY volume_ratio_avg_20)
+  END AS ratio_threshold,
+  CASE
+    WHEN NULLIF(:'VOLUME_SHARE_PCTL','NULL') IS NULL THEN NULL
+    ELSE PERCENTILE_CONT(NULLIF(:'VOLUME_SHARE_PCTL','NULL')::numeric)
+           WITHIN GROUP (ORDER BY volume_share_20)
+  END AS share_threshold
+FROM v_market_rolling_features
+WHERE data_date BETWEEN :'START_DATE'::date AND :'END_DATE'::date
+GROUP BY symbol;
 
 \if :DEBUG
   SELECT 'tmp_candidates_n' AS label, COUNT(*) AS n FROM tmp_candidates;
@@ -255,13 +285,74 @@ SELECT
   c.d AS start_day,
   CASE g.horizon WHEN '1d' THEN 1 WHEN '3d' THEN 3 WHEN '5d' THEN 5 END AS hold_days,
   c.volume_zscore_20,
+  c.volume_ratio_avg_20,
+  c.volume_share_20,
   c.rsi_14
 FROM tmp_candidates c
 JOIN tmp_grid g ON TRUE
+LEFT JOIN tmp_symbol_volume_thresholds vt ON vt.symbol = c.symbol
 WHERE c.mentions >= GREATEST( (:'MIN_MENTIONS_REQ')::int, g.min_mentions )
   AND (
-        (g.side='LONG'  AND c.pos_rate >= (:'POS_RATE_MIN')::numeric AND c.avg_raw >=  g.pos_thresh)
-     OR (g.side='SHORT' AND c.neg_rate >= (:'POS_RATE_MIN')::numeric AND c.avg_raw <= -g.pos_thresh)
+        (g.side='LONG'
+          AND c.pos_rate >= (:'POS_RATE_MIN')::numeric
+          AND c.avg_raw  >=  g.pos_thresh
+          AND (
+                NULLIF(:'MIN_VOLUME_Z','NULL') IS NULL
+             OR (c.volume_zscore_20 IS NOT NULL AND c.volume_zscore_20 >= NULLIF(:'MIN_VOLUME_Z','NULL')::numeric)
+          )
+          AND (
+                NULLIF(:'MIN_VOLUME_RATIO','NULL') IS NULL
+             OR (c.volume_ratio_avg_20 IS NOT NULL AND c.volume_ratio_avg_20 >= NULLIF(:'MIN_VOLUME_RATIO','NULL')::numeric)
+          )
+          AND (
+                NULLIF(:'MIN_VOLUME_SHARE','NULL') IS NULL
+             OR (c.volume_share_20 IS NOT NULL AND c.volume_share_20 >= NULLIF(:'MIN_VOLUME_SHARE','NULL')::numeric)
+          )
+          AND (
+                NULLIF(:'VOLUME_RATIO_PCTL','NULL') IS NULL
+             OR vt.ratio_threshold IS NULL
+             OR (c.volume_ratio_avg_20 IS NOT NULL AND c.volume_ratio_avg_20 >= vt.ratio_threshold)
+          )
+          AND (
+                NULLIF(:'VOLUME_SHARE_PCTL','NULL') IS NULL
+             OR vt.share_threshold IS NULL
+             OR (c.volume_share_20 IS NOT NULL AND c.volume_share_20 >= vt.share_threshold)
+          )
+          AND (
+                NULLIF(:'RSI_LONG_MAX','NULL') IS NULL
+             OR (c.rsi_14 IS NOT NULL AND c.rsi_14 <= NULLIF(:'RSI_LONG_MAX','NULL')::numeric)
+          )
+        )
+     OR (g.side='SHORT'
+          AND c.neg_rate >= (:'POS_RATE_MIN')::numeric
+          AND c.avg_raw  <= -g.pos_thresh
+          AND (
+                NULLIF(:'MIN_VOLUME_Z','NULL') IS NULL
+             OR (c.volume_zscore_20 IS NOT NULL AND c.volume_zscore_20 >= NULLIF(:'MIN_VOLUME_Z','NULL')::numeric)
+          )
+          AND (
+                NULLIF(:'MIN_VOLUME_RATIO','NULL') IS NULL
+             OR (c.volume_ratio_avg_20 IS NOT NULL AND c.volume_ratio_avg_20 >= NULLIF(:'MIN_VOLUME_RATIO','NULL')::numeric)
+          )
+          AND (
+                NULLIF(:'MIN_VOLUME_SHARE','NULL') IS NULL
+             OR (c.volume_share_20 IS NOT NULL AND c.volume_share_20 >= NULLIF(:'MIN_VOLUME_SHARE','NULL')::numeric)
+          )
+          AND (
+                NULLIF(:'VOLUME_RATIO_PCTL','NULL') IS NULL
+             OR vt.ratio_threshold IS NULL
+             OR (c.volume_ratio_avg_20 IS NOT NULL AND c.volume_ratio_avg_20 >= vt.ratio_threshold)
+          )
+          AND (
+                NULLIF(:'VOLUME_SHARE_PCTL','NULL') IS NULL
+             OR vt.share_threshold IS NULL
+             OR (c.volume_share_20 IS NOT NULL AND c.volume_share_20 >= vt.share_threshold)
+          )
+          AND (
+                NULLIF(:'RSI_SHORT_MIN','NULL') IS NULL
+             OR (c.rsi_14 IS NOT NULL AND c.rsi_14 >= NULLIF(:'RSI_SHORT_MIN','NULL')::numeric)
+          )
+        )
       )
   AND c.symbol IS NOT NULL
   AND CASE g.horizon WHEN '1d' THEN 1 WHEN '3d' THEN 3 WHEN '5d' THEN 5 END IS NOT NULL;
@@ -315,7 +406,10 @@ DROP TABLE IF EXISTS tmp_fwd;
 CREATE TEMP TABLE tmp_fwd AS
 SELECT
   s.symbol, s.horizon, s.side, s.dir, s.min_mentions, s.pos_thresh,
-  s.volume_zscore_20, s.rsi_14,
+  s.volume_zscore_20,
+  s.volume_ratio_avg_20,
+  s.volume_share_20,
+  s.rsi_14,
   s.start_day, s.hold_days,
   p.close AS entry_close,
   CASE s.hold_days
@@ -388,7 +482,11 @@ SELECT
     WHEN STDDEV_POP(f.fwd_ret) IS NULL OR STDDEV_POP(f.fwd_ret)=0
       THEN NULL
     ELSE (AVG(f.fwd_ret)/STDDEV_POP(f.fwd_ret))::numeric
-  END AS sharpe
+  END AS sharpe,
+  AVG(f.volume_zscore_20)::numeric    AS avg_volume_zscore_20,
+  AVG(f.volume_ratio_avg_20)::numeric AS avg_volume_ratio_avg_20,
+  AVG(f.volume_share_20)::numeric     AS avg_volume_share_20,
+  AVG(f.rsi_14)::numeric              AS avg_rsi_14
 FROM tmp_fwd f
 GROUP BY 1,2,3,4,5,6,7,8
 HAVING COUNT(*) >= (:'MIN_TRADES')::int
@@ -707,6 +805,10 @@ ORDER BY CASE WHEN (:'USE_LB_RANKING')::int=1 THEN r.lb END DESC NULLS LAST,
 
 -- Ensure persistence tables carry baseline/uplift metrics for promotion/reporting
 ALTER TABLE IF EXISTS backtest_sweep_results
+  ADD COLUMN IF NOT EXISTS avg_volume_zscore_20 numeric,
+  ADD COLUMN IF NOT EXISTS avg_volume_ratio_avg_20 numeric,
+  ADD COLUMN IF NOT EXISTS avg_volume_share_20 numeric,
+  ADD COLUMN IF NOT EXISTS avg_rsi_14 numeric,
   ADD COLUMN IF NOT EXISTS baseline_naive_trades int,
   ADD COLUMN IF NOT EXISTS baseline_naive_avg_ret numeric,
   ADD COLUMN IF NOT EXISTS baseline_random_trades int,
@@ -715,6 +817,10 @@ ALTER TABLE IF EXISTS backtest_sweep_results
   ADD COLUMN IF NOT EXISTS uplift_random numeric;
 
 ALTER TABLE IF EXISTS backtest_sweep_grid
+  ADD COLUMN IF NOT EXISTS avg_volume_zscore_20 numeric,
+  ADD COLUMN IF NOT EXISTS avg_volume_ratio_avg_20 numeric,
+  ADD COLUMN IF NOT EXISTS avg_volume_share_20 numeric,
+  ADD COLUMN IF NOT EXISTS avg_rsi_14 numeric,
   ADD COLUMN IF NOT EXISTS baseline_naive_trades int,
   ADD COLUMN IF NOT EXISTS baseline_naive_avg_ret numeric,
   ADD COLUMN IF NOT EXISTS baseline_random_trades int,
@@ -744,6 +850,8 @@ r_best AS (
     symbol, horizon, side,
     min_mentions, pos_thresh,
     trades, avg_ret, win_rate, sharpe,
+    avg_volume_zscore_20, avg_volume_ratio_avg_20, avg_volume_share_20,
+    avg_rsi_14,
     baseline_naive_trades, baseline_naive_avg_ret,
     baseline_random_trades, baseline_random_avg_ret,
     uplift, uplift_random
@@ -767,6 +875,8 @@ INSERT INTO backtest_sweep_results (
   start_date, end_date,
   trades, avg_ret, median_ret, win_rate, stdev_ret, sharpe,
   min_mentions, pos_thresh,
+  avg_volume_zscore_20, avg_volume_ratio_avg_20, avg_volume_share_20,
+  avg_rsi_14,
   baseline_naive_trades, baseline_naive_avg_ret,
   baseline_random_trades, baseline_random_avg_ret,
   uplift, uplift_random,
@@ -778,6 +888,8 @@ SELECT
   :'START_DATE'::date, :'END_DATE'::date,
   r.trades, r.avg_ret, m.median_ret, r.win_rate, m.stdev_ret, r.sharpe,
   r.min_mentions, r.pos_thresh,
+  r.avg_volume_zscore_20, r.avg_volume_ratio_avg_20, r.avg_volume_share_20,
+  r.avg_rsi_14,
   r.baseline_naive_trades, r.baseline_naive_avg_ret,
   r.baseline_random_trades, r.baseline_random_avg_ret,
   r.uplift, r.uplift_random,
@@ -796,6 +908,10 @@ DO UPDATE SET
   sharpe       = EXCLUDED.sharpe,
   min_mentions = EXCLUDED.min_mentions,
   pos_thresh   = EXCLUDED.pos_thresh,
+  avg_volume_zscore_20     = EXCLUDED.avg_volume_zscore_20,
+  avg_volume_ratio_avg_20  = EXCLUDED.avg_volume_ratio_avg_20,
+  avg_volume_share_20      = EXCLUDED.avg_volume_share_20,
+  avg_rsi_14               = EXCLUDED.avg_rsi_14,
   baseline_naive_trades   = EXCLUDED.baseline_naive_trades,
   baseline_naive_avg_ret  = EXCLUDED.baseline_naive_avg_ret,
   baseline_random_trades  = EXCLUDED.baseline_random_trades,
@@ -847,6 +963,10 @@ CREATE TABLE IF NOT EXISTS backtest_sweep_grid (
   win_rate numeric,
   stdev_ret numeric,
   sharpe numeric,
+  avg_volume_zscore_20 numeric,
+  avg_volume_ratio_avg_20 numeric,
+  avg_volume_share_20 numeric,
+  avg_rsi_14 numeric,
   baseline_naive_trades int,
   baseline_naive_avg_ret numeric,
   baseline_random_trades int,
@@ -870,6 +990,7 @@ INSERT INTO backtest_sweep_grid (
   model_version,start_date,end_date,
   symbol,horizon,side,min_mentions,pos_thresh,
   trades,avg_ret,median_ret,win_rate,stdev_ret,sharpe,
+  avg_volume_zscore_20,avg_volume_ratio_avg_20,avg_volume_share_20,avg_rsi_14,
   baseline_naive_trades,baseline_naive_avg_ret,
   baseline_random_trades,baseline_random_avg_ret,
   uplift,uplift_random
@@ -878,6 +999,7 @@ SELECT
   model_version,start_date,end_date,
   symbol,horizon,side,min_mentions,pos_thresh,
   trades,avg_ret,median_ret,win_rate,stdev_ret,sharpe,
+  avg_volume_zscore_20,avg_volume_ratio_avg_20,avg_volume_share_20,avg_rsi_14,
   baseline_naive_trades,baseline_naive_avg_ret,
   baseline_random_trades,baseline_random_avg_ret,
   uplift,uplift_random
@@ -890,6 +1012,10 @@ DO UPDATE SET
   win_rate   = EXCLUDED.win_rate,
   stdev_ret  = EXCLUDED.stdev_ret,
   sharpe     = EXCLUDED.sharpe,
+  avg_volume_zscore_20     = EXCLUDED.avg_volume_zscore_20,
+  avg_volume_ratio_avg_20  = EXCLUDED.avg_volume_ratio_avg_20,
+  avg_volume_share_20      = EXCLUDED.avg_volume_share_20,
+  avg_rsi_14               = EXCLUDED.avg_rsi_14,
   baseline_naive_trades   = EXCLUDED.baseline_naive_trades,
   baseline_naive_avg_ret  = EXCLUDED.baseline_naive_avg_ret,
   baseline_random_trades  = EXCLUDED.baseline_random_trades,
@@ -918,7 +1044,8 @@ COPY (
     END AS band,
     r.trades, r.avg_ret, r.median_ret, r.win_rate, r.stdev_ret, r.sharpe,
     d.train_trades, d.valid_trades, d.train_sharpe, d.valid_sharpe,
-    d.r_train_rank, d.r_valid_rank
+    d.r_train_rank, d.r_valid_rank,
+    r.lb
   FROM tmp_results r
   LEFT JOIN tmp_fold_diag d
     ON d.symbol=r.symbol AND d.horizon=r.horizon AND d.side=r.side

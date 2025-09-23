@@ -29,6 +29,7 @@ WITH grid AS (
     model_version, symbol, horizon, side,
     min_mentions, pos_thresh,
     trades, avg_ret, median_ret, win_rate, stdev_ret, sharpe,
+    avg_volume_zscore_20, avg_volume_ratio_avg_20, avg_volume_share_20, avg_rsi_14,
     start_date, end_date
   FROM backtest_sweep_results
   WHERE :USE_FULL_GRID::int = 0
@@ -40,6 +41,7 @@ WITH grid AS (
     model_version, symbol, horizon, side,
     min_mentions, pos_thresh,
     trades, avg_ret, median_ret, win_rate, stdev_ret, sharpe,
+    avg_volume_zscore_20, avg_volume_ratio_avg_20, avg_volume_share_20, avg_rsi_14,
     start_date, end_date
   FROM backtest_sweep_grid
   WHERE :USE_FULL_GRID::int = 1
@@ -108,6 +110,7 @@ best_per AS (
     model_version, symbol, horizon, side,
     min_mentions, pos_thresh,
     trades, avg_ret, median_ret, win_rate, stdev_ret, sharpe, q_value,
+    avg_volume_zscore_20, avg_volume_ratio_avg_20, avg_volume_share_20, avg_rsi_14,
     ROW_NUMBER() OVER (
       PARTITION BY model_version, symbol, horizon, side
       ORDER BY sharpe DESC NULLS LAST, trades DESC
@@ -119,7 +122,8 @@ chosen AS (
   SELECT
     model_version, symbol, horizon, side,
     min_mentions, pos_thresh,
-    trades, avg_ret, median_ret, win_rate, stdev_ret, sharpe, q_value
+    trades, avg_ret, median_ret, win_rate, stdev_ret, sharpe, q_value,
+    avg_volume_zscore_20, avg_volume_ratio_avg_20, avg_volume_share_20, avg_rsi_14
   FROM best_per
   WHERE rk = 1
 ),
@@ -151,6 +155,7 @@ final AS (
     c.model_version, c.symbol, c.horizon, c.side,
     c.min_mentions, c.pos_thresh,
     c.trades, c.avg_ret, c.median_ret, c.win_rate, c.stdev_ret, c.sharpe, c.q_value,
+    c.avg_volume_zscore_20, c.avg_volume_ratio_avg_20, c.avg_volume_share_20, c.avg_rsi_14,
     r.neighbor_cnt
   FROM chosen c
   JOIN robust r
@@ -179,8 +184,13 @@ SELECT
   trades, avg_ret, median_ret, win_rate, sharpe, q_value,
   :'START_DATE'::date, :'END_DATE'::date,
   format(
-    'auto-promoted from grid on %s | robust_neighbors=%s | q_value=%s | filters: MIN_TRADES=%s, MIN_SHARPE=%s, MIN_WIN_RATE=%s, MIN_AVG_RET=%s, Q_MAX=%s',
-    now()::timestamptz, neighbor_cnt, q_value, :'MIN_TRADES', :'MIN_SHARPE', :'MIN_WIN_RATE', :'MIN_AVG_RET', :'Q_MAX'
+    'auto-promoted from grid on %s | robust_neighbors=%s | q_value=%s | avg_volume_z20=%s | avg_rsi_14=%s | filters: MIN_TRADES=%s, MIN_SHARPE=%s, MIN_WIN_RATE=%s, MIN_AVG_RET=%s, Q_MAX=%s',
+    now()::timestamptz, neighbor_cnt, q_value,
+    COALESCE(avg_volume_zscore_20::text,'NULL'),
+    COALESCE(avg_volume_ratio_avg_20::text,'NULL'),
+    COALESCE(avg_volume_share_20::text,'NULL'),
+    COALESCE(avg_rsi_14::text,'NULL'),
+    :'MIN_TRADES', :'MIN_SHARPE', :'MIN_WIN_RATE', :'MIN_AVG_RET', :'Q_MAX'
   )::text,
   100
 FROM final

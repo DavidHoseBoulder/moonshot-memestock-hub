@@ -178,8 +178,8 @@ CREATE INDEX IF NOT EXISTS idx_bsg_group ON backtest_sweep_grid (symbol,horizon,
   - Candidate plumbing
     - [x] Surface rolling features in the grid candidate pipeline (`tmp_candidates`/`tmp_sig_start`) so sentiment rules carry `volume_zscore_20`, `rsi_14` forward.
   - Sweep gates
-    - [ ] Extend sweep params/table with `min_volume_z`, `rsi_long_max`, `rsi_short_min` (nullable defaults) and apply filters only when provided.
-    - [ ] Add presets/runner helpers covering baseline, volume-only, RSI-only, combo scenarios.
+    - [x] Extend sweep params/table with `min_volume_z`, `rsi_long_max`, `rsi_short_min` (nullable defaults) and apply filters only when provided.
+    - [x] Add presets/runner helpers covering baseline, volume-only, RSI-only, combo scenarios.
   - Live diagnostics
     - [ ] Create view `v_live_rules_effective` with TA pass/fail diagnostics joined to `live_sentiment_entry_rules` (no gating yet).
   - Reporting & regression
@@ -191,6 +191,37 @@ CREATE INDEX IF NOT EXISTS idx_bsg_group ON backtest_sweep_grid (symbol,horizon,
   - [ ] Spot-check rolling metrics (AAPL) for NULL windows and RSI bounds.
   - [ ] Ensure baseline runs (TA params NULL) match historical stats within tolerance.
   - [ ] Confirm diagnostic views populate booleans for current rules and regression summary reflects gate tightening.
+
+Notes (2025-09-24): Migration `2025-09-24_add_market_rolling_features.sql` is live; grid pipeline now forwards `volume_zscore_20`/`volume_ratio_avg_20`/`volume_share_20`/`rsi_14`, and `promote_rules_from_grid.sql` surfaces the averages in promotion notes. `run_backtest_grid.sh` accepts direct TA knobs (`MIN_VOLUME_Z`, `MIN_VOLUME_RATIO`, `MIN_VOLUME_SHARE`, `VOLUME_RATIO_PCTL`, `VOLUME_SHARE_PCTL`, `RSI_LONG_MAX`, `RSI_SHORT_MIN`) plus `TA_PRESET` helpers (`baseline`, `volume_only`, `rsi_only`, `combo`). Baseline rerun reproduced 29 winners/727 grid rows. `volume_only` with `MIN_VOLUME_Z` at 0.50, 0.20, 0.10, 0.05, and even 0.02 all collapse to the same 3 GME pockets / 72 grid rows (LB<0); per-symbol volume_zscore p80 rarely exceeds ~0.3 for core names, so absolute z-gates are unusable. Ratio profiling shows p80 ≈1.2–1.3 for large caps (SOFI 1.18, AAPL 1.20, GOOGL 1.22, TSLA 1.15) with winner means ~1.1–1.3 and share means ~0.5–0.6. RSI-only with relaxed caps (`RSI_LONG_MAX=80`, `RSI_SHORT_MIN=25`) held 24 winners/521 grid rows with solid uplift. New `validation/sweep_volume_ratio.sql` sweeps global ratio/share thresholds and per-symbol percentiles; use `VOLUME_RATIO_PCTL`/`VOLUME_SHARE_PCTL` for symbol-aware gates. First pass at percentile gating (`VOLUME_RATIO_PCTL=0.55`, `VOLUME_SHARE_PCTL=0.55`) plus `REQUIRE_LB_POSITIVE=1` shrank the window to a single LB-positive HOOD 5d pocket (trades=11, avg_ret≈4.6%), removing negative-LB GME/TSLA pockets while leaving 168 pockets in the full grid (vs. 765 baseline). Next validation: compare aggregate metrics
+
+Analysis (2025-09-24):
+- Baseline vs. `pct55_share55_lb`: trades 15,118→2,139, avg_ret 0.01198→0.00699, Sharpe 0.2535→0.0933, median_ret 0.00792→0.00097, win_rate 0.582→0.511; LB improved, but returns shrank.
+- Scenario sweep (`ta_scenario_summary`): `pct45_lb` retains ~5.2k trades with Sharpe ≈0.065; tighter gates (≥0.55) drive Sharpe toward zero/negative despite LB filtering.
+- No volume percentile tested yet boosts Sharpe; next experiments: adjust share percentiles (0.40–0.50), combine ratio pct with mild global floors (1.00–1.05), clamp RSI (e.g., `RSI_LONG_MAX=65`), and add drawdown/ATR filters.
+- Use `validation/run_ta_scenarios.sh` + `validation/ta_scenarios.tsv` to iterate; inspect `ta_scenario_summary` after each sweep before baking TA presets or promotion gates. Baseline vs. TA_pct55 snapshot: trades 15,118→2,139, avg_ret 0.01198→0.00699, Sharpe 0.2535→0.0933, median_ret 0.00792→0.00097, win_rate 0.582→0.511—LB quality improved but overall returns shrunk, so thresholds need refinement before adoption. Use `validation/ta_scenarios.tsv` + `validation/run_ta_scenarios.sh` to batch-test ratio/share combinations and capture `ta_scenario_summary` metrics for comparison. (avg_ret, Sharpe, LB, drawdowns) for baseline vs. gated runs to confirm uplift before standardising thresholds (e.g., ratio pct 0.55–0.60, share pct 0.50–0.55) and wiring them into a TA preset/promotion flow. Baseline vs. TA_pct55 snapshot: trades 15,118→2,139, avg_ret 0.01198→0.00699, Sharpe 0.2535→0.0933, median_ret 0.00792→0.00097, win_rate 0.582→0.511—LB quality improved but overall returns shrank, so thresholds need refinement before adoption.
+Next scenario passes to try
+
+Moderate percentile + soft share floor
+
+VOLUME_RATIO_PCTL=0.45, VOLUME_SHARE_PCTL=0.40, REQUIRE_LB_POSITIVE=1.
+Goal: keep HOOD-type winners but drop low-share, low-LB names.
+Percentile + mild global floor
+
+VOLUME_RATIO_PCTL=0.50, MIN_VOLUME_RATIO=1.02, REQUIRE_LB_POSITIVE=1.
+Tests whether a gentle per-symbol gate plus a weak absolute floor can preserve Sharpe.
+Add RSI clamp
+
+Extend the TSV with a column for RSI_LONG_MAX (e.g., 65) and rerun. We can expand the script to pass that env var and log it in the summary.
+Volatility / drawdown filters
+
+Consider adding ATR- or drawdown-based gates (e.g., require ATR percentile or cap rolling max drawdown) to see if they improve Sharpe more than volume alone.
+Additional indicators to test
+
+Moving average slope/crossovers, MACD/ROC for momentum confirmation.
+Bollinger-band position (mean reversion).
+Multi-timeframe volume ratios (e.g., 5-day vs. 20-day).
+Relative strength vs. sector ETF or the market index.
+Volume Spike + Sentiment Intensity combos (e.g., percentile + sentiment z-score).
 
 ## Rollout Plan
 

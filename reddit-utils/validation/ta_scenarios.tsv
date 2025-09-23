@@ -1,0 +1,15 @@
+run	scenario	volume_ratio_pctl	volume_share_pctl	min_volume_ratio	min_volume_share	min_volume_z	rsi_long_max	rsi_short_min	require_lb_positive
+1	baseline	NULL	NULL	NULL	NULL	NULL	NULL	NULL	0
+1	pct45_lb	0.45	NULL	NULL	NULL	NULL	NULL	NULL	1
+1	pct50_lb	0.50	NULL	NULL	NULL	NULL	NULL	NULL	1
+1	pct52_lb	0.52	NULL	NULL	NULL	NULL	NULL	NULL	1
+1	pct55_lb	0.55	NULL	NULL	NULL	NULL	NULL	NULL	1
+1	pct55_share45_lb	0.55	0.45	NULL	NULL	NULL	NULL	NULL	1
+1	pct55_share50_lb	0.55	0.50	NULL	NULL	NULL	NULL	NULL	1
+1	pct55_global1.00_lb	0.55	NULL	1.00	NULL	NULL	NULL	NULL	1
+1	pct55_global1.05_lb	0.55	NULL	1.05	NULL	NULL	NULL	NULL	1
+1	pct60_share50_lb	0.60	0.50	NULL	NULL	NULL	NULL	NULL	1
+1	pct60_global1.00_lb	0.60	NULL	1.00	NULL	NULL	NULL	NULL	1
+1	pct45_share40_lb	0.45	0.40	NULL	NULL	NULL	NULL	NULL	1
+1	pct50_global1.02_lb	0.50	NULL	1.02	NULL	NULL	NULL	NULL	1
+1	pct50_share45_rsi65_lb	0.50	0.45	NULL	NULL	NULL	65	NULL	1
