@@ -181,18 +181,81 @@ CREATE INDEX IF NOT EXISTS idx_bsg_group ON backtest_sweep_grid (symbol,horizon,
     - [x] Extend sweep params/table with `min_volume_z`, `rsi_long_max`, `rsi_short_min` (nullable defaults) and apply filters only when provided.
     - [x] Add presets/runner helpers covering baseline, volume-only, RSI-only, combo scenarios.
   - Live diagnostics
-    - [ ] Create view `v_live_rules_effective` with TA pass/fail diagnostics joined to `live_sentiment_entry_rules` (no gating yet).
+    - [x] Create view `v_live_rules_effective` with TA pass/fail diagnostics joined to `live_sentiment_entry_rules` (no gating yet).
   - Reporting & regression
     - [ ] Publish `v_backtest_ta_summary` and baseline-vs-gated comparison view for quick QA.
   - Guardrails & rollback
-    - [ ] Document DROP/DROP COLUMN rollback script covering all TA artifacts.
-    - [ ] Capture performance assertions (baseline parity, trade-count deltas) in runbook.
+  - [x] Document reuse of `reddit_heuristics.ta_config` for TA overrides (no new tables).
+  - [ ] Capture performance assertions (baseline parity, trade-count deltas) in runbook.
 - Validation:
   - [ ] Spot-check rolling metrics (AAPL) for NULL windows and RSI bounds.
   - [ ] Ensure baseline runs (TA params NULL) match historical stats within tolerance.
   - [ ] Confirm diagnostic views populate booleans for current rules and regression summary reflects gate tightening.
 
+### 11) Volatility Guardrails (ATR + Drawdown)
+
+- Summary: Layer price-volatility guardrails (ATR floors, drawdown caps) onto the grid so volume-qualified pockets still avoid hyper-volatile or knife-catching regimes.
+- SQL touchpoints: `backtest_grid.sql`, supporting market feature views, `run_backtest_grid.sh`, TA scenario helpers, `ta_scenario_summary`.
+- Data source: `enhanced_market_data.technical_indicators` already stores ATR (`atr_14`, `atr_pct_rank`) and drawdown metrics (`drawdown_20`, `drawdown_pct_rank`).
+- Flags (proposed): `ATR_PCTL_MIN`, `ATR_PCTL_MAX`, `ATR_ABS_MIN`, `DRAWDOWN_PCTL_MAX`, `DRAWDOWN_ABS_MAX` (default NULL / inactive).
+- Tasks:
+  - [ ] Extract ATR/drawdown fields from `enhanced_market_data` (or `v_market_rolling_features`) into `tmp_candidates` and persist alongside volume metrics in CSV outputs.
+  - [ ] Gate `tmp_results` when the new flags are set (per-symbol percentile comparisons + optional absolute thresholds).
+  - [ ] Extend `run_backtest_grid.sh`, `validation/ta_scenarios.tsv`, and `ta_scenario_summary` to accept/log the new knobs.
+  - [ ] Add a validation script comparing baseline vs. volume+volatility gates on the 2025-06-01→2025-09-22 window (report trades, Sharpe, LB, drawdown deltas).
+- Validation:
+  - [ ] ATR floor (e.g., percentile ≥0.60) retains HOOD-style winners while removing low-momentum pockets.
+  - [ ] Drawdown cap (e.g., percentile ≤0.75 or abs ≤-12%) reduces LB-negative trades without collapsing Sharpe.
+
 Notes (2025-09-24): Migration `2025-09-24_add_market_rolling_features.sql` is live; grid pipeline now forwards `volume_zscore_20`/`volume_ratio_avg_20`/`volume_share_20`/`rsi_14`, and `promote_rules_from_grid.sql` surfaces the averages in promotion notes. `run_backtest_grid.sh` accepts direct TA knobs (`MIN_VOLUME_Z`, `MIN_VOLUME_RATIO`, `MIN_VOLUME_SHARE`, `VOLUME_RATIO_PCTL`, `VOLUME_SHARE_PCTL`, `RSI_LONG_MAX`, `RSI_SHORT_MIN`) plus `TA_PRESET` helpers (`baseline`, `volume_only`, `rsi_only`, `combo`). Baseline rerun reproduced 29 winners/727 grid rows. `volume_only` with `MIN_VOLUME_Z` at 0.50, 0.20, 0.10, 0.05, and even 0.02 all collapse to the same 3 GME pockets / 72 grid rows (LB<0); per-symbol volume_zscore p80 rarely exceeds ~0.3 for core names, so absolute z-gates are unusable. Ratio profiling shows p80 ≈1.2–1.3 for large caps (SOFI 1.18, AAPL 1.20, GOOGL 1.22, TSLA 1.15) with winner means ~1.1–1.3 and share means ~0.5–0.6. RSI-only with relaxed caps (`RSI_LONG_MAX=80`, `RSI_SHORT_MIN=25`) held 24 winners/521 grid rows with solid uplift. New `validation/sweep_volume_ratio.sql` sweeps global ratio/share thresholds and per-symbol percentiles; use `VOLUME_RATIO_PCTL`/`VOLUME_SHARE_PCTL` for symbol-aware gates. First pass at percentile gating (`VOLUME_RATIO_PCTL=0.55`, `VOLUME_SHARE_PCTL=0.55`) plus `REQUIRE_LB_POSITIVE=1` shrank the window to a single LB-positive HOOD 5d pocket (trades=11, avg_ret≈4.6%), removing negative-LB GME/TSLA pockets while leaving 168 pockets in the full grid (vs. 765 baseline). Next validation: compare aggregate metrics
+
+Notes (2025-09-25): Per-symbol check on the `pct45_global1.05_lb` sweep confirms the ratio floor is ruthless about volume laggards.
+
+- HOOD disappears entirely once the global ratio floor kicks in: `ta_pct45_global1.05_lb.csv` has zero HOOD pockets/trades, versus 168 pockets and 3,124 trades in `ta_baseline.csv` (trade-weighted Sharpe ≈0.45). Any floor ≥1.01 was already enough to zero it out.
+- GME benefits: pockets drop 168→48 and trades 4,656→528 while trade-weighted Sharpe flips from –0.23 to +0.10 and mean LB improves by ~0.013. Surviving pockets are the 5d longs with small positive drifts.
+- TSLA is still toxic: after the floor we keep 16 short pockets (160 trades) with avg_ret ≈ –1.9% and trade-weighted Sharpe ≈ –1.0. The floor prunes volume but not the persistent short losses.
+- Coverage narrows to nine symbols (AMD, ASTS, BBAI, CVNA, GME, GOOGL, INTC, SOFI, TSLA). The top Sharpe slots are all SOFI 5d longs repeated across min_mentions bands; nothing repopulates the HOOD niche.
+
+Implications
+
+- We need per-symbol overrides if we want HOOD-style winners while running a 1.05 global floor elsewhere.
+- TSLA likely needs an additional guard (drop the short book or layer a second screen).
+- For GME and the other survivors, the floor is doing useful cleanup without nuking everything.
+- Next steps: draft reporting that flags symbols removed by the floor and sketch how promotion/seeding might persist per-symbol ratio knobs before flipping live rules.
+
+Notes (2025-09-25): Ratio vs. share floor sweep (`validation/ta_scenarios.tsv`) highlights how quickly global ratios hollow out the book.
+
+- Baseline (`ta_baseline.csv`): 12 symbols, 15,118 trades, trade-weighted Sharpe ≈0.18.
+- Global ratio ≥1.01 (`ta_pct45_global1.01_lb.csv`): still 12 symbols but trades drop 42% (8,796) and Sharpe inches to 0.20; ≥1.04 compresses to nine symbols/7,169 trades with Sharpe ≈0.31, and ≥1.05 lands at 6,809 trades with Sharpe ≈0.30 while average LB stays slightly negative (≈–0.0056).
+- `require_lb_positive=1` barely changes the ≥1.05 runs because surviving cells already have LB>0; removing the LB gate (`ta_pct45_global1.05_nolb.csv`) is identical.
+- Share-only gates without LB (`ta_pct45_share40_nolb.csv`) reintroduce HOOD, MSFT, NVDA, etc. and boost Sharpe to ≈0.24, but 9k of the 15.5k trades have LB<0 thanks to AMC/TSLA shorts resurfacing.
+- Share-only with LB (`ta_pct45_share40_lb.csv`) collapses to four symbols (GOOGL, HOOD, GME, TSLA) and trade-weighted Sharpe turns negative because GME/TSLA still bleed.
+- Combined share+ratio (`ta_pct45_share40_global1.05_lb.csv`) keeps the higher Sharpe (~0.32) but still excludes HOOD and leaves TSLA shorts; per-symbol knobs are the only path to keep HOOD while enforcing a real volume ratio floor.
+- Follow-up: test RSI overlays on the TSLA short book and prototype a “keep list” yaml for per-symbol ratio floors before we wire promotion gates.
+
+Notes (2025-09-25 – TSLR): Dropping the TSLA short book (“TSLR”) against the `pct45_global1.05_lb` run improves the slate with minimal coverage loss.
+
+- Removing the 16 TSLA short pockets (160 trades) lifts trade-weighted Sharpe from 0.298→0.329 and nudges mean LB from ≈–0.0056→–0.0049 while total trades only slip 6809→6649.
+- The TSLA rows are identical 1d shorts across min_mentions bands (win rate 10%, avg_ret ≈ –1.9%, Sharpe ≈ –1.0, LB ≈ –0.028); no RSI filter in the current sweep differentiates them.
+- Action item: add a per-symbol override (or explicit `EXCLUDE_SYMBOLS`) hook before we flip the ratio gates so we can ship the TSLA removal without re-running sweeps.
+- Optional next pass: rerun the RSI variant targeting shorts only (`RSI_SHORT_MIN`) to see if we can algorithmically drop the TSLA pockets instead of hard-coding the skip list.
+
+Notes (2025-09-26): TA heuristics now live in `reddit_heuristics.ta_config` and flow through promo/seeding.
+
+- JSON schema (keys optional):
+  - `global_min_volume_ratio`, `global_min_volume_share`, `global_min_volume_z`, `global_rsi_long_max`, `global_rsi_short_min` (numeric strings).
+  - Per-symbol overrides via inner objects: `symbol_min_volume_ratio`, `symbol_min_volume_share`, `symbol_min_volume_z`, `symbol_rsi_long_max`, `symbol_rsi_short_min` (`{"TSLA":"1.10","SOFI":"1.05"}` style inputs).
+  - Exclusions via `symbol_exclude` array accepting `"SYMBOL"` or `"SYMBOL:SIDE"` entries (e.g., `"TSLA:SHORT"`).
+- `promote_rules_from_grid.sql` and `seed_paper_trades_rules_only.sql` now read the config, apply global/per-symbol thresholds, and join `v_market_rolling_features` so live promotion + seeding reflect TA gates without extra tables.
+- New diagnostics view `v_live_rules_effective` exposes each live rule with TA thresholds, pass/fail booleans, and the per-rule averages; dashboards can flag which enabled rules would be filtered if we hardened the gates.
+- Historical winner retention sweep (`validation/historical_winner_retention.sql`) shows the current preset (`ratio_105_share45` + SOFI share 0.35 + `TSLA:SHORT` exclusion) retains 63/68 top trades (≈92.6%) while enforcing stronger volume filters; symbol-specific relaxations recover SOFI coverage (84% retention vs. 58% under global RSI caps) without re-admitting TSLA shorts.
+- Follow-up: seed `ta_config` with the agreed defaults (e.g., global ratio 1.05 + TSLA short exclusion) and confirm promotion/seeding scripts warn on missing config before flipping gating live.
+
+Next exploration: invert the TA search.
+
+- Pull historically profitable paper/live trades, join the market feature view, and measure how many survive under candidate TA gates so we know what we’d lose.
+- Look for common fingerprints among the winners (volume ratio range, RSI band, ATR/drawdown mix) and turn those cluster patterns into presets to test in the sweep.
+- Use the retention stats as evidence when tightening gates (e.g., “1.03 ratio + RSI≤70 keeps 84% of prior winners”).
 
 Analysis (2025-09-24):
 - Baseline vs. `pct55_share55_lb`: trades 15,118→2,139, avg_ret 0.01198→0.00699, Sharpe 0.2535→0.0933, median_ret 0.00792→0.00097, win_rate 0.582→0.511; LB improved, but returns shrank.
