@@ -50,14 +50,130 @@ WITH grid AS (
     AND end_date      = :'END_DATE'::date
 ),
 
--- 2) hard filters
-filtered AS (
+-- 2) hard filters (pre-TA gating)
+hard_filtered AS (
   SELECT *
   FROM grid
   WHERE trades   >= :'MIN_TRADES'::int
     AND (:'MIN_SHARPE'::numeric   IS NULL OR sharpe   >= :'MIN_SHARPE'::numeric)
     AND (:'MIN_WIN_RATE'::numeric IS NULL OR win_rate >= :'MIN_WIN_RATE'::numeric)
     AND (:'MIN_AVG_RET'::numeric  IS NULL OR avg_ret  >= :'MIN_AVG_RET'::numeric)
+),
+
+-- 2b) Active TA heuristics config from reddit_heuristics (model-specific first, then global)
+heuristics_raw AS (
+  SELECT
+    COALESCE(ta_config, '{}'::jsonb) AS cfg,
+    ROW_NUMBER() OVER (
+      ORDER BY
+        CASE WHEN model_version = :'MODEL_VERSION' THEN 0 ELSE 1 END,
+        effective_at DESC
+    ) AS rk
+  FROM reddit_heuristics
+  WHERE is_active = true
+    AND (model_version IS NULL OR model_version = :'MODEL_VERSION')
+),
+heuristics AS (
+  SELECT COALESCE((SELECT cfg FROM heuristics_raw WHERE rk = 1), '{}'::jsonb) AS cfg
+),
+heuristics_expanded AS (
+  SELECT
+    NULLIF(cfg->>'global_min_volume_ratio','')::numeric AS global_min_volume_ratio,
+    NULLIF(cfg->>'global_min_volume_share','')::numeric AS global_min_volume_share,
+    NULLIF(cfg->>'global_min_volume_z','')::numeric     AS global_min_volume_z,
+    NULLIF(cfg->>'global_rsi_long_max','')::numeric     AS global_rsi_long_max,
+    NULLIF(cfg->>'global_rsi_short_min','')::numeric    AS global_rsi_short_min,
+    COALESCE(cfg->'symbol_min_volume_ratio', '{}'::jsonb) AS symbol_min_volume_ratio,
+    COALESCE(cfg->'symbol_min_volume_share', '{}'::jsonb) AS symbol_min_volume_share,
+    COALESCE(cfg->'symbol_min_volume_z', '{}'::jsonb)     AS symbol_min_volume_z,
+    COALESCE(cfg->'symbol_rsi_long_max', '{}'::jsonb)     AS symbol_rsi_long_max,
+    COALESCE(cfg->'symbol_rsi_short_min', '{}'::jsonb)    AS symbol_rsi_short_min,
+    COALESCE(cfg->'symbol_exclude', '[]'::jsonb)          AS symbol_exclude
+  FROM heuristics
+),
+symbol_ratio_overrides AS (
+  SELECT upper(key) AS symbol, NULLIF(value,'')::numeric AS min_volume_ratio
+  FROM heuristics_expanded,
+       LATERAL jsonb_each_text(symbol_min_volume_ratio)
+),
+symbol_share_overrides AS (
+  SELECT upper(key) AS symbol, NULLIF(value,'')::numeric AS min_volume_share
+  FROM heuristics_expanded,
+       LATERAL jsonb_each_text(symbol_min_volume_share)
+),
+symbol_z_overrides AS (
+  SELECT upper(key) AS symbol, NULLIF(value,'')::numeric AS min_volume_z
+  FROM heuristics_expanded,
+       LATERAL jsonb_each_text(symbol_min_volume_z)
+),
+symbol_rsi_long_overrides AS (
+  SELECT upper(key) AS symbol, NULLIF(value,'')::numeric AS rsi_long_max
+  FROM heuristics_expanded,
+       LATERAL jsonb_each_text(symbol_rsi_long_max)
+),
+symbol_rsi_short_overrides AS (
+  SELECT upper(key) AS symbol, NULLIF(value,'')::numeric AS rsi_short_min
+  FROM heuristics_expanded,
+       LATERAL jsonb_each_text(symbol_rsi_short_min)
+),
+symbol_exclusions AS (
+  SELECT
+    upper(split_part(val, ':', 1)) AS symbol,
+    NULLIF(upper(split_part(val, ':', 2)), '') AS side
+  FROM heuristics_expanded,
+       LATERAL jsonb_array_elements_text(symbol_exclude) AS val
+),
+ta_ready AS (
+  SELECT
+    hf.*,
+    COALESCE(svr.min_volume_ratio, he.global_min_volume_ratio) AS eff_min_volume_ratio,
+    COALESCE(svs.min_volume_share, he.global_min_volume_share) AS eff_min_volume_share,
+    COALESCE(svz.min_volume_z,      he.global_min_volume_z)    AS eff_min_volume_z,
+    COALESCE(srl.rsi_long_max,      he.global_rsi_long_max)    AS eff_rsi_long_max,
+    COALESCE(srs.rsi_short_min,     he.global_rsi_short_min)   AS eff_rsi_short_min,
+    CASE WHEN se.symbol IS NOT NULL THEN TRUE ELSE FALSE END   AS is_excluded
+  FROM hard_filtered hf
+  CROSS JOIN heuristics_expanded he
+  LEFT JOIN symbol_ratio_overrides svr ON svr.symbol = hf.symbol
+  LEFT JOIN symbol_share_overrides svs ON svs.symbol = hf.symbol
+  LEFT JOIN symbol_z_overrides     svz ON svz.symbol = hf.symbol
+  LEFT JOIN symbol_rsi_long_overrides  srl ON srl.symbol = hf.symbol
+  LEFT JOIN symbol_rsi_short_overrides srs ON srs.symbol = hf.symbol
+  LEFT JOIN symbol_exclusions se
+    ON se.symbol = hf.symbol
+   AND (se.side IS NULL OR se.side = hf.side)
+),
+filtered AS (
+  SELECT *
+  FROM ta_ready
+  WHERE NOT is_excluded
+    AND (
+          eff_min_volume_ratio IS NULL
+          OR avg_volume_ratio_avg_20 IS NULL
+          OR avg_volume_ratio_avg_20 >= eff_min_volume_ratio
+        )
+    AND (
+          eff_min_volume_share IS NULL
+          OR avg_volume_share_20 IS NULL
+          OR avg_volume_share_20 >= eff_min_volume_share
+        )
+    AND (
+          eff_min_volume_z IS NULL
+          OR avg_volume_zscore_20 IS NULL
+          OR avg_volume_zscore_20 >= eff_min_volume_z
+        )
+    AND (
+          side <> 'LONG'
+          OR eff_rsi_long_max IS NULL
+          OR avg_rsi_14 IS NULL
+          OR avg_rsi_14 <= eff_rsi_long_max
+        )
+    AND (
+          side <> 'SHORT'
+          OR eff_rsi_short_min IS NULL
+          OR avg_rsi_14 IS NULL
+          OR avg_rsi_14 >= eff_rsi_short_min
+        )
 ),
 
 -- 3) p-values and BH FDR (q_value) per (symbol,horizon,side)
@@ -101,7 +217,7 @@ bh AS (
 bh_filtered AS (
   SELECT *
   FROM bh
-  WHERE (:'Q_MAX'::numeric IS NULL OR q_value <= :'Q_MAX'::numeric)
+  WHERE (NULLIF(:'Q_MAX','NULL')::numeric IS NULL OR q_value <= NULLIF(:'Q_MAX','NULL')::numeric)
 ),
 
 -- 3) best per (symbol,horizon,side) by sharpe then trades

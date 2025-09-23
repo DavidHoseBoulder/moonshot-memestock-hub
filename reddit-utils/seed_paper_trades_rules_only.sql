@@ -61,6 +61,11 @@
   \set DRY_RUN 0
 \endif
 
+\if :{?DEBUG}
+\else
+  \set DEBUG 0
+\endif
+
 \if :{?BAND_STRONG}
 \else
   \set BAND_STRONG 0.35
@@ -116,30 +121,182 @@ LEFT JOIN raw r ON r.band = d.band;
 
 -- 1) Base filter from rules-only candidates
 CREATE TEMP TABLE filtered AS
+WITH base AS (
+  SELECT
+    c.trade_date,
+    upper(c.symbol) AS symbol_u,
+    c.symbol,
+    c.side,
+    c.horizon,
+    c.n_mentions,
+    c.pos_thresh,
+    c.use_weighted,
+    c.min_mentions,
+    c.avg_score,
+    c.score            AS used_score,
+    c.margin,
+    c.model_version,
+    CASE
+      WHEN c.pos_thresh >= bp.band_strong   THEN 'STRONG'
+      WHEN c.pos_thresh >= bp.band_moderate THEN 'MODERATE'
+      WHEN c.pos_thresh >= bp.band_weak     THEN 'WEAK'
+      ELSE 'VERY_WEAK'
+    END AS band
+  FROM v_entry_candidates c
+  CROSS JOIN seed_band_params bp
+  WHERE c.model_version = :'MODEL_VERSION'
+    AND c.trade_date BETWEEN DATE :'START_DATE' AND DATE :'END_DATE'
+    AND c.margin >= (:'MIN_MARGIN')::numeric
+),
+heuristics_raw AS (
+  SELECT
+    COALESCE(ta_config, '{}'::jsonb) AS cfg,
+    ROW_NUMBER() OVER (
+      ORDER BY
+        CASE WHEN model_version = :'MODEL_VERSION' THEN 0 ELSE 1 END,
+        effective_at DESC
+    ) AS rk
+  FROM reddit_heuristics
+  WHERE is_active = true
+    AND (model_version IS NULL OR model_version = :'MODEL_VERSION')
+),
+heuristics AS (
+  SELECT COALESCE((SELECT cfg FROM heuristics_raw WHERE rk = 1), '{}'::jsonb) AS cfg
+),
+heuristics_expanded AS (
+  SELECT
+    NULLIF(cfg->>'global_min_volume_ratio','')::numeric AS global_min_volume_ratio,
+    NULLIF(cfg->>'global_min_volume_share','')::numeric AS global_min_volume_share,
+    NULLIF(cfg->>'global_min_volume_z','')::numeric     AS global_min_volume_z,
+    NULLIF(cfg->>'global_rsi_long_max','')::numeric     AS global_rsi_long_max,
+    NULLIF(cfg->>'global_rsi_short_min','')::numeric    AS global_rsi_short_min,
+    COALESCE(cfg->'symbol_min_volume_ratio', '{}'::jsonb) AS symbol_min_volume_ratio,
+    COALESCE(cfg->'symbol_min_volume_share', '{}'::jsonb) AS symbol_min_volume_share,
+    COALESCE(cfg->'symbol_min_volume_z', '{}'::jsonb)     AS symbol_min_volume_z,
+    COALESCE(cfg->'symbol_rsi_long_max', '{}'::jsonb)     AS symbol_rsi_long_max,
+    COALESCE(cfg->'symbol_rsi_short_min', '{}'::jsonb)    AS symbol_rsi_short_min,
+    COALESCE(cfg->'symbol_exclude', '[]'::jsonb)          AS symbol_exclude
+  FROM heuristics
+),
+symbol_ratio_overrides AS (
+  SELECT upper(key) AS symbol, NULLIF(value,'')::numeric AS min_volume_ratio
+  FROM heuristics_expanded,
+       LATERAL jsonb_each_text(symbol_min_volume_ratio)
+),
+symbol_share_overrides AS (
+  SELECT upper(key) AS symbol, NULLIF(value,'')::numeric AS min_volume_share
+  FROM heuristics_expanded,
+       LATERAL jsonb_each_text(symbol_min_volume_share)
+),
+symbol_z_overrides AS (
+  SELECT upper(key) AS symbol, NULLIF(value,'')::numeric AS min_volume_z
+  FROM heuristics_expanded,
+       LATERAL jsonb_each_text(symbol_min_volume_z)
+),
+symbol_rsi_long_overrides AS (
+  SELECT upper(key) AS symbol, NULLIF(value,'')::numeric AS rsi_long_max
+  FROM heuristics_expanded,
+       LATERAL jsonb_each_text(symbol_rsi_long_max)
+),
+symbol_rsi_short_overrides AS (
+  SELECT upper(key) AS symbol, NULLIF(value,'')::numeric AS rsi_short_min
+  FROM heuristics_expanded,
+       LATERAL jsonb_each_text(symbol_rsi_short_min)
+),
+symbol_exclusions AS (
+  SELECT
+    upper(split_part(val, ':', 1)) AS symbol,
+    NULLIF(upper(split_part(val, ':', 2)), '') AS side
+  FROM heuristics_expanded,
+       LATERAL jsonb_array_elements_text(symbol_exclude) AS val
+),
+enriched AS (
+  SELECT
+    b.trade_date,
+    b.symbol,
+    b.symbol_u,
+    b.side,
+    b.horizon,
+    b.n_mentions,
+    b.pos_thresh,
+    b.use_weighted,
+    b.min_mentions,
+    b.avg_score,
+    b.used_score,
+    b.margin,
+    b.model_version,
+    b.band,
+    f.volume_ratio_avg_20,
+    f.volume_share_20,
+    f.volume_zscore_20,
+    f.rsi_14,
+    COALESCE(svr.min_volume_ratio, he.global_min_volume_ratio) AS eff_min_volume_ratio,
+    COALESCE(svs.min_volume_share, he.global_min_volume_share) AS eff_min_volume_share,
+    COALESCE(svz.min_volume_z,      he.global_min_volume_z)    AS eff_min_volume_z,
+    COALESCE(srl.rsi_long_max,      he.global_rsi_long_max)    AS eff_rsi_long_max,
+    COALESCE(srs.rsi_short_min,     he.global_rsi_short_min)   AS eff_rsi_short_min,
+    CASE WHEN se.symbol IS NOT NULL THEN TRUE ELSE FALSE END   AS is_excluded
+  FROM base b
+  LEFT JOIN v_market_rolling_features f
+    ON f.symbol = b.symbol_u
+   AND f.data_date = b.trade_date
+  CROSS JOIN heuristics_expanded he
+  LEFT JOIN symbol_ratio_overrides svr ON svr.symbol = b.symbol_u
+  LEFT JOIN symbol_share_overrides svs ON svs.symbol = b.symbol_u
+  LEFT JOIN symbol_z_overrides     svz ON svz.symbol = b.symbol_u
+  LEFT JOIN symbol_rsi_long_overrides  srl ON srl.symbol = b.symbol_u
+  LEFT JOIN symbol_rsi_short_overrides srs ON srs.symbol = b.symbol_u
+  LEFT JOIN symbol_exclusions se
+    ON se.symbol = b.symbol_u
+   AND (se.side IS NULL OR se.side = b.side)
+)
 SELECT
-  c.trade_date,
-  c.symbol,
-  c.side,
-  c.horizon,
-  c.n_mentions,
-  c.pos_thresh,
-  c.use_weighted,
-  c.min_mentions,
-  c.avg_score,
-  c.score            AS used_score,
-  c.margin,
-  c.model_version,
-  CASE
-    WHEN c.pos_thresh >= bp.band_strong   THEN 'STRONG'
-    WHEN c.pos_thresh >= bp.band_moderate THEN 'MODERATE'
-    WHEN c.pos_thresh >= bp.band_weak     THEN 'WEAK'
-    ELSE 'VERY_WEAK'
-  END AS band
-FROM v_entry_candidates c
-CROSS JOIN seed_band_params bp
-WHERE c.model_version = :'MODEL_VERSION'
-  AND c.trade_date BETWEEN DATE :'START_DATE' AND DATE :'END_DATE'
-  AND c.margin >= (:'MIN_MARGIN')::numeric;
+  e.trade_date,
+  e.symbol,
+  e.side,
+  e.horizon,
+  e.n_mentions,
+  e.pos_thresh,
+  e.use_weighted,
+  e.min_mentions,
+  e.avg_score,
+  e.used_score,
+  e.margin,
+  e.model_version,
+  e.band,
+  e.volume_ratio_avg_20,
+  e.volume_share_20,
+  e.volume_zscore_20,
+  e.rsi_14
+FROM enriched e
+WHERE NOT e.is_excluded
+  AND (
+        e.eff_min_volume_ratio IS NULL
+        OR e.volume_ratio_avg_20 IS NULL
+        OR e.volume_ratio_avg_20 >= e.eff_min_volume_ratio
+      )
+  AND (
+        e.eff_min_volume_share IS NULL
+        OR e.volume_share_20 IS NULL
+        OR e.volume_share_20 >= e.eff_min_volume_share
+      )
+  AND (
+        e.eff_min_volume_z IS NULL
+        OR e.volume_zscore_20 IS NULL
+        OR e.volume_zscore_20 >= e.eff_min_volume_z
+      )
+  AND (
+        e.side <> 'LONG'
+        OR e.eff_rsi_long_max IS NULL
+        OR e.rsi_14 IS NULL
+        OR e.rsi_14 <= e.eff_rsi_long_max
+      )
+  AND (
+        e.side <> 'SHORT'
+        OR e.eff_rsi_short_min IS NULL
+        OR e.rsi_14 IS NULL
+        OR e.rsi_14 >= e.eff_rsi_short_min
+      );
 
 -- 2) Schedule entry/exit dates (T+1 open → close_{1d|3d})
 CREATE TEMP TABLE sched AS
