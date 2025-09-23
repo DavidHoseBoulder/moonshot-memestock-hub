@@ -76,7 +76,7 @@ const TodaysSentiment = () => {
   const [isLoadingDefaults, setIsLoadingDefaults] = useState(false);
   
   const [filters, setFilters] = useState<FilterState>({
-    date: new Date('2025-09-19'), // Default to a date with meaningful sentiment scores
+    date: new Date('2025-07-31'), // Default to a date that has data
     contentType: 'all',
     minPosts: 3, // Fallback default
     minScore: 0.20, // Fallback default
@@ -108,7 +108,7 @@ const TodaysSentiment = () => {
   };
 
   // Data fetching functions
-  const fetchGlobalDefaults = async (modelVersion: string = 'claude-v1'): Promise<RuleDefaults | null> => {
+  const fetchGlobalDefaults = async (modelVersion: string = 'gpt-sent-v1'): Promise<RuleDefaults | null> => {
     try {
       console.log('📊 Fetching global defaults for model:', modelVersion);
       const { data, error } = await supabase
@@ -150,7 +150,7 @@ const TodaysSentiment = () => {
     }
   };
 
-  const fetchSymbolDefaults = async (symbol: string, horizon: string, modelVersion: string = 'claude-v1'): Promise<RuleDefaults | null> => {
+  const fetchSymbolDefaults = async (symbol: string, horizon: string, modelVersion: string = 'gpt-sent-v1'): Promise<RuleDefaults | null> => {
     try {
       console.log('🎯 Fetching symbol defaults for:', { symbol, horizon, modelVersion });
       const { data, error } = await supabase
@@ -431,7 +431,7 @@ const TodaysSentiment = () => {
       
       // Then initialize date
       const latestDate = await fetchLatestAvailableDate();
-      if (latestDate && filters.date.getTime() === new Date('2025-09-19').getTime()) {
+      if (latestDate && filters.date.getTime() === new Date('2025-07-31').getTime()) {
         setFilters(prev => ({ ...prev, date: latestDate }));
       } else {
         fetchAllData();
@@ -442,7 +442,7 @@ const TodaysSentiment = () => {
   }, []);
 
   useEffect(() => {
-    if (filters.date.getTime() !== new Date('2025-09-19').getTime()) {
+    if (filters.date.getTime() !== new Date('2025-07-31').getTime()) {
       fetchAllData();
     }
   }, [filters.date, filters.minPosts, filters.minScore, filters.minConfidence, filters.contentType]);
