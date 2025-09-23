@@ -173,10 +173,10 @@ CREATE INDEX IF NOT EXISTS idx_bsg_group ON backtest_sweep_grid (symbol,horizon,
 - SQL touchpoints: `enhanced_market_data`, `v_market_rolling_features` (new), `v_triggered_with_backtest`, `backtest_sweep_grid`, `backtest_sweep_results`, `live_sentiment_entry_rules` (via diagnostics view).
 - Tasks:
   - Rolling features
-    - [ ] Create view/materialized view `v_market_rolling_features` with `volume_zscore_20`, `rsi_14`, NULL when window incomplete; handle zero-variance volume.
+    - [x] Create view/materialized view `v_market_rolling_features` with `volume_zscore_20`, `rsi_14`, NULL when window incomplete; handle zero-variance volume.
     - [ ] If matview chosen, add `(symbol,data_date)` index and refresh helper.
   - Candidate plumbing
-    - [ ] Left join rolling features into `v_triggered_with_backtest`; expose `volume_zscore_20`, `rsi_14`.
+    - [x] Surface rolling features in the grid candidate pipeline (`tmp_candidates`/`tmp_sig_start`) so sentiment rules carry `volume_zscore_20`, `rsi_14` forward.
   - Sweep gates
     - [ ] Extend sweep params/table with `min_volume_z`, `rsi_long_max`, `rsi_short_min` (nullable defaults) and apply filters only when provided.
     - [ ] Add presets/runner helpers covering baseline, volume-only, RSI-only, combo scenarios.

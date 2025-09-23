@@ -178,8 +178,16 @@ SELECT
   d.symbol,
   d.d,
   d.mentions,
-  d.avg_raw, d.avg_abs, d.pos_rate, d.neg_rate
+  d.avg_raw,
+  d.avg_abs,
+  d.pos_rate,
+  d.neg_rate,
+  f.volume_zscore_20,
+  f.rsi_14
 FROM tmp_daily d
+LEFT JOIN v_market_rolling_features f
+  ON f.symbol = d.symbol
+ AND f.data_date = d.d
 WHERE COALESCE(d.avg_abs,0) >= (:'AVG_ABS_MIN')::numeric;
 
 \if :DEBUG
@@ -245,7 +253,9 @@ SELECT
   g.min_mentions,
   g.pos_thresh,
   c.d AS start_day,
-  CASE g.horizon WHEN '1d' THEN 1 WHEN '3d' THEN 3 WHEN '5d' THEN 5 END AS hold_days
+  CASE g.horizon WHEN '1d' THEN 1 WHEN '3d' THEN 3 WHEN '5d' THEN 5 END AS hold_days,
+  c.volume_zscore_20,
+  c.rsi_14
 FROM tmp_candidates c
 JOIN tmp_grid g ON TRUE
 WHERE c.mentions >= GREATEST( (:'MIN_MENTIONS_REQ')::int, g.min_mentions )
@@ -305,6 +315,7 @@ DROP TABLE IF EXISTS tmp_fwd;
 CREATE TEMP TABLE tmp_fwd AS
 SELECT
   s.symbol, s.horizon, s.side, s.dir, s.min_mentions, s.pos_thresh,
+  s.volume_zscore_20, s.rsi_14,
   s.start_day, s.hold_days,
   p.close AS entry_close,
   CASE s.hold_days
