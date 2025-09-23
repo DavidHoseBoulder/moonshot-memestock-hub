@@ -152,24 +152,20 @@ CREATE INDEX IF NOT EXISTS idx_bsg_group ON backtest_sweep_grid (symbol,horizon,
 - Validation:
   - [ ] Backfill test on historical live rules and inspect diffs.
 
-### 9) Subreddit/Author Enrichment & Author Coverage Controls
+### 9) Subreddit/Author Enrichment & Author Coverage Controls *(paused – revisit after author cohorts mature)*
 
-- Summary: Capture subreddit and author quality signals for diagnostics, persist coverage stats, and make author-aware filters available to backtests.
+- Summary: Capture subreddit/author quality signals and coverage stats. Core diagnostics in place; remaining gating work deferred until more live author data lands.
 - SQL touchpoints: ingestion → `reddit_mentions` → `v_entry_candidates`, `backtest_grid.sql`, promotion helpers.
 - Flags (proposed): `REQUIRE_AUTHOR_PRESENT=0/1`, `MIN_AUTHOR_COVERAGE=0.50`, `AUTHOR_TIER_WEIGHTING='A:1.0,B:0.8,C:0.5'`.
-- Tasks:
-  - [x] Ensure `subreddit`, `author`, `author_karma`, `doc_type` flow through.
-  - [x] Add diagnostics tables: perf by subreddit band, by author tiers.
-  - [ ] Persist author coverage metrics per backtest window (e.g., `author_coverage_pct`, `missing_author_count`).
-  - [ ] Parameterize optional backtest filters:
-    - `REQUIRE_AUTHOR_PRESENT=1` → drop signals with blank authors.
-    - `MIN_AUTHOR_COVERAGE` → abort or flag windows below threshold.
-    - Optional tier-weighting in aggregation (`AUTHOR_TIER_WEIGHTING`).
-  - [ ] Surface coverage + tier mix in promotion reports and seed notes.
-- Validation:
-  - [x] Perf breakdowns render with sensible distributions.
-  - [ ] Backtest run with `REQUIRE_AUTHOR_PRESENT=1` completes and logs coverage deltas.
-  - [ ] Coverage metrics align with Supabase checks (spot 2–3 windows).
+- Completed
+  - [x] Ensure `subreddit`, `author`, `author_karma`, `doc_type` flow end-to-end.
+  - [x] Add diagnostics tables: perf by subreddit band and author tiers.
+  - [x] Validate perf breakdowns render with sensible distributions.
+- Deferred (q4 revisit)
+  - [ ] Persist author coverage metrics per backtest window (`author_coverage_pct`, `missing_author_count`).
+  - [ ] Parameterize optional backtest filters (`REQUIRE_AUTHOR_PRESENT`, `MIN_AUTHOR_COVERAGE`, `AUTHOR_TIER_WEIGHTING`).
+  - [ ] Surface coverage + tier mix in promotion reports/seed notes.
+  - [ ] Run `REQUIRE_AUTHOR_PRESENT=1` backtest and align coverage metrics with Supabase spot checks.
 
 ### 10) Traditional TA Gates (volume_zscore & RSI)
 
