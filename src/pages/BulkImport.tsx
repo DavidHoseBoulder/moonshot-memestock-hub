@@ -2,6 +2,7 @@ import BulkHistoricalImport from "@/components/BulkHistoricalImport";
 import ImportProgressMonitor from "@/components/ImportProgressMonitor";
 import RedditBackfillImport from "@/components/RedditBackfillImport";
 import PolygonRealTimeImport from "@/components/PolygonRealTimeImport";
+import StockTwitsImport from "@/components/StockTwitsImport";
 
 const BulkImport = () => {
   return (
@@ -15,6 +16,7 @@ const BulkImport = () => {
         <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-4 gap-6">
           <BulkHistoricalImport />
           <PolygonRealTimeImport />
+          <StockTwitsImport />
           <ImportProgressMonitor />
           <RedditBackfillImport />
         </div>
