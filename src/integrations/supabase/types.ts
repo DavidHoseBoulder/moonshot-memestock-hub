@@ -1216,7 +1216,6 @@ export type Database = {
           weight_strength: number
           weight_win_ci: number
           z_score: number
-          ta_config: Json | null
         }
         Insert: {
           effective_at?: string
@@ -1237,7 +1236,6 @@ export type Database = {
           weight_strength?: number
           weight_win_ci?: number
           z_score?: number
-          ta_config?: Json | null
         }
         Update: {
           effective_at?: string
@@ -1258,7 +1256,6 @@ export type Database = {
           weight_strength?: number
           weight_win_ci?: number
           z_score?: number
-          ta_config?: Json | null
         }
         Relationships: []
       }
