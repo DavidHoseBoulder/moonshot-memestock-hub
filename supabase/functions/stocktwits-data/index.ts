@@ -141,7 +141,7 @@ async function getRecentSentimentData(symbols: string[], days: number): Promise<
   
   const { data, error } = await supabase
     .from('sentiment_history')
-    .select('symbol, sentiment_score, confidence_score, metadata, collected_at')
+    .select('id, symbol, sentiment_score, confidence_score, metadata, collected_at')
     .in('symbol', symbols)
     .eq('source', 'stocktwits')
     .gte('collected_at', windowStart)
@@ -163,20 +163,100 @@ async function getRecentSentimentData(symbols: string[], days: number): Promise<
   return Array.from(symbolMap.entries()).map(([symbol, data]) => ({ symbol, data }))
 }
 
+type SentimentLabel = 'Bullish' | 'Bearish' | null;
+
+interface StockTwitsSymbolRef {
+  symbol: string;
+}
+
 interface StockTwitsMessage {
   id: number;
   body: string;
   created_at: string;
-  user: {
-    username: string;
-    followers: number;
+  user?: {
+    username?: string;
+    followers?: number;
+    like_count?: number;
   };
-  symbols: Array<{
-    symbol: string;
-  }>;
+  symbols?: StockTwitsSymbolRef[];
   sentiment?: {
     basic: 'Bullish' | 'Bearish';
   };
+  entities?: {
+    sentiment?: {
+      basic: 'Bullish' | 'Bearish';
+    };
+  };
+}
+
+interface SentimentSummary {
+  total_messages: number;
+  bullish_messages: number;
+  bearish_messages: number;
+  neutral_messages: number;
+  bullish_ratio: number;
+  sentiment_score: number;
+  confidence_score: number;
+  follower_sum: number;
+}
+
+const MAX_FOLLOWER_WEIGHT = 10000; // cap so whales do not dominate
+
+function getSentimentLabel(message: StockTwitsMessage): SentimentLabel {
+  return message.entities?.sentiment?.basic || message.sentiment?.basic || null;
+}
+
+function sentimentValue(label: SentimentLabel): number {
+  if (label === 'Bullish') return 1;
+  if (label === 'Bearish') return -1;
+  return 0;
+}
+
+function summarizeMessages(messages: StockTwitsMessage[]): SentimentSummary {
+  let bullish = 0;
+  let bearish = 0;
+  let neutral = 0;
+  let weightedScore = 0;
+  let weightTotal = 0;
+  let followerSum = 0;
+
+  for (const message of messages) {
+    const label = getSentimentLabel(message);
+    if (label === 'Bullish') bullish += 1;
+    else if (label === 'Bearish') bearish += 1;
+    else neutral += 1;
+
+    const followers = Math.max(0, Number(message.user?.followers) || 0);
+    followerSum += followers;
+    const weightBoost = Math.min(followers, MAX_FOLLOWER_WEIGHT) / MAX_FOLLOWER_WEIGHT;
+    const baseWeight = 1 + weightBoost; // keep every message contributing, boost influential authors slightly
+    const sentimentScore = sentimentValue(label);
+    weightedScore += sentimentScore * baseWeight;
+    weightTotal += baseWeight;
+  }
+
+  const total = messages.length;
+  const sentiment_score = weightTotal === 0 ? 0 : Number((weightedScore / weightTotal).toFixed(4));
+  const bullish_ratio = total === 0 ? 0 : Number((bullish / total).toFixed(4));
+  const coverageComponent = Math.min(1, total / 30); // saturate after ~30 msgs
+  const followerComponent = Math.min(1, followerSum / (2 * MAX_FOLLOWER_WEIGHT));
+  const confidence_score = Number((coverageComponent * 0.7 + followerComponent * 0.3).toFixed(4));
+
+  return {
+    total_messages: total,
+    bullish_messages: bullish,
+    bearish_messages: bearish,
+    neutral_messages: neutral,
+    bullish_ratio,
+    sentiment_score,
+    confidence_score,
+    follower_sum: followerSum,
+  };
+}
+
+function mergeStatsIntoMetadata(metadata: any, stats: SentimentSummary) {
+  if (!metadata || typeof metadata !== 'object') return { stats };
+  return { ...metadata, stats };
 }
 
 Deno.serve(async (req) => {
@@ -212,13 +292,38 @@ console.log(`Loaded ${symbols.length} symbols from symbol_disambig table; window
     console.log(`Found ${recentData.length} symbols with recent rows; ${symbolsWithMessages.size} with messages, need to fetch ${symbolsToFetch.length} symbols`)
     
     let allMessages: StockTwitsMessage[] = []
+    const backfillPromises: Promise<any>[] = []
     
     // Convert database data to StockTwits message format (only if messages present)
-    recentData.forEach(({ data }) => {
-      if (Array.isArray(data?.metadata?.messages) && data.metadata.messages.length > 0) {
-        allMessages.push(...data.metadata.messages)
+    for (const { symbol, data } of recentData) {
+      const messages = Array.isArray(data?.metadata?.messages) ? data.metadata.messages as StockTwitsMessage[] : null
+      if (messages && messages.length > 0) {
+        allMessages.push(...messages)
+
+        const metadataStats = data?.metadata?.stats
+        const storedScore = typeof data?.sentiment_score === 'number' ? data.sentiment_score : null
+        const needsBackfill = !metadataStats || typeof metadataStats.sentiment_score !== 'number' || storedScore === 0
+
+        if (needsBackfill) {
+          const stats = summarizeMessages(messages)
+          const metadata = mergeStatsIntoMetadata(data.metadata, stats)
+          backfillPromises.push(
+            supabase
+              .from('sentiment_history')
+              .update({
+                sentiment_score: stats.sentiment_score,
+                confidence_score: stats.confidence_score,
+                metadata
+              })
+              .eq('id', data.id)
+          )
+        }
       }
-    })
+    }
+    
+    if (backfillPromises.length > 0) {
+      await Promise.allSettled(backfillPromises)
+    }
     
     // Only fetch missing symbols from API - take first 10 for broader coverage
     if (symbolsToFetch.length > 0) {
@@ -230,17 +335,20 @@ console.log(`Loaded ${symbols.length} symbols from symbol_disambig table; window
           if (messages.length > 0) {
             allMessages.push(...messages)
 
+            const stats = summarizeMessages(messages)
+            const timestamp = new Date().toISOString()
+
             // Store in database for future use
             await supabase
               .from('sentiment_history')
               .insert({
                 symbol,
                 source: 'stocktwits',
-                sentiment_score: 0,
-                confidence_score: messages.length > 0 ? 0.7 : 0,
-                metadata: { messages },
-                collected_at: new Date().toISOString(),
-                data_timestamp: new Date().toISOString()
+                sentiment_score: stats.sentiment_score,
+                confidence_score: stats.confidence_score,
+                metadata: mergeStatsIntoMetadata({ messages }, stats),
+                collected_at: timestamp,
+                data_timestamp: timestamp
               })
           }
         } catch (error: any) {
@@ -281,9 +389,29 @@ console.log(`Loaded ${symbols.length} symbols from symbol_disambig table; window
 
     // Per-ticker mention counts (case-insensitive, $ required for short tickers)
     const tickerCounts: Record<string, number> = {};
+    const symbolMessagesMap = new Map<string, StockTwitsMessage[]>();
     for (const msg of uniqueMessages) {
-      const tickers = extractTickers(`${msg.body || ''}`);
-      for (const t of tickers) tickerCounts[t] = (tickerCounts[t] || 0) + 1;
+      const symbolSet = new Set<string>();
+      if (Array.isArray(msg.symbols)) {
+        msg.symbols.forEach(ref => {
+          if (ref?.symbol) symbolSet.add(ref.symbol.toUpperCase());
+        });
+      }
+      extractTickers(`${msg.body || ''}`).forEach(sym => symbolSet.add(sym));
+
+      if (symbolSet.size === 0) continue;
+
+      for (const symbol of symbolSet) {
+        tickerCounts[symbol] = (tickerCounts[symbol] || 0) + 1;
+        const existing = symbolMessagesMap.get(symbol);
+        if (existing) existing.push(msg);
+        else symbolMessagesMap.set(symbol, [msg]);
+      }
+    }
+
+    const symbolStats: Record<string, SentimentSummary> = {};
+    for (const [symbol, messages] of symbolMessagesMap.entries()) {
+      symbolStats[symbol] = summarizeMessages(messages);
     }
 
     const result = { 
@@ -292,7 +420,8 @@ console.log(`Loaded ${symbols.length} symbols from symbol_disambig table; window
       source: 'StockTwits API',
       fromDatabase: recentData.length,
       fromAPI: symbolsToFetch.length,
-      ticker_counts: tickerCounts
+      ticker_counts: tickerCounts,
+      symbol_stats: symbolStats
     };
 
     return new Response(
