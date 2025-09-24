@@ -77,6 +77,10 @@ export type Database = {
       backtest_sweep_grid: {
         Row: {
           avg_ret: number | null
+          avg_rsi_14: number | null
+          avg_volume_ratio_avg_20: number | null
+          avg_volume_share_20: number | null
+          avg_volume_zscore_20: number | null
           baseline_naive_avg_ret: number | null
           baseline_naive_trades: number | null
           baseline_random_avg_ret: number | null
@@ -100,6 +104,10 @@ export type Database = {
         }
         Insert: {
           avg_ret?: number | null
+          avg_rsi_14?: number | null
+          avg_volume_ratio_avg_20?: number | null
+          avg_volume_share_20?: number | null
+          avg_volume_zscore_20?: number | null
           baseline_naive_avg_ret?: number | null
           baseline_naive_trades?: number | null
           baseline_random_avg_ret?: number | null
@@ -123,6 +131,10 @@ export type Database = {
         }
         Update: {
           avg_ret?: number | null
+          avg_rsi_14?: number | null
+          avg_volume_ratio_avg_20?: number | null
+          avg_volume_share_20?: number | null
+          avg_volume_zscore_20?: number | null
           baseline_naive_avg_ret?: number | null
           baseline_naive_trades?: number | null
           baseline_random_avg_ret?: number | null
@@ -149,6 +161,10 @@ export type Database = {
       backtest_sweep_results: {
         Row: {
           avg_ret: number | null
+          avg_rsi_14: number | null
+          avg_volume_ratio_avg_20: number | null
+          avg_volume_share_20: number | null
+          avg_volume_zscore_20: number | null
           baseline_naive_avg_ret: number | null
           baseline_naive_trades: number | null
           baseline_random_avg_ret: number | null
@@ -173,6 +189,10 @@ export type Database = {
         }
         Insert: {
           avg_ret?: number | null
+          avg_rsi_14?: number | null
+          avg_volume_ratio_avg_20?: number | null
+          avg_volume_share_20?: number | null
+          avg_volume_zscore_20?: number | null
           baseline_naive_avg_ret?: number | null
           baseline_naive_trades?: number | null
           baseline_random_avg_ret?: number | null
@@ -197,6 +217,10 @@ export type Database = {
         }
         Update: {
           avg_ret?: number | null
+          avg_rsi_14?: number | null
+          avg_volume_ratio_avg_20?: number | null
+          avg_volume_share_20?: number | null
+          avg_volume_zscore_20?: number | null
           baseline_naive_avg_ret?: number | null
           baseline_naive_trades?: number | null
           baseline_random_avg_ret?: number | null
@@ -1186,6 +1210,7 @@ export type Database = {
           recency_score_ok: number
           recency_score_stale: number
           sample_cap_trades: number
+          ta_config: Json | null
           weight_recency: number
           weight_sample: number
           weight_strength: number
@@ -1205,6 +1230,7 @@ export type Database = {
           recency_score_ok?: number
           recency_score_stale?: number
           sample_cap_trades?: number
+          ta_config?: Json | null
           weight_recency?: number
           weight_sample?: number
           weight_strength?: number
@@ -1224,6 +1250,7 @@ export type Database = {
           recency_score_ok?: number
           recency_score_stale?: number
           sample_cap_trades?: number
+          ta_config?: Json | null
           weight_recency?: number
           weight_sample?: number
           weight_strength?: number
@@ -1370,13 +1397,6 @@ export type Database = {
             columns: ["mention_id"]
             isOneToOne: false
             referencedRelation: "v_reddit_mentions_aug"
-            referencedColumns: ["mention_id"]
-          },
-          {
-            foreignKeyName: "reddit_sentiment_mention_id_fkey"
-            columns: ["mention_id"]
-            isOneToOne: false
-            referencedRelation: "v_reddit_mentions_july"
             referencedColumns: ["mention_id"]
           },
           {
@@ -1766,6 +1786,147 @@ export type Database = {
         }
         Relationships: []
       }
+      ta_scenario_staging: {
+        Row: {
+          avg_ret: number | null
+          band: string | null
+          end_date: string | null
+          horizon: string | null
+          lb: number | null
+          median_ret: number | null
+          min_mentions: number | null
+          model_version: string | null
+          pos_thresh: number | null
+          r_train_rank: number | null
+          r_valid_rank: number | null
+          sharpe: number | null
+          side: string | null
+          start_date: string | null
+          stdev_ret: number | null
+          symbol: string | null
+          trades: number | null
+          train_sharpe: number | null
+          train_trades: number | null
+          valid_sharpe: number | null
+          valid_trades: number | null
+          win_rate: number | null
+        }
+        Insert: {
+          avg_ret?: number | null
+          band?: string | null
+          end_date?: string | null
+          horizon?: string | null
+          lb?: number | null
+          median_ret?: number | null
+          min_mentions?: number | null
+          model_version?: string | null
+          pos_thresh?: number | null
+          r_train_rank?: number | null
+          r_valid_rank?: number | null
+          sharpe?: number | null
+          side?: string | null
+          start_date?: string | null
+          stdev_ret?: number | null
+          symbol?: string | null
+          trades?: number | null
+          train_sharpe?: number | null
+          train_trades?: number | null
+          valid_sharpe?: number | null
+          valid_trades?: number | null
+          win_rate?: number | null
+        }
+        Update: {
+          avg_ret?: number | null
+          band?: string | null
+          end_date?: string | null
+          horizon?: string | null
+          lb?: number | null
+          median_ret?: number | null
+          min_mentions?: number | null
+          model_version?: string | null
+          pos_thresh?: number | null
+          r_train_rank?: number | null
+          r_valid_rank?: number | null
+          sharpe?: number | null
+          side?: string | null
+          start_date?: string | null
+          stdev_ret?: number | null
+          symbol?: string | null
+          trades?: number | null
+          train_sharpe?: number | null
+          train_trades?: number | null
+          valid_sharpe?: number | null
+          valid_trades?: number | null
+          win_rate?: number | null
+        }
+        Relationships: []
+      }
+      ta_scenario_summary: {
+        Row: {
+          avg_ret: number | null
+          end_date: string | null
+          id: number
+          lb_avg: number | null
+          median_ret: number | null
+          min_volume_ratio: number | null
+          min_volume_share: number | null
+          min_volume_z: number | null
+          require_lb_positive: number | null
+          rsi_long_max: number | null
+          rsi_short_min: number | null
+          run_ts: string | null
+          scenario: string
+          sharpe: number | null
+          start_date: string | null
+          trades: number | null
+          volume_ratio_pctl: number | null
+          volume_share_pctl: number | null
+          win_rate: number | null
+        }
+        Insert: {
+          avg_ret?: number | null
+          end_date?: string | null
+          id?: number
+          lb_avg?: number | null
+          median_ret?: number | null
+          min_volume_ratio?: number | null
+          min_volume_share?: number | null
+          min_volume_z?: number | null
+          require_lb_positive?: number | null
+          rsi_long_max?: number | null
+          rsi_short_min?: number | null
+          run_ts?: string | null
+          scenario: string
+          sharpe?: number | null
+          start_date?: string | null
+          trades?: number | null
+          volume_ratio_pctl?: number | null
+          volume_share_pctl?: number | null
+          win_rate?: number | null
+        }
+        Update: {
+          avg_ret?: number | null
+          end_date?: string | null
+          id?: number
+          lb_avg?: number | null
+          median_ret?: number | null
+          min_volume_ratio?: number | null
+          min_volume_share?: number | null
+          min_volume_z?: number | null
+          require_lb_positive?: number | null
+          rsi_long_max?: number | null
+          rsi_short_min?: number | null
+          run_ts?: string | null
+          scenario?: string
+          sharpe?: number | null
+          start_date?: string | null
+          trades?: number | null
+          volume_ratio_pctl?: number | null
+          volume_share_pctl?: number | null
+          win_rate?: number | null
+        }
+        Relationships: []
+      }
       ticker_universe: {
         Row: {
           active: boolean
@@ -1832,6 +1993,159 @@ export type Database = {
           side?: string | null
           symbol?: string | null
           trade_date?: string | null
+        }
+        Relationships: []
+      }
+      tmp_export_author: {
+        Row: {
+          author: string | null
+          avg_excess_ret: number | null
+          horizon_days: number | null
+          level: string | null
+          n_trades: number | null
+          sharpe_like: number | null
+          side: string | null
+          symbol: string | null
+          win_rate: number | null
+        }
+        Insert: {
+          author?: string | null
+          avg_excess_ret?: number | null
+          horizon_days?: number | null
+          level?: string | null
+          n_trades?: number | null
+          sharpe_like?: number | null
+          side?: string | null
+          symbol?: string | null
+          win_rate?: number | null
+        }
+        Update: {
+          author?: string | null
+          avg_excess_ret?: number | null
+          horizon_days?: number | null
+          level?: string | null
+          n_trades?: number | null
+          sharpe_like?: number | null
+          side?: string | null
+          symbol?: string | null
+          win_rate?: number | null
+        }
+        Relationships: []
+      }
+      tmp_export_author_conc: {
+        Row: {
+          author: string | null
+          avg_excess_ret: number | null
+          horizon_days: number | null
+          level: string | null
+          n_trades: number | null
+          side: string | null
+          symbol: string | null
+          top_symbol_share: number | null
+          win_rate: number | null
+        }
+        Insert: {
+          author?: string | null
+          avg_excess_ret?: number | null
+          horizon_days?: number | null
+          level?: string | null
+          n_trades?: number | null
+          side?: string | null
+          symbol?: string | null
+          top_symbol_share?: number | null
+          win_rate?: number | null
+        }
+        Update: {
+          author?: string | null
+          avg_excess_ret?: number | null
+          horizon_days?: number | null
+          level?: string | null
+          n_trades?: number | null
+          side?: string | null
+          symbol?: string | null
+          top_symbol_share?: number | null
+          win_rate?: number | null
+        }
+        Relationships: []
+      }
+      tmp_export_author_stability: {
+        Row: {
+          author: string | null
+          horizon_days: number | null
+          level: string | null
+          n_h1: number | null
+          n_h2: number | null
+          n_trades: number | null
+          sharpe_all: number | null
+          sharpe_h1: number | null
+          sharpe_h2: number | null
+          side: string | null
+          stability_ok: boolean | null
+          symbol: string | null
+        }
+        Insert: {
+          author?: string | null
+          horizon_days?: number | null
+          level?: string | null
+          n_h1?: number | null
+          n_h2?: number | null
+          n_trades?: number | null
+          sharpe_all?: number | null
+          sharpe_h1?: number | null
+          sharpe_h2?: number | null
+          side?: string | null
+          stability_ok?: boolean | null
+          symbol?: string | null
+        }
+        Update: {
+          author?: string | null
+          horizon_days?: number | null
+          level?: string | null
+          n_h1?: number | null
+          n_h2?: number | null
+          n_trades?: number | null
+          sharpe_all?: number | null
+          sharpe_h1?: number | null
+          sharpe_h2?: number | null
+          side?: string | null
+          stability_ok?: boolean | null
+          symbol?: string | null
+        }
+        Relationships: []
+      }
+      tmp_export_author_symbol: {
+        Row: {
+          author: string | null
+          avg_excess_ret: number | null
+          horizon_days: number | null
+          level: string | null
+          n_trades: number | null
+          sharpe_like: number | null
+          side: string | null
+          symbol: string | null
+          win_rate: number | null
+        }
+        Insert: {
+          author?: string | null
+          avg_excess_ret?: number | null
+          horizon_days?: number | null
+          level?: string | null
+          n_trades?: number | null
+          sharpe_like?: number | null
+          side?: string | null
+          symbol?: string | null
+          win_rate?: number | null
+        }
+        Update: {
+          author?: string | null
+          avg_excess_ret?: number | null
+          horizon_days?: number | null
+          level?: string | null
+          n_trades?: number | null
+          sharpe_like?: number | null
+          side?: string | null
+          symbol?: string | null
+          win_rate?: number | null
         }
         Relationships: []
       }
@@ -2280,6 +2594,46 @@ export type Database = {
         }
         Relationships: []
       }
+      v_live_rules_effective: {
+        Row: {
+          avg_ret: number | null
+          avg_rsi_14: number | null
+          avg_volume_ratio_avg_20: number | null
+          avg_volume_share_20: number | null
+          avg_volume_zscore_20: number | null
+          created_at: string | null
+          eff_min_volume_ratio: number | null
+          eff_min_volume_share: number | null
+          eff_min_volume_z: number | null
+          eff_rsi_long_max: number | null
+          eff_rsi_short_min: number | null
+          end_date: string | null
+          horizon: string | null
+          is_enabled: boolean | null
+          median_ret: number | null
+          min_conf: number | null
+          min_mentions: number | null
+          model_version: string | null
+          notes: string | null
+          pos_thresh: number | null
+          priority: number | null
+          q_value: number | null
+          rsi_pass: boolean | null
+          sharpe: number | null
+          side: string | null
+          start_date: string | null
+          symbol: string | null
+          ta_pass: boolean | null
+          ta_symbol_excluded: boolean | null
+          trades: number | null
+          use_weighted: boolean | null
+          volume_ratio_pass: boolean | null
+          volume_share_pass: boolean | null
+          volume_z_pass: boolean | null
+          win_rate: number | null
+        }
+        Relationships: []
+      }
       v_live_sentiment_rules: {
         Row: {
           avg_ret: number | null
@@ -2314,6 +2668,17 @@ export type Database = {
           triggered: boolean | null
           use_weighted: boolean | null
           wt_score: number | null
+        }
+        Relationships: []
+      }
+      v_market_rolling_features: {
+        Row: {
+          data_date: string | null
+          rsi_14: number | null
+          symbol: string | null
+          volume_ratio_avg_20: number | null
+          volume_share_20: number | null
+          volume_zscore_20: number | null
         }
         Relationships: []
       }
@@ -2428,24 +2793,6 @@ export type Database = {
         }
         Relationships: []
       }
-      v_reddit_candidates_raw: {
-        Row: {
-          avg_confidence: number | null
-          horizon: string | null
-          min_conf: number | null
-          min_mentions: number | null
-          model_version: string | null
-          n_mentions: number | null
-          pos_thresh: number | null
-          side: string | null
-          symbol: string | null
-          trade_date: string | null
-          triggered: boolean | null
-          use_weighted: boolean | null
-          used_score: number | null
-        }
-        Relationships: []
-      }
       v_reddit_candidates_today: {
         Row: {
           avg_ret: number | null
@@ -2534,22 +2881,6 @@ export type Database = {
         }
         Relationships: []
       }
-      v_reddit_mentions_july: {
-        Row: {
-          content_len: number | null
-          created_utc: string | null
-          disambig_rule: string | null
-          match_source: string | null
-          mention_id: number | null
-          permalink: string | null
-          post_id: string | null
-          selftext: string | null
-          subreddit: string | null
-          symbol: string | null
-          title: string | null
-        }
-        Relationships: []
-      }
       v_reddit_mentions_june: {
         Row: {
           content_len: number | null
@@ -2580,6 +2911,7 @@ export type Database = {
       }
       v_scoring_posts: {
         Row: {
+          author: string | null
           created_utc: string | null
           permalink: string | null
           post_id: string | null
@@ -2591,6 +2923,7 @@ export type Database = {
       }
       v_scoring_posts_union_src: {
         Row: {
+          author: string | null
           created_utc: string | null
           permalink: string | null
           post_id: string | null
@@ -2634,22 +2967,6 @@ export type Database = {
           delta_score: number | null
           n_mentions: number | null
           rank: number | null
-          symbol: string | null
-          trailing_avg_mentions: number | null
-          trailing_avg_score: number | null
-          trailing_stddev_score: number | null
-          used_score: number | null
-          z_score_score: number | null
-        }
-        Relationships: []
-      }
-      v_today_velocity_spikes: {
-        Row: {
-          avg_score: number | null
-          data_date: string | null
-          delta_mentions: number | null
-          delta_score: number | null
-          n_mentions: number | null
           symbol: string | null
           trailing_avg_mentions: number | null
           trailing_avg_score: number | null
