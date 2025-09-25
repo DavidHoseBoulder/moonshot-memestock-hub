@@ -274,10 +274,6 @@ async function fetchMessagesForDay(symbol: string, windowStart: number, windowEn
   return deduped;
 }
 
-// Initialize Supabase client
-const supabaseUrl = Deno.env.get('SUPABASE_URL')!
-const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
-const supabase = createClient(supabaseUrl, supabaseKey)
 
 // Upsert sentiment data for a specific day
 async function upsertDay(symbol: string, windowStart: number, windowEnd: number, messages: StockTwitsMessage[]): Promise<boolean> {
@@ -409,101 +405,6 @@ async function processSymbolBatch(symbols: string[], config: BatchConfig): Promi
   return report;
 }
 
-type SentimentLabel = 'Bullish' | 'Bearish' | null;
-
-interface StockTwitsSymbolRef {
-  symbol: string;
-}
-
-interface StockTwitsMessage {
-  id: number;
-  body: string;
-  created_at: string;
-  user?: {
-    username?: string;
-    followers?: number;
-    like_count?: number;
-  };
-  symbols?: StockTwitsSymbolRef[];
-  sentiment?: {
-    basic: 'Bullish' | 'Bearish';
-  };
-  entities?: {
-    sentiment?: {
-      basic: 'Bullish' | 'Bearish';
-    };
-  };
-}
-
-interface SentimentSummary {
-  total_messages: number;
-  bullish_messages: number;
-  bearish_messages: number;
-  neutral_messages: number;
-  bullish_ratio: number;
-  sentiment_score: number;
-  confidence_score: number;
-  follower_sum: number;
-}
-
-const MAX_FOLLOWER_WEIGHT = 10000; // cap so whales do not dominate
-
-function getSentimentLabel(message: StockTwitsMessage): SentimentLabel {
-  return message.entities?.sentiment?.basic || message.sentiment?.basic || null;
-}
-
-function sentimentValue(label: SentimentLabel): number {
-  if (label === 'Bullish') return 1;
-  if (label === 'Bearish') return -1;
-  return 0;
-}
-
-function summarizeMessages(messages: StockTwitsMessage[]): SentimentSummary {
-  let bullish = 0;
-  let bearish = 0;
-  let neutral = 0;
-  let weightedScore = 0;
-  let weightTotal = 0;
-  let followerSum = 0;
-
-  for (const message of messages) {
-    const label = getSentimentLabel(message);
-    if (label === 'Bullish') bullish += 1;
-    else if (label === 'Bearish') bearish += 1;
-    else neutral += 1;
-
-    const followers = Math.max(0, Number(message.user?.followers) || 0);
-    followerSum += followers;
-    const weightBoost = Math.min(followers, MAX_FOLLOWER_WEIGHT) / MAX_FOLLOWER_WEIGHT;
-    const baseWeight = 1 + weightBoost; // keep every message contributing, boost influential authors slightly
-    const sentimentScore = sentimentValue(label);
-    weightedScore += sentimentScore * baseWeight;
-    weightTotal += baseWeight;
-  }
-
-  const total = messages.length;
-  const sentiment_score = weightTotal === 0 ? 0 : Number((weightedScore / weightTotal).toFixed(4));
-  const bullish_ratio = total === 0 ? 0 : Number((bullish / total).toFixed(4));
-  const coverageComponent = Math.min(1, total / 30); // saturate after ~30 msgs
-  const followerComponent = Math.min(1, followerSum / (2 * MAX_FOLLOWER_WEIGHT));
-  const confidence_score = Number((coverageComponent * 0.7 + followerComponent * 0.3).toFixed(4));
-
-  return {
-    total_messages: total,
-    bullish_messages: bullish,
-    bearish_messages: bearish,
-    neutral_messages: neutral,
-    bullish_ratio,
-    sentiment_score,
-    confidence_score,
-    follower_sum: followerSum,
-  };
-}
-
-function mergeStatsIntoMetadata(metadata: any, stats: SentimentSummary) {
-  if (!metadata || typeof metadata !== 'object') return { stats };
-  return { ...metadata, stats };
-}
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -568,7 +469,7 @@ Deno.serve(async (req) => {
     return new Response(
       JSON.stringify({ 
         error: 'Internal server error', 
-        details: error.message,
+        details: error instanceof Error ? error.message : String(error),
         totalSymbols: 0,
         processedSymbols: 0,
         rowsInserted: 0,
