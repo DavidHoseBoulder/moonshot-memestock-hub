@@ -1537,6 +1537,7 @@ export type Database = {
       sentiment_history: {
         Row: {
           collected_at: string
+          collected_date: string | null
           confidence_score: number | null
           content_snippet: string | null
           created_at: string
@@ -1554,6 +1555,7 @@ export type Database = {
         }
         Insert: {
           collected_at?: string
+          collected_date?: string | null
           confidence_score?: number | null
           content_snippet?: string | null
           created_at?: string
@@ -1571,6 +1573,7 @@ export type Database = {
         }
         Update: {
           collected_at?: string
+          collected_date?: string | null
           confidence_score?: number | null
           content_snippet?: string | null
           created_at?: string
@@ -2933,6 +2936,25 @@ export type Database = {
         }
         Relationships: []
       }
+      v_sentiment_daily_overlap: {
+        Row: {
+          has_reddit: boolean | null
+          has_stocktwits: boolean | null
+          reddit_avg_score: number | null
+          reddit_n_mentions: number | null
+          reddit_used_score: number | null
+          stocktwits_bearish_messages: number | null
+          stocktwits_bullish_messages: number | null
+          stocktwits_bullish_ratio: number | null
+          stocktwits_confidence_score: number | null
+          stocktwits_neutral_messages: number | null
+          stocktwits_sentiment_score: number | null
+          stocktwits_total_messages: number | null
+          symbol: string | null
+          trade_date: string | null
+        }
+        Relationships: []
+      }
       v_sentiment_history: {
         Row: {
           avg_score: number | null
@@ -2956,6 +2978,20 @@ export type Database = {
           trailing_stddev_score: number | null
           used_score: number | null
           z_score_score: number | null
+        }
+        Relationships: []
+      }
+      v_stocktwits_daily_signals: {
+        Row: {
+          bearish_messages: number | null
+          bullish_messages: number | null
+          bullish_ratio: number | null
+          confidence_score: number | null
+          neutral_messages: number | null
+          sentiment_score: number | null
+          symbol: string | null
+          total_messages: number | null
+          trade_date: string | null
         }
         Relationships: []
       }
