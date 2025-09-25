@@ -33,8 +33,8 @@ function prioritizeSymbolsByCategory(symbols: string[]): string[] {
   return symbols.sort((a, b) => {
     const categoryA = stockCategories[a] || 'Banking';
     const categoryB = stockCategories[b] || 'Banking';
-    const priorityA = categoryPriority[categoryA] || 1;
-    const priorityB = categoryPriority[categoryB] || 1;
+    const priorityA = (categoryPriority as any)[categoryA] || 1;
+    const priorityB = (categoryPriority as any)[categoryB] || 1;
     return priorityB - priorityA;
   });
 }

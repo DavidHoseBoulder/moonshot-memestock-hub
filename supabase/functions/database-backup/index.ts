@@ -126,7 +126,7 @@ $$ LANGUAGE plpgsql;\n\n`;
 
     } catch (schemaError) {
       console.error('Error fetching schema:', schemaError);
-      sqlContent += `-- Error fetching schema: ${schemaError.message}\n`;
+      sqlContent += `-- Error fetching schema: ${schemaError instanceof Error ? schemaError.message : String(schemaError)}\n`;
       sqlContent += `-- Manual schema reconstruction required\n\n`;
     }
 
@@ -185,7 +185,7 @@ $$ LANGUAGE plpgsql;\n\n`;
     
     const errorResponse = {
       success: false,
-      error: error.message,
+      error: error instanceof Error ? error.message : String(error),
       timestamp: new Date().toISOString()
     };
 

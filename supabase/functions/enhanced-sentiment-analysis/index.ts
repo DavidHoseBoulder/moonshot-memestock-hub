@@ -276,7 +276,10 @@ Time: ${new Date(post.created_utc * 1000).toISOString()}`
   } catch (error) {
     console.error('Error in enhanced sentiment analysis function:', error)
     return new Response(
-      JSON.stringify({ error: 'Internal server error', details: error.message }),
+      JSON.stringify({ 
+        error: 'Internal server error', 
+        details: error instanceof Error ? error.message : String(error) 
+      }),
       { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     )
   }

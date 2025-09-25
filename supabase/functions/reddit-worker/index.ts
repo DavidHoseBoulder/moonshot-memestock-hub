@@ -237,7 +237,7 @@ async function processFullImport(
         }
         
       } catch (error) {
-        console.error(`[reddit-worker] Sentiment batch ${Math.floor(i/sentimentBatchSize) + 1} failed:`, error?.message);
+        console.error(`[reddit-worker] Sentiment batch ${Math.floor(i/sentimentBatchSize) + 1} failed:`, error instanceof Error ? error.message : String(error));
         // Continue processing other batches even if one fails
       }
     }
@@ -356,7 +356,7 @@ async function processQueue() {
       .from('import_queue')
       .update({ 
         status: 'failed',
-        error_message: error.message
+        error_message: error instanceof Error ? error.message : String(error)
       })
       .eq('id', queueItem.id);
       
@@ -366,14 +366,14 @@ async function processQueue() {
       .update({ 
         status: 'failed',
         finished_at: new Date().toISOString(),
-        error: error.message
+        error: error instanceof Error ? error.message : String(error)
       })
       .eq('run_id', queueItem.run_id);
     
     return { 
       processed: true, 
       run_id: queueItem.run_id,
-      error: error.message 
+      error: error instanceof Error ? error.message : String(error)
     };
   }
 }

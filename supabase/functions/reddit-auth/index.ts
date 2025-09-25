@@ -29,8 +29,8 @@ function prioritizeSymbolsByCategory(symbols: string[]): string[] {
   return symbols.sort((a, b) => {
     const categoryA = stockCategories[a] || 'Banking';
     const categoryB = stockCategories[b] || 'Banking';
-    const priorityA = categoryPriority[categoryA] || 1;
-    const priorityB = categoryPriority[categoryB] || 1;
+    const priorityA = (categoryPriority as any)[categoryA] || 1;
+    const priorityB = (categoryPriority as any)[categoryB] || 1;
     return priorityB - priorityA;
   });
 }
@@ -205,7 +205,7 @@ Deno.serve(async (req) => {
             }
           }
         } catch (e) {
-          console.log(`Failed endpoint ${endpoint}:`, e.message)
+          console.log(`Failed endpoint ${endpoint}:`, e instanceof Error ? e.message : String(e))
           continue
         }
       }
@@ -307,7 +307,10 @@ Deno.serve(async (req) => {
   } catch (error) {
     console.error('Error in Reddit auth function:', error)
     return new Response(
-      JSON.stringify({ error: 'Internal server error', details: error.message }),
+      JSON.stringify({ 
+        error: 'Internal server error', 
+        details: error instanceof Error ? error.message : String(error) 
+      }),
       { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     )
   }

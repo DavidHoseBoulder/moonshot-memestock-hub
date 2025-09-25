@@ -121,7 +121,10 @@ Deno.serve(async (req) => {
   } catch (error) {
     console.error('Unhandled error in close-paper-trade:', error)
     return new Response(
-      JSON.stringify({ error: 'Internal server error', details: error?.message || String(error) }),
+      JSON.stringify({ 
+        error: 'Internal server error', 
+        details: error instanceof Error ? error.message : String(error) 
+      }),
       { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     )
   }

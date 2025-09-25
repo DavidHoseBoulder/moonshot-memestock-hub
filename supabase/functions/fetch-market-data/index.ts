@@ -91,7 +91,7 @@ Deno.serve(async (req) => {
           }
         }
 
-        console.log(`Successfully fetched ${prices.filter(p => p !== null).length} data points for ${symbol}`)
+        console.log(`Successfully fetched ${prices.filter((p: any) => p !== null).length} data points for ${symbol}`)
 
       } catch (error) {
         console.error(`Error fetching data for ${symbol}:`, error)
@@ -171,7 +171,10 @@ Deno.serve(async (req) => {
   } catch (error) {
     console.error('Error in market data function:', error)
     return new Response(
-      JSON.stringify({ error: 'Internal server error', details: error.message }),
+      JSON.stringify({ 
+        error: 'Internal server error', 
+        details: error instanceof Error ? error.message : String(error) 
+      }),
       { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     )
   }

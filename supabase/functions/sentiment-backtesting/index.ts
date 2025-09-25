@@ -85,7 +85,7 @@ Deno.serve(async (req) => {
           success: false, 
           error: 'No sentiment data available for backtesting',
           symbol: params.symbol,
-          period: `${params.startDate} to ${params.endDate}`
+          period: `${params.start_date} to ${params.end_date}`
         }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       )
@@ -138,7 +138,7 @@ Deno.serve(async (req) => {
       // Calculate average sentiment for this date
       const daySentiments = sentimentByDate.get(currentDate) || []
       const avgSentiment = daySentiments.length > 0 
-        ? daySentiments.reduce((sum, s) => sum + (s.overall_sentiment || 0), 0) / daySentiments.length
+        ? daySentiments.reduce((sum: number, s: any) => sum + (s.overall_sentiment || 0), 0) / daySentiments.length
         : 0
 
       // Enhanced signal detection
@@ -319,7 +319,10 @@ Deno.serve(async (req) => {
   } catch (error) {
     console.error('Error in enhanced backtesting function:', error)
     return new Response(
-      JSON.stringify({ error: 'Internal server error', details: error.message }),
+      JSON.stringify({ 
+        error: 'Internal server error', 
+        details: error instanceof Error ? error.message : String(error) 
+      }),
       { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     )
   }

@@ -31,8 +31,8 @@ function prioritizeSymbolsByCategory(symbols: string[]): string[] {
   return symbols.sort((a, b) => {
     const categoryA = stockCategories[a] || 'Banking';
     const categoryB = stockCategories[b] || 'Banking';
-    const priorityA = categoryPriority[categoryA] || 1;
-    const priorityB = categoryPriority[categoryB] || 1;
+    const priorityA = (categoryPriority as any)[categoryA] || 1;
+    const priorityB = (categoryPriority as any)[categoryB] || 1;
     return priorityB - priorityA;
   });
 }
@@ -169,7 +169,7 @@ Deno.serve(async (req) => {
           console.warn(`Query ${index + 1} failed: ${response.status}`);
         }
       } catch (queryError) {
-        console.warn(`Query ${index + 1} error:`, queryError.message);
+        console.warn(`Query ${index + 1} error:`, queryError instanceof Error ? queryError.message : String(queryError));
       }
       
       // Delay between queries to respect rate limits
@@ -200,7 +200,10 @@ Deno.serve(async (req) => {
   } catch (error) {
     console.error('Error in financial news function:', error)
     return new Response(
-      JSON.stringify({ error: 'Internal server error', details: error.message }),
+      JSON.stringify({ 
+        error: 'Internal server error', 
+        details: error instanceof Error ? error.message : String(error) 
+      }),
       { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     )
   }

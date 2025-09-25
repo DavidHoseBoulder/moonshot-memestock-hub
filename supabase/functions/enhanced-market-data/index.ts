@@ -238,7 +238,7 @@ Deno.serve(async (req) => {
           }
 
         } catch (error) {
-          console.error(`❌ Error processing ${symbol}:`, error.message || error)
+          console.error(`❌ Error processing ${symbol}:`, error instanceof Error ? error.message : String(error))
           return null
         }
       })
@@ -264,7 +264,7 @@ Deno.serve(async (req) => {
     }
 
     // Store new enhanced market data in cache
-    if (enhancedData.length > cachedData?.length || 0) {
+    if (enhancedData.length > (cachedData?.length || 0)) {
       const newData = enhancedData.slice(cachedData?.length || 0)
       const { error: dbError } = await supabase
         .from('enhanced_market_data')
@@ -311,7 +311,10 @@ Deno.serve(async (req) => {
   } catch (error) {
     console.error('Error in enhanced market data function:', error)
     return new Response(
-      JSON.stringify({ error: 'Internal server error', details: error.message }),
+      JSON.stringify({ 
+        error: 'Internal server error', 
+        details: error instanceof Error ? error.message : String(error) 
+      }),
       { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     )
   }

@@ -279,7 +279,7 @@ async function processFullImport(
         }
         
       } catch (error) {
-        console.error(`[reddit-backfill-import] Sentiment batch ${Math.floor(i/batchSize) + 1} failed:`, error?.message);
+        console.error(`[reddit-backfill-import] Sentiment batch ${Math.floor(i/batchSize) + 1} failed:`, error instanceof Error ? error.message : String(error));
         // Continue processing other batches even if one fails
       }
     }
@@ -308,7 +308,7 @@ async function processFullImport(
 
 // Handle shutdown gracefully
 addEventListener('beforeunload', (ev) => {
-  console.log('[reddit-backfill-import] Function shutdown due to:', ev.detail?.reason);
+  console.log('[reddit-backfill-import] Function shutdown due to:', (ev as any).detail?.reason);
 });
 
 Deno.serve(async (req) => {
@@ -345,7 +345,7 @@ Deno.serve(async (req) => {
           console.log('[reddit-backfill-import] Starting background processing');
           
           const result = await processFullImport(
-            body.jsonl_url,
+            body.jsonl_url!,
             body.subreddits,
             body.symbols,
             body.batch_size ?? 25,

@@ -111,20 +111,20 @@ Deno.serve(async (req) => {
               if (prices[j] === null || prices[j] === undefined) continue
 
               const currentDate = new Date(timestamps[j] * 1000)
-              const validPrices = prices.slice(Math.max(0, j - 19), j + 1).filter(p => p !== null)
-              const validVolumes = volumes.slice(Math.max(0, j - 19), j + 1).filter(v => v !== null && v > 0)
+              const validPrices = prices.slice(Math.max(0, j - 19), j + 1).filter((p: any) => p !== null)
+              const validVolumes = volumes.slice(Math.max(0, j - 19), j + 1).filter((v: any) => v !== null && v > 0)
 
               if (validPrices.length < 10) continue // Need minimum data for indicators
 
               // Calculate technical indicators
               const rsi = calculateRSI(validPrices.slice(-14))
               const sma_20 = validPrices.length >= 20 ? 
-                validPrices.reduce((sum, p) => sum + p, 0) / validPrices.length : validPrices[validPrices.length - 1]
+                validPrices.reduce((sum: number, p: any) => sum + p, 0) / validPrices.length : validPrices[validPrices.length - 1]
               const sma_50 = j >= 49 ? 
-                prices.slice(j - 49, j + 1).filter(p => p !== null).reduce((sum, p) => sum + p, 0) / 50 : sma_20
+                prices.slice(j - 49, j + 1).filter((p: any) => p !== null).reduce((sum: number, p: any) => sum + p, 0) / 50 : sma_20
 
               const avgVolume = validVolumes.length > 0 ? 
-                validVolumes.reduce((sum, v) => sum + v, 0) / validVolumes.length : 0
+                validVolumes.reduce((sum: number, v: any) => sum + v, 0) / validVolumes.length : 0
               const currentVolume = volumes[j] || 0
               const volume_ratio = avgVolume > 0 ? currentVolume / avgVolume : 1
 
@@ -203,8 +203,8 @@ Deno.serve(async (req) => {
       console.log(`Bulk historical import completed. Processed ${processed}/${symbols.length} symbols`)
     }
 
-    // Start background task
-    EdgeRuntime.waitUntil(backgroundImport())
+    // Start background task (removed EdgeRuntime as it's not available in all environments)
+    backgroundImport().catch(console.error)
 
     // Return immediate response
     return new Response(
@@ -224,7 +224,10 @@ Deno.serve(async (req) => {
   } catch (error) {
     console.error('Error in bulk historical import function:', error)
     return new Response(
-      JSON.stringify({ error: 'Internal server error', details: error.message }),
+      JSON.stringify({ 
+        error: 'Internal server error', 
+        details: error instanceof Error ? error.message : String(error) 
+      }),
       { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     )
   }

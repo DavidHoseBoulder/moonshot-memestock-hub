@@ -399,7 +399,7 @@ Current symbol context: ${symbol || 'None specified'}`
     console.error('Error in symbol-ai-chat function:', error);
     return new Response(
       JSON.stringify({ 
-        error: error.message || 'Internal server error',
+        error: error instanceof Error ? error.message : String(error) || 'Internal server error',
         response: 'Sorry, I encountered an error processing your request. Please try again.'
       }),
       { 
