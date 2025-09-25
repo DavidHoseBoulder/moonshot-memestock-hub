@@ -170,7 +170,20 @@ async function fetchMessagesForDay(symbol: string, windowStart: number, windowEn
 
     if (!response) break;
 
-    const payload = await response.json() as { messages?: StockTwitsMessage[] };
+    let payload: { messages?: StockTwitsMessage[] } | null = null;
+    try {
+      payload = await response.json() as { messages?: StockTwitsMessage[] };
+    } catch (error) {
+      // Some StockTwits payloads contain malformed escape sequences; skip this page gracefully
+      console.warn(`Failed to parse JSON for ${symbol}:`, (error as Error).message || error);
+      if (messages.length === 0) {
+        // If this is the first page, abort the symbol so the caller can retry later
+        throw error;
+      }
+      break;
+    }
+
+    if (!payload) break;
     const page: StockTwitsMessage[] = Array.isArray(payload?.messages) ? payload.messages : [];
     if (page.length === 0) break;
 
