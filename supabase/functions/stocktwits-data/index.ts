@@ -7,6 +7,75 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
+interface BatchConfig {
+  limitPerDay: number;
+  days: number;
+  chunkSize: number;
+  chunkDelayMs: number;
+  symbolDelayMs: number;
+  fetchRetries: number;
+  symbols?: string[];
+  skipSymbols?: string[];
+}
+
+interface ProcessingReport {
+  totalSymbols: number;
+  processedSymbols: number;
+  rowsInserted: number;
+  rowsUpdated: number;
+  failures: Array<{ symbol: string; error: string }>;
+  chunksProcessed: number;
+  processingTimeMs: number;
+}
+
+type SentimentLabel = 'Bullish' | 'Bearish' | null;
+
+interface StockTwitsSymbolRef {
+  symbol: string;
+}
+
+interface StockTwitsMessage {
+  id: number;
+  body: string;
+  created_at: string;
+  user?: {
+    username?: string;
+    followers?: number;
+    like_count?: number;
+  };
+  symbols?: StockTwitsSymbolRef[];
+  sentiment?: {
+    basic: 'Bullish' | 'Bearish';
+  };
+  entities?: {
+    sentiment?: {
+      basic: 'Bullish' | 'Bearish';
+    };
+  };
+}
+
+interface SentimentSummary {
+  total_messages: number;
+  bullish_messages: number;
+  bearish_messages: number;
+  neutral_messages: number;
+  bullish_ratio: number;
+  sentiment_score: number;
+  confidence_score: number;
+  follower_sum: number;
+}
+
+const MAX_FOLLOWER_WEIGHT = 10000;
+
+// Initialize Supabase client
+const supabaseUrl = Deno.env.get('SUPABASE_URL')!
+const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
+const supabase = createClient(supabaseUrl, supabaseKey)
+
+function sleep(ms: number): Promise<void> {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
 // Load symbols from symbol_disambig for broader coverage
 async function loadSymbolsFromDatabase(): Promise<string[]> {
   try {
@@ -78,53 +147,128 @@ async function fetchWithBackoff(url: string, init: RequestInit = {}, maxRetries 
   }
 }
 
-// Fetch messages for a symbol within the last N days, with pagination and per-day cap
-async function fetchSymbolMessagesForWindow(symbol: string, perDay: number, days: number): Promise<StockTwitsMessage[]> {
-  const cutoffTs = Date.now() - days * 24 * 60 * 60 * 1000;
-  const maxTotal = Math.min(perDay * days, 200); // hard cap per symbol to be safe
-  const batchSize = Math.min(perDay, 25);
-  let results: StockTwitsMessage[] = [];
-  let nextMaxId: number | undefined;
+function getSentimentLabel(message: StockTwitsMessage): SentimentLabel {
+  return message.entities?.sentiment?.basic || message.sentiment?.basic || null;
+}
 
-  while (results.length < maxTotal) {
-    const url = `https://api.stocktwits.com/api/2/streams/symbol/${symbol}.json?limit=${batchSize}` + (nextMaxId ? `&max=${nextMaxId}` : '');
-    const response = await fetchWithBackoff(url, {
-      headers: { 'User-Agent': 'Financial-Pipeline/1.0' }
-    }, 3, 1000);
+function sentimentValue(label: SentimentLabel): number {
+  if (label === 'Bullish') return 1;
+  if (label === 'Bearish') return -1;
+  return 0;
+}
 
-    if (!response.ok) {
-      if (response.status === 429) console.warn(`Rate limited while paginating ${symbol}`);
-      else console.warn(`Failed page for ${symbol}: ${response.status}`);
-      break;
+function summarizeMessages(messages: StockTwitsMessage[]): SentimentSummary {
+  let bullish = 0;
+  let bearish = 0;
+  let neutral = 0;
+  let weightedScore = 0;
+  let weightTotal = 0;
+  let followerSum = 0;
+
+  for (const message of messages) {
+    const label = getSentimentLabel(message);
+    if (label === 'Bullish') bullish += 1;
+    else if (label === 'Bearish') bearish += 1;
+    else neutral += 1;
+
+    const followers = Math.max(0, Number(message.user?.followers) || 0);
+    followerSum += followers;
+    const weightBoost = Math.min(followers, MAX_FOLLOWER_WEIGHT) / MAX_FOLLOWER_WEIGHT;
+    const baseWeight = 1 + weightBoost;
+    const sentimentScore = sentimentValue(label);
+    weightedScore += sentimentScore * baseWeight;
+    weightTotal += baseWeight;
+  }
+
+  const total = messages.length;
+  const sentiment_score = weightTotal === 0 ? 0 : Number((weightedScore / weightTotal).toFixed(4));
+  const bullish_ratio = total === 0 ? 0 : Number((bullish / total).toFixed(4));
+  const coverageComponent = Math.min(1, total / 30);
+  const followerComponent = Math.min(1, followerSum / (2 * MAX_FOLLOWER_WEIGHT));
+  const confidence_score = Number((coverageComponent * 0.7 + followerComponent * 0.3).toFixed(4));
+
+  return {
+    total_messages: total,
+    bullish_messages: bullish,
+    bearish_messages: bearish,
+    neutral_messages: neutral,
+    bullish_ratio,
+    sentiment_score,
+    confidence_score,
+    follower_sum: followerSum,
+  };
+}
+
+function startOfUTCDay(date: Date): Date {
+  return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
+}
+
+function withinWindow(timestamp: number, windowStart: number, windowEnd: number): boolean {
+  return timestamp >= windowStart && timestamp < windowEnd;
+}
+
+// Fetch messages for a symbol for a specific day window
+async function fetchMessagesForDay(symbol: string, windowStart: number, windowEnd: number, perDayLimit: number, maxRetries: number): Promise<StockTwitsMessage[]> {
+  const messages: StockTwitsMessage[] = [];
+  let maxId: number | undefined;
+  const maxMessages = Math.min(perDayLimit, 200);
+  const batchSize = Math.min(25, maxMessages);
+
+  while (messages.length < maxMessages) {
+    const url = new URL(`https://api.stocktwits.com/api/2/streams/symbol/${symbol}.json`);
+    url.searchParams.set('limit', String(Math.min(batchSize, maxMessages - messages.length)));
+    if (maxId) url.searchParams.set('max', String(maxId));
+
+    let response: Response | null = null;
+    for (let attempt = 0; attempt < maxRetries; attempt++) {
+      try {
+        response = await fetch(url.toString(), {
+          headers: { 'User-Agent': 'Financial-Pipeline/1.0' },
+        });
+      } catch (error) {
+        if (attempt === maxRetries - 1) throw error;
+      }
+
+      if (response && response.ok) break;
+      const status = response?.status ?? 'network-error';
+      if (attempt === maxRetries - 1) {
+        console.warn(`StockTwits request failed for ${symbol} (${status})`);
+        return messages;
+      }
+      const backoff = 800 * (attempt + 1);
+      await sleep(backoff);
     }
 
-    const data = await response.json();
-    const page: StockTwitsMessage[] = Array.isArray(data?.messages) ? data.messages : [];
+    if (!response) break;
+
+    const payload = await response.json() as { messages?: StockTwitsMessage[] };
+    const page: StockTwitsMessage[] = Array.isArray(payload?.messages) ? payload.messages : [];
     if (page.length === 0) break;
 
-    // Keep only messages within the window
-    for (const m of page) {
-      const t = new Date(m.created_at).getTime();
-      if (!Number.isFinite(t)) continue;
-      if (t >= cutoffTs) results.push(m);
+    for (const msg of page) {
+      const ts = new Date(msg.created_at).getTime();
+      if (!Number.isFinite(ts)) continue;
+      if (withinWindow(ts, windowStart, windowEnd)) {
+        messages.push(msg);
+        if (messages.length >= maxMessages) break;
+      }
     }
 
-    const oldest = page[page.length - 1];
-    nextMaxId = oldest?.id ? oldest.id - 1 : undefined;
-    const oldestTs = oldest ? new Date(oldest.created_at).getTime() : 0;
-    if (!nextMaxId || oldestTs < cutoffTs) break;
+    const last = page[page.length - 1];
+    maxId = last?.id ? last.id - 1 : undefined;
+    const lastTimestamp = last ? new Date(last.created_at).getTime() : Number.NEGATIVE_INFINITY;
+    if (!maxId || lastTimestamp < windowStart) break;
 
-    // short pause between pages
-    await new Promise(r => setTimeout(r, 800));
+    await sleep(800); // Pagination delay
   }
 
   // Dedupe by id
   const seen = new Set<number>();
   const deduped: StockTwitsMessage[] = [];
-  for (const m of results) {
-    if (seen.has(m.id)) continue;
-    seen.add(m.id);
-    deduped.push(m);
+  for (const msg of messages) {
+    if (seen.has(msg.id)) continue;
+    seen.add(msg.id);
+    deduped.push(msg);
   }
 
   return deduped;
@@ -135,32 +279,134 @@ const supabaseUrl = Deno.env.get('SUPABASE_URL')!
 const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
 const supabase = createClient(supabaseUrl, supabaseKey)
 
-// Check database for recent data within a window (last N days)
-async function getRecentSentimentData(symbols: string[], days: number): Promise<{ symbol: string; data: any }[]> {
-  const windowStart = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString()
-  
-  const { data, error } = await supabase
+// Upsert sentiment data for a specific day
+async function upsertDay(symbol: string, windowStart: number, windowEnd: number, messages: StockTwitsMessage[]): Promise<boolean> {
+  if (messages.length === 0) return false;
+
+  const stats = summarizeMessages(messages);
+  const metadata = { messages, stats };
+  const collectedAt = new Date(windowEnd - 1).toISOString();
+  const startISO = new Date(windowStart).toISOString();
+  const endISO = new Date(windowEnd).toISOString();
+
+  const { data: existing, error: selectError } = await supabase
     .from('sentiment_history')
-    .select('id, symbol, sentiment_score, confidence_score, metadata, collected_at')
-    .in('symbol', symbols)
+    .select('id')
     .eq('source', 'stocktwits')
-    .gte('collected_at', windowStart)
-    .order('collected_at', { ascending: false })
-  
-  if (error) {
-    console.warn('Database query error:', error)
-    return []
+    .eq('symbol', symbol)
+    .gte('collected_at', startISO)
+    .lt('collected_at', endISO)
+    .limit(1);
+
+  if (selectError) throw selectError;
+
+  if (existing && existing.length > 0) {
+    const [{ id }] = existing;
+    const { error } = await supabase
+      .from('sentiment_history')
+      .update({
+        sentiment_score: stats.sentiment_score,
+        confidence_score: stats.confidence_score,
+        metadata,
+        collected_at: collectedAt,
+        data_timestamp: collectedAt,
+      })
+      .eq('id', id);
+    if (error) throw error;
+    return false; // updated
   }
-  
-  // Group by symbol, taking most recent for each
-  const symbolMap = new Map()
-  data?.forEach(row => {
-    if (!symbolMap.has(row.symbol)) {
-      symbolMap.set(row.symbol, row)
+
+  const { error } = await supabase
+    .from('sentiment_history')
+    .insert({
+      symbol,
+      source: 'stocktwits',
+      sentiment_score: stats.sentiment_score,
+      confidence_score: stats.confidence_score,
+      metadata,
+      collected_at: collectedAt,
+      data_timestamp: collectedAt,
+    });
+  if (error) throw error;
+  return true; // inserted
+}
+
+// Process a single symbol for all days in the window
+async function processSymbol(symbol: string, config: BatchConfig): Promise<{ inserted: number; updated: number; error?: string }> {
+  const todayStart = startOfUTCDay(new Date());
+  let inserted = 0;
+  let updated = 0;
+
+  try {
+    for (let dayOffset = 1; dayOffset <= config.days; dayOffset++) {
+      const windowEnd = todayStart.getTime() - (dayOffset - 1) * 24 * 60 * 60 * 1000;
+      const windowStart = windowEnd - 24 * 60 * 60 * 1000;
+      
+      const messages = await fetchMessagesForDay(symbol, windowStart, windowEnd, config.limitPerDay, config.fetchRetries);
+      const wasInserted = await upsertDay(symbol, windowStart, windowEnd, messages);
+      
+      if (wasInserted) inserted++;
+      else updated++;
     }
-  })
-  
-  return Array.from(symbolMap.entries()).map(([symbol, data]) => ({ symbol, data }))
+    
+    return { inserted, updated };
+  } catch (error: any) {
+    return { inserted, updated, error: error.message || error };
+  }
+}
+
+// Process symbols in chunks
+async function processSymbolBatch(symbols: string[], config: BatchConfig): Promise<ProcessingReport> {
+  const startTime = Date.now();
+  const report: ProcessingReport = {
+    totalSymbols: symbols.length,
+    processedSymbols: 0,
+    rowsInserted: 0,
+    rowsUpdated: 0,
+    failures: [],
+    chunksProcessed: 0,
+    processingTimeMs: 0
+  };
+
+  // Create chunks
+  const chunks: string[][] = [];
+  for (let i = 0; i < symbols.length; i += config.chunkSize) {
+    chunks.push(symbols.slice(i, i + config.chunkSize));
+  }
+
+  console.log(`Processing ${symbols.length} symbols in ${chunks.length} chunks of size ${config.chunkSize}`);
+
+  for (let i = 0; i < chunks.length; i++) {
+    const chunk = chunks[i];
+    console.log(`Processing chunk ${i + 1}/${chunks.length}: ${chunk.join(', ')}`);
+
+    for (const symbol of chunk) {
+      const result = await processSymbol(symbol, config);
+      
+      if (result.error) {
+        report.failures.push({ symbol, error: result.error });
+        console.warn(`[${symbol}] failed: ${result.error}`);
+      } else {
+        report.processedSymbols++;
+        report.rowsInserted += result.inserted;
+        report.rowsUpdated += result.updated;
+        console.log(`[${symbol}] processed: ${result.inserted} inserted, ${result.updated} updated`);
+      }
+      
+      await sleep(config.symbolDelayMs);
+    }
+
+    report.chunksProcessed++;
+    
+    // Delay between chunks (except for the last one)
+    if (i < chunks.length - 1) {
+      console.log(`Chunk delay: ${config.chunkDelayMs}ms`);
+      await sleep(config.chunkDelayMs);
+    }
+  }
+
+  report.processingTimeMs = Date.now() - startTime;
+  return report;
 }
 
 type SentimentLabel = 'Bullish' | 'Bearish' | null;
@@ -265,174 +511,72 @@ Deno.serve(async (req) => {
   }
 
   try {
-let body: any = {};
-try {
-  body = await req.json();
-} catch {}
-const { limitPerDay = 25, days = 7 } = body as { limitPerDay?: number; days?: number };
+    let body: any = {};
+    try {
+      body = await req.json();
+    } catch {}
 
-// Load symbols from symbol_disambig table for broader coverage
-const symbols = await loadSymbolsFromDatabase()
-console.log(`Loaded ${symbols.length} symbols from symbol_disambig table; window=${days}d, perDay=${limitPerDay}`)
+    // Parse configuration with defaults
+    const config: BatchConfig = {
+      limitPerDay: Math.min(body.limitPerDay || 150, 200),
+      days: Math.max(1, body.days || 1),
+      chunkSize: Math.max(1, body.chunkSize || 15),
+      chunkDelayMs: Math.max(0, body.chunkDelayMs || 90_000),
+      symbolDelayMs: Math.max(0, body.symbolDelayMs || 1_800),
+      fetchRetries: Math.max(1, body.fetchRetries || 3),
+      symbols: Array.isArray(body.symbols) ? body.symbols : undefined,
+      skipSymbols: Array.isArray(body.skipSymbols) ? body.skipSymbols : undefined
+    };
 
-    console.log(`Checking database for recent StockTwits data for ${symbols.length} symbols`)
-    
-    // First, check database for recent data
-    const recentData = await getRecentSentimentData(symbols, days)
+    console.log(`StockTwits batch processing config:`, config);
 
-    // Only consider symbols "covered" if the DB row actually contains cached messages
-    const symbolsWithMessages = new Set(
-      recentData
-        .filter(({ data }) => Array.isArray(data?.metadata?.messages) && data.metadata.messages.length > 0)
-        .map(d => d.symbol)
-    )
-
-    const symbolsToFetch = symbols.filter(symbol => !symbolsWithMessages.has(symbol))
-    
-    console.log(`Found ${recentData.length} symbols with recent rows; ${symbolsWithMessages.size} with messages, need to fetch ${symbolsToFetch.length} symbols`)
-    
-    let allMessages: StockTwitsMessage[] = []
-    const backfillPromises: Promise<any>[] = []
-    
-    // Convert database data to StockTwits message format (only if messages present)
-    for (const { symbol, data } of recentData) {
-      const messages = Array.isArray(data?.metadata?.messages) ? data.metadata.messages as StockTwitsMessage[] : null
-      if (messages && messages.length > 0) {
-        allMessages.push(...messages)
-
-        const metadataStats = data?.metadata?.stats
-        const storedScore = typeof data?.sentiment_score === 'number' ? data.sentiment_score : null
-        const needsBackfill = !metadataStats || typeof metadataStats.sentiment_score !== 'number' || storedScore === 0
-
-        if (needsBackfill) {
-          const stats = summarizeMessages(messages)
-          const metadata = mergeStatsIntoMetadata(data.metadata, stats)
-          backfillPromises.push(
-            supabase
-              .from('sentiment_history')
-              .update({
-                sentiment_score: stats.sentiment_score,
-                confidence_score: stats.confidence_score,
-                metadata
-              })
-              .eq('id', data.id)
-          )
-        }
-      }
-    }
-    
-    if (backfillPromises.length > 0) {
-      await Promise.allSettled(backfillPromises)
-    }
-    
-    // Only fetch missing symbols from API - take first 10 for broader coverage
-    if (symbolsToFetch.length > 0) {
-      console.log(`Fetching fresh StockTwits data for ${Math.min(symbolsToFetch.length, 15)} symbols`)
-      
-      for (const symbol of symbolsToFetch.slice(0, 15)) { // paginate within each symbol for last N days
-        try {
-          const messages = await fetchSymbolMessagesForWindow(symbol, limitPerDay, days)
-          if (messages.length > 0) {
-            allMessages.push(...messages)
-
-            const stats = summarizeMessages(messages)
-            const timestamp = new Date().toISOString()
-
-            // Store in database for future use
-            await supabase
-              .from('sentiment_history')
-              .insert({
-                symbol,
-                source: 'stocktwits',
-                sentiment_score: stats.sentiment_score,
-                confidence_score: stats.confidence_score,
-                metadata: mergeStatsIntoMetadata({ messages }, stats),
-                collected_at: timestamp,
-                data_timestamp: timestamp
-              })
-          }
-        } catch (error: any) {
-          console.warn(`Error fetching ${symbol}:`, error?.message || error)
-          continue
-        }
-        
-        await new Promise(resolve => setTimeout(resolve, 1200)) // Pacing between symbols
-      }
+    // Get symbol list
+    let symbols: string[];
+    if (config.symbols) {
+      symbols = config.symbols.map(s => String(s).toUpperCase());
+    } else {
+      symbols = await loadSymbolsFromDatabase();
     }
 
-    // If no data from API, return empty results (but successful response)
-    if (allMessages.length === 0) {
-      console.log('No StockTwits data available - returning empty results')
-      
-      const result = { 
-        messages: [],
-        totalResults: 0,
-        source: 'StockTwits API',
-        fromDatabase: recentData.length,
-        fromAPI: symbolsToFetch.length,
-        ticker_counts: {}
-      };
-      
+    // Apply skip list
+    if (config.skipSymbols && config.skipSymbols.length > 0) {
+      const skipSet = new Set(config.skipSymbols.map(s => String(s).toUpperCase()));
+      symbols = symbols.filter(symbol => !skipSet.has(symbol));
+    }
+
+    if (symbols.length === 0) {
       return new Response(
-        JSON.stringify(result),
-        { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        JSON.stringify({ error: 'No symbols to process' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       )
     }
 
-    // Remove duplicates and sort by creation date
-    const uniqueMessages = allMessages
-      .filter((message, index, self) => 
-        index === self.findIndex(m => m.id === message.id))
-      .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+    console.log(`Processing ${symbols.length} symbols over ${config.days} day(s), ${config.limitPerDay} messages/day`);
 
-    console.log(`Returning ${uniqueMessages.length} StockTwits messages (${recentData.length} from cache, ${symbolsToFetch.length} fetched)`)
+    // Process all symbols in batches
+    const report = await processSymbolBatch(symbols, config);
 
-    // Per-ticker mention counts (case-insensitive, $ required for short tickers)
-    const tickerCounts: Record<string, number> = {};
-    const symbolMessagesMap = new Map<string, StockTwitsMessage[]>();
-    for (const msg of uniqueMessages) {
-      const symbolSet = new Set<string>();
-      if (Array.isArray(msg.symbols)) {
-        msg.symbols.forEach(ref => {
-          if (ref?.symbol) symbolSet.add(ref.symbol.toUpperCase());
-        });
-      }
-      extractTickers(`${msg.body || ''}`).forEach(sym => symbolSet.add(sym));
-
-      if (symbolSet.size === 0) continue;
-
-      for (const symbol of symbolSet) {
-        tickerCounts[symbol] = (tickerCounts[symbol] || 0) + 1;
-        const existing = symbolMessagesMap.get(symbol);
-        if (existing) existing.push(msg);
-        else symbolMessagesMap.set(symbol, [msg]);
-      }
-    }
-
-    const symbolStats: Record<string, SentimentSummary> = {};
-    for (const [symbol, messages] of symbolMessagesMap.entries()) {
-      symbolStats[symbol] = summarizeMessages(messages);
-    }
-
-    const result = { 
-      messages: uniqueMessages,
-      totalResults: uniqueMessages.length,
-      source: 'StockTwits API',
-      fromDatabase: recentData.length,
-      fromAPI: symbolsToFetch.length,
-      ticker_counts: tickerCounts,
-      symbol_stats: symbolStats
-    };
+    console.log(`Batch processing complete:`, report);
 
     return new Response(
-      JSON.stringify(result),
+      JSON.stringify(report),
       { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     )
 
-  } catch (error) {
-    console.error('Error in StockTwits function:', error)
+  } catch (error: any) {
+    console.error('Error in StockTwits batch function:', error)
     return new Response(
-      JSON.stringify({ error: 'Internal server error', details: error.message }),
+      JSON.stringify({ 
+        error: 'Internal server error', 
+        details: error.message,
+        totalSymbols: 0,
+        processedSymbols: 0,
+        rowsInserted: 0,
+        rowsUpdated: 0,
+        failures: [],
+        chunksProcessed: 0,
+        processingTimeMs: 0
+      }),
       { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     )
   }
