@@ -306,13 +306,29 @@ const TradesOverview = ({ onSymbolSelect, onOpenChat }: TradesOverviewProps) => 
   const fetchTrades = async () => {
     setIsLoading(true);
     try {
-      // Using raw query to bypass type issues
+      // Force refresh auth session to ensure we have the latest permissions
+      await supabase.auth.refreshSession();
+      
+      // Simple test query first
+      const { data: countData, error: countError } = await supabase
+        .from('trades')
+        .select('trade_id', { count: 'exact', head: true });
+
+      if (countError) {
+        console.error('Count query error:', countError);
+        throw new Error(`Permission error: ${countError.message}`);
+      }
+
+      // If count works, fetch full data
       const { data: tradesData, error: tradesError } = await supabase
-        .from('trades' as any)
+        .from('trades')
         .select('*')
         .order('created_at', { ascending: false });
 
-      if (tradesError) throw tradesError;
+      if (tradesError) {
+        console.error('Trades fetch error:', tradesError);
+        throw tradesError;
+      }
 
       // Get unique symbols for market data and symbol filter
       const symbols = [...new Set((tradesData as any[] || []).map((t: any) => t.symbol))];
