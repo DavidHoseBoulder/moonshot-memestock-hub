@@ -503,12 +503,19 @@ Deno.serve(async (req) => {
       }
     };
 
-    // Use EdgeRuntime.waitUntil to run background task
-    if (typeof EdgeRuntime !== 'undefined' && EdgeRuntime.waitUntil) {
-      EdgeRuntime.waitUntil(backgroundTask());
-    } else {
-      // Fallback for local development
-      backgroundTask();
+    // Use background task to avoid timeout - EdgeRuntime is available in deployed functions
+    try {
+      // @ts-ignore EdgeRuntime is available in deployed edge functions
+      if (typeof globalThis.EdgeRuntime !== 'undefined' && globalThis.EdgeRuntime.waitUntil) {
+        // @ts-ignore
+        globalThis.EdgeRuntime.waitUntil(backgroundTask());
+      } else {
+        // Fallback - start task without waiting (fire-and-forget)
+        backgroundTask().catch(error => console.error('Background task error:', error));
+      }
+    } catch (e) {
+      // If EdgeRuntime not available, just run in background
+      backgroundTask().catch(error => console.error('Background task error:', error));
     }
 
     // Return immediate response
