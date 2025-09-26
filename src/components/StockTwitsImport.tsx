@@ -8,8 +8,8 @@ import { useToast } from "@/hooks/use-toast";
 
 const StockTwitsImport = () => {
   const [isImporting, setIsImporting] = useState(false);
-  const [limitPerDay, setLimitPerDay] = useState(25);
-  const [days, setDays] = useState(7);
+  const [limitPerDay, setLimitPerDay] = useState(150);
+  const [days, setDays] = useState(1);
   const [results, setResults] = useState<any>(null);
   const { toast } = useToast();
 
@@ -19,7 +19,14 @@ const StockTwitsImport = () => {
       setResults(null);
 
       const { data, error } = await supabase.functions.invoke('stocktwits-data', {
-        body: { limitPerDay, days }
+        body: { 
+          days: days, 
+          limitPerDay: limitPerDay, 
+          chunkSize: 15, 
+          chunkDelayMs: 90000, 
+          symbolDelayMs: 1800, 
+          fetchRetries: 3 
+        }
       });
 
       if (error) {
@@ -29,8 +36,8 @@ const StockTwitsImport = () => {
       setResults(data);
 
       toast({
-        title: "StockTwits Data Fetched",
-        description: `Retrieved ${data?.totalResults || 0} messages from ${data?.fromAPI || 0} symbols (${data?.fromDatabase || 0} cached)`,
+        title: "StockTwits Background Processing Started",
+        description: data?.message || `Started processing ${data?.totalSymbols || 0} symbols in background. Check import_runs table for completion.`,
       });
 
     } catch (error: any) {
@@ -89,25 +96,21 @@ const StockTwitsImport = () => {
 
         {results && (
           <div className="text-sm text-muted-foreground space-y-1 p-3 bg-muted rounded">
-            <p><strong>Results:</strong></p>
-            <p>• Total messages: {results.totalResults}</p>
-            <p>• Fresh from API: {results.fromAPI} symbols</p>
-            <p>• Cached data used: {results.fromDatabase} symbols</p>
-            {results.ticker_counts && Object.keys(results.ticker_counts).length > 0 && (
-              <p>• Top mentions: {Object.entries(results.ticker_counts)
-                .sort(([,a]: any, [,b]: any) => b - a)
-                .slice(0, 5)
-                .map(([symbol, count]) => `${symbol}(${count})`)
-                .join(', ')}</p>
-            )}
+            <p><strong>Background Processing Status:</strong></p>
+            <p>• Total symbols to process: {results.totalSymbols}</p>
+            <p>• Status: {results.status}</p>
+            <p>• Processing started for {results.totalSymbols} symbols</p>
+            <p>• Check the import_runs table to monitor completion (~12+ minutes)</p>
+            {results.message && <p>• {results.message}</p>}
           </div>
         )}
 
         <div className="text-sm text-muted-foreground space-y-1">
           <p><strong>Data source:</strong> StockTwits API</p>
-          <p><strong>Coverage:</strong> Up to 15 symbols per run (rate limited)</p>
-          <p><strong>Storage:</strong> Cached in sentiment_history for future use</p>
-          <p><strong>Symbols:</strong> Loaded from symbol_disambig table</p>
+          <p><strong>Coverage:</strong> All ~107 symbols from symbol_disambig (background processing)</p>
+          <p><strong>Processing:</strong> 15 symbols/chunk, 90s delay between chunks</p>
+          <p><strong>Storage:</strong> Results stored in sentiment_history table</p>
+          <p><strong>Timeline:</strong> ~12+ minutes total processing time</p>
         </div>
       </CardContent>
     </Card>
