@@ -437,9 +437,9 @@ Deno.serve(async (req) => {
     const config: BatchConfig = {
       limitPerDay: Math.min(body.limitPerDay || 150, 200),
       days: Math.max(1, body.days || 1),
-      chunkSize: Math.max(1, body.chunkSize || 15),
-      chunkDelayMs: Math.max(0, body.chunkDelayMs || 90_000),
-      symbolDelayMs: Math.max(0, body.symbolDelayMs || 1_800),
+      chunkSize: Math.max(1, body.chunkSize || 25),
+      chunkDelayMs: Math.max(0, body.chunkDelayMs || 30_000),
+      symbolDelayMs: Math.max(0, body.symbolDelayMs || 1_200),
       fetchRetries: Math.max(1, body.fetchRetries || 3),
       symbols: Array.isArray(body.symbols) ? body.symbols : undefined,
       skipSymbols: Array.isArray(body.skipSymbols) ? body.skipSymbols : undefined
