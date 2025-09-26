@@ -437,9 +437,9 @@ Deno.serve(async (req) => {
     const config: BatchConfig = {
       limitPerDay: Math.min(body.limitPerDay || 150, 200),
       days: Math.max(1, body.days || 1),
-      chunkSize: Math.max(1, body.chunkSize || 25),
-      chunkDelayMs: Math.max(0, body.chunkDelayMs || 30_000),
-      symbolDelayMs: Math.max(0, body.symbolDelayMs || 1_200),
+      chunkSize: Math.max(1, body.chunkSize || 15),
+      chunkDelayMs: Math.max(0, body.chunkDelayMs || 90_000),
+      symbolDelayMs: Math.max(0, body.symbolDelayMs || 1_800),
       fetchRetries: Math.max(1, body.fetchRetries || 3),
       symbols: Array.isArray(body.symbols) ? body.symbols : undefined,
       skipSymbols: Array.isArray(body.skipSymbols) ? body.skipSymbols : undefined
@@ -470,13 +470,62 @@ Deno.serve(async (req) => {
 
     console.log(`Processing ${symbols.length} symbols over ${config.days} day(s), ${config.limitPerDay} messages/day`);
 
-    // Process all symbols in batches
-    const report = await processSymbolBatch(symbols, config);
+    // Start background processing - this continues after response is sent
+    const backgroundTask = async () => {
+      try {
+        const report = await processSymbolBatch(symbols, config);
+        console.log(`Background processing complete:`, report);
+        
+        // Store completion status in database for monitoring
+        await supabase
+          .from('import_runs')
+          .insert({
+            run_id: `stocktwits-${Date.now()}`,
+            status: 'completed',
+            inserted_total: report.rowsInserted,
+            analyzed_total: report.processedSymbols,
+            queued_total: report.totalSymbols,
+            scanned_total: report.totalSymbols,
+            finished_at: new Date().toISOString()
+          });
+      } catch (error: any) {
+        console.error('Background task failed:', error);
+        
+        // Log failure to database
+        await supabase
+          .from('import_runs')
+          .insert({
+            run_id: `stocktwits-${Date.now()}`,
+            status: 'failed',
+            error: error.message || String(error),
+            finished_at: new Date().toISOString()
+          });
+      }
+    };
 
-    console.log(`Batch processing complete:`, report);
+    // Use EdgeRuntime.waitUntil to run background task
+    if (typeof EdgeRuntime !== 'undefined' && EdgeRuntime.waitUntil) {
+      EdgeRuntime.waitUntil(backgroundTask());
+    } else {
+      // Fallback for local development
+      backgroundTask();
+    }
+
+    // Return immediate response
+    const immediateReport = {
+      totalSymbols: symbols.length,
+      processedSymbols: 0,
+      rowsInserted: 0,
+      rowsUpdated: 0,
+      failures: [],
+      chunksProcessed: 0,
+      processingTimeMs: 0,
+      status: 'started_background_processing',
+      message: `Started background processing of ${symbols.length} symbols. Check import_runs table for completion status.`
+    };
 
     return new Response(
-      JSON.stringify(report),
+      JSON.stringify(immediateReport),
       { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     )
 
