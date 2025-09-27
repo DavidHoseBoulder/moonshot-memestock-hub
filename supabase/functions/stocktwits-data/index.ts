@@ -470,24 +470,55 @@ Deno.serve(async (req) => {
 
     console.log(`Processing ${symbols.length} symbols over ${config.days} day(s), ${config.limitPerDay} messages/day`);
 
+    // Process in smaller batches to avoid timeouts
+    const MAX_BATCH_SIZE = 20; // Process max 20 symbols per execution
+    const batchToProcess = symbols.slice(0, MAX_BATCH_SIZE);
+    const remainingSymbols = symbols.slice(MAX_BATCH_SIZE);
+    
     // Start background processing - this continues after response is sent
     const backgroundTask = async () => {
       try {
-        const report = await processSymbolBatch(symbols, config);
-        console.log(`Background processing complete:`, report);
+        console.log(`Processing batch of ${batchToProcess.length} symbols: ${batchToProcess.join(', ')}`);
+        const report = await processSymbolBatch(batchToProcess, config);
+        console.log(`Batch processing complete:`, report);
         
-        // Store completion status in database for monitoring
+        // Store batch completion status in database for monitoring
+        const runId = `stocktwits-batch-${Date.now()}`;
         await supabase
           .from('import_runs')
           .insert({
-            run_id: `stocktwits-${Date.now()}`,
+            run_id: runId,
             status: 'completed',
+            file: `Batch: ${batchToProcess.join(',')}`,
             inserted_total: report.rowsInserted,
             analyzed_total: report.processedSymbols,
-            queued_total: report.totalSymbols,
-            scanned_total: report.totalSymbols,
+            queued_total: batchToProcess.length,
+            scanned_total: batchToProcess.length,
             finished_at: new Date().toISOString()
           });
+          
+        // If there are remaining symbols, trigger next batch after a delay
+        if (remainingSymbols.length > 0) {
+          console.log(`Scheduling next batch for ${remainingSymbols.length} remaining symbols in 30 seconds`);
+          setTimeout(async () => {
+            try {
+              const nextBatchConfig = { ...config, symbols: remainingSymbols };
+              const response = await fetch(`${Deno.env.get('SUPABASE_URL')}/functions/v1/stocktwits-data`, {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                  'Authorization': `Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')}`
+                },
+                body: JSON.stringify(nextBatchConfig)
+              });
+              console.log(`Next batch triggered, status: ${response.status}`);
+            } catch (error) {
+              console.error('Failed to trigger next batch:', error);
+            }
+          }, 30000); // 30 second delay between batches
+        } else {
+          console.log('All symbols processed across all batches');
+        }
       } catch (error: any) {
         console.error('Background task failed:', error);
         
@@ -495,8 +526,9 @@ Deno.serve(async (req) => {
         await supabase
           .from('import_runs')
           .insert({
-            run_id: `stocktwits-${Date.now()}`,
+            run_id: `stocktwits-batch-${Date.now()}`,
             status: 'failed',
+            file: `Failed batch: ${batchToProcess.join(',')}`,
             error: error.message || String(error),
             finished_at: new Date().toISOString()
           });
@@ -521,6 +553,8 @@ Deno.serve(async (req) => {
     // Return immediate response
     const immediateReport = {
       totalSymbols: symbols.length,
+      batchSize: batchToProcess.length,
+      remainingSymbols: remainingSymbols.length,
       processedSymbols: 0,
       rowsInserted: 0,
       rowsUpdated: 0,
@@ -528,7 +562,7 @@ Deno.serve(async (req) => {
       chunksProcessed: 0,
       processingTimeMs: 0,
       status: 'started_background_processing',
-      message: `Started background processing of ${symbols.length} symbols. Check import_runs table for completion status.`
+      message: `Started processing batch 1 of ${batchToProcess.length} symbols. ${remainingSymbols.length} symbols remaining for subsequent batches. Monitor progress in sentiment_history table.`
     };
 
     return new Response(
