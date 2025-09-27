@@ -55,7 +55,8 @@ Deno.serve(async (req) => {
     const backgroundImport = async () => {
       let processed = 0
       // Use more calendar days to ensure we get enough trading days
-      const startDate = new Date(Date.now() - (days * 24 * 60 * 60 * 1000 * 1.5)) // Add 50% buffer for weekends/holidays
+      const startDate = new Date()
+      startDate.setDate(startDate.getDate() - (days * 1.5)) // Go back days * 1.5 to account for weekends/holidays
       const endDate = new Date()
       
       console.log(`Date range: ${startDate.toISOString()} to ${endDate.toISOString()}`)
