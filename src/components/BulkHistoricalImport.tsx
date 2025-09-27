@@ -74,16 +74,17 @@ const BulkHistoricalImport = () => {
   };
 
   const fixMissingSymbols = async () => {
-    const missingSymbols = ['SPY', 'GOOGL', 'PFE', 'PNC', 'HKD', 'CHPT', 'VFS'];
+    // Current symbols missing data since 9/18 (likely delisted: 404 errors in logs)
+    const missingSymbols = ['CYTO', 'DWAC', 'NKLA', 'SQ'];
     try {
       setIsImporting(true);
       
       const { data, error } = await supabase.functions.invoke('bulk-historical-import', {
         body: {
           symbols: missingSymbols,
-          days: 120, // Go back further to catch missing data
-          batch_size: 3,
-          delay_ms: 2000
+          days: 30, // Try last 30 days to see if data exists
+          batch_size: 2,
+          delay_ms: 3000
         }
       });
 
@@ -93,7 +94,7 @@ const BulkHistoricalImport = () => {
 
       toast({
         title: "Missing Data Import Started",
-        description: `Importing missing data for ${missingSymbols.length} symbols since June 1st`,
+        description: `Attempting to import missing data for ${missingSymbols.length} symbols since 9/18`,
       });
 
       console.log('Missing symbols import response:', data);
@@ -124,7 +125,7 @@ const BulkHistoricalImport = () => {
         <div className="bg-muted p-4 rounded-lg border-l-4 border-l-warning">
           <h4 className="font-semibold text-sm mb-2">Missing Data Detected</h4>
           <p className="text-sm text-muted-foreground mb-3">
-            SPY, GOOGL, PFE, PNC, HKD, CHPT, VFS are missing data before June 9th.
+            CYTO, DWAC, NKLA, SQ are missing data since 9/18 (likely delisted symbols).
           </p>
           <Button 
             onClick={fixMissingSymbols} 
@@ -133,7 +134,7 @@ const BulkHistoricalImport = () => {
             size="sm"
             className="w-full"
           >
-            {isImporting ? 'Fixing...' : 'Fix Missing Data (7 symbols)'}
+            {isImporting ? 'Fixing...' : 'Fix Missing Data (4 symbols)'}
           </Button>
         </div>
 
