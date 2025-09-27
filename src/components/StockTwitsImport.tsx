@@ -37,7 +37,7 @@ const StockTwitsImport = () => {
 
       toast({
         title: "StockTwits Background Processing Started",
-        description: data?.message || `Started processing ${data?.totalSymbols || 0} symbols in background. Check import_runs table for completion.`,
+        description: data?.message || `Started processing ${data?.totalSymbols || 0} symbols in background. Monitor progress in sentiment_history table.`,
       });
 
     } catch (error: any) {
@@ -100,7 +100,7 @@ const StockTwitsImport = () => {
             <p>• Total symbols to process: {results.totalSymbols}</p>
             <p>• Status: {results.status}</p>
             <p>• Processing started for {results.totalSymbols} symbols</p>
-            <p>• Check the import_runs table to monitor completion (~12+ minutes)</p>
+            <p>• Monitor new records in sentiment_history table (~12+ minutes)</p>
             {results.message && <p>• {results.message}</p>}
           </div>
         )}
