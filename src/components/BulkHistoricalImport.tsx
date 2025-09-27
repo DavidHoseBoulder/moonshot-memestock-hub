@@ -74,16 +74,16 @@ const BulkHistoricalImport = () => {
   };
 
   const fixMissingSymbols = async () => {
-    // Current symbols missing data since 9/18 (likely delisted: 404 errors in logs)
-    const missingSymbols = ['CYTO', 'DWAC', 'NKLA', 'SQ'];
+    // All symbols with stale data (last update 8/12, likely delisted/merged)  
+    const missingSymbols = ['ATER', 'BBIG', 'CTRM', 'CYTO', 'FRCB', 'HYMC', 'ILAG', 'MCOM', 'MEGL', 'MULN', 'TTOO'];
     try {
       setIsImporting(true);
       
       const { data, error } = await supabase.functions.invoke('bulk-historical-import', {
         body: {
           symbols: missingSymbols,
-          days: 30, // Try last 30 days to see if data exists
-          batch_size: 2,
+          days: 60, // Try last 60 days to see if any data exists
+          batch_size: 3,
           delay_ms: 3000
         }
       });
@@ -94,7 +94,7 @@ const BulkHistoricalImport = () => {
 
       toast({
         title: "Missing Data Import Started",
-        description: `Attempting to import missing data for ${missingSymbols.length} symbols since 9/18`,
+        description: `Attempting to import missing data for ${missingSymbols.length} symbols (likely delisted)`,
       });
 
       console.log('Missing symbols import response:', data);
@@ -125,7 +125,7 @@ const BulkHistoricalImport = () => {
         <div className="bg-muted p-4 rounded-lg border-l-4 border-l-warning">
           <h4 className="font-semibold text-sm mb-2">Missing Data Detected</h4>
           <p className="text-sm text-muted-foreground mb-3">
-            CYTO, DWAC, NKLA, SQ are missing data since 9/18 (likely delisted symbols).
+            11 symbols have stale data since 8/12 (likely delisted/merged): ATER, BBIG, CTRM, CYTO, FRCB, HYMC, ILAG, MCOM, MEGL, MULN, TTOO
           </p>
           <Button 
             onClick={fixMissingSymbols} 
@@ -134,7 +134,7 @@ const BulkHistoricalImport = () => {
             size="sm"
             className="w-full"
           >
-            {isImporting ? 'Fixing...' : 'Fix Missing Data (4 symbols)'}
+            {isImporting ? 'Fixing...' : 'Fix Missing Data (11 symbols)'}
           </Button>
         </div>
 
