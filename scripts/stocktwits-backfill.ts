@@ -1,3 +1,32 @@
+/**
+ * StockTwits backfill helper
+ *
+ * Usage examples:
+ *
+ *   ST_BACKFILL_START_DATE=2025-09-10 \
+ *   ST_BACKFILL_END_DATE=2025-09-17 \
+ *   ST_BACKFILL_PER_DAY=200 \
+ *   ST_BACKFILL_SKIP_SYMBOLS="A,AAPL,AI" \
+ *   ST_BACKFILL_CHUNK_SIZE=40 \
+ *   ST_BACKFILL_CHUNK_DELAY_MS=60000 \
+ *   npx ts-node --esm scripts/stocktwits-backfill.ts
+ *
+ *   # CLI args override env vars (same names without ST_BACKFILL_ prefix and
+ *   # in kebab-case, e.g. --start-date / --end-date / --per-day / --chunk-size).
+ *   npx ts-node --esm scripts/stocktwits-backfill.ts \
+ *     --start-date 2025-08-01 --end-date 2025-08-05 --per-day 100
+ *
+ * Supported env/CLI knobs:
+ *   ST_BACKFILL_START_DATE / --start-date       (YYYY-MM-DD, required)
+ *   ST_BACKFILL_END_DATE   / --end-date         (YYYY-MM-DD, inclusive, required)
+ *   ST_BACKFILL_PER_DAY    / --per-day          (default 150)
+ *   ST_BACKFILL_MAX_SYMBOLS/ --max-symbols      (cap processed symbols)
+ *   ST_BACKFILL_SKIP_SYMBOLS / --skip-symbols   (comma list)
+ *   ST_BACKFILL_CHUNK_SIZE / --chunk-size       (symbols per batch)
+ *   ST_BACKFILL_CHUNK_DELAY_MS / --chunk-delay-ms (delay between batches)
+ *   ST_BACKFILL_PAGE_DELAY_MS, ST_BACKFILL_SYMBOL_DELAY_MS, ST_BACKFILL_FETCH_RETRIES
+ */
+
 import { createClient } from '@supabase/supabase-js';
 
 type SentimentLabel = 'Bullish' | 'Bearish' | null;
@@ -50,10 +79,6 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
 function sleep(ms: number) {
   return new Promise(resolve => setTimeout(resolve, ms));
-}
-
-function startOfUTCDay(date: Date): Date {
-  return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
 }
 
 function sentimentValue(label: SentimentLabel): number {
@@ -119,21 +144,29 @@ function parseSymbolList(raw: string | undefined): string[] {
     .filter(Boolean);
 }
 
+function addDays(base: Date, delta: number): Date {
+  const next = new Date(base.getTime());
+  next.setUTCDate(next.getUTCDate() + delta);
+  return next;
+}
+
 async function fetchSymbols(): Promise<string[]> {
   const override = parseSymbolList(process.env.ST_BACKFILL_SYMBOLS);
   if (override.length > 0) return override;
 
+  // Pull the curated ticker universe and respect the active flag so backfills skip disabled symbols.
   const { data, error } = await supabase
-    .from('symbol_disambig')
+    .from('ticker_universe')
     .select('symbol')
+    .eq('active', true)
     .order('symbol', { ascending: true });
 
   if (error) {
-    console.warn('Falling back to short symbol list because symbol_disambig query failed:', error.message);
+    console.warn('Falling back to short symbol list because ticker_universe query failed:', error.message);
     return ['AAPL', 'TSLA', 'NVDA'];
   }
 
-  return data.map(({ symbol }) => String(symbol).toUpperCase());
+  return (data ?? []).map(({ symbol }) => String(symbol).toUpperCase());
 }
 
 async function fetchMessagesForDay(symbol: string, windowStart: number, windowEnd: number, perDayLimit: number): Promise<StockTwitsMessage[]> {
@@ -266,15 +299,15 @@ async function upsertDay(symbol: string, windowStart: number, windowEnd: number,
 }
 
 async function processSymbolBatch(symbols: string[], params: {
-  daysBack: number;
+  startDate: Date;
+  endDate: Date;
   perDayLimit: number;
 }) {
-  const { daysBack, perDayLimit } = params;
-  const todayStart = startOfUTCDay(new Date());
+  const { startDate, endDate, perDayLimit } = params;
 
-  for (let dayOffset = 1; dayOffset <= daysBack; dayOffset += 1) {
-    const windowEnd = todayStart.getTime() - (dayOffset - 1) * 24 * 60 * 60 * 1000;
-    const windowStart = windowEnd - 24 * 60 * 60 * 1000;
+  for (let d = new Date(startDate); d <= endDate; d = addDays(d, 1)) {
+    const windowStart = Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate());
+    const windowEnd = windowStart + 24 * 60 * 60 * 1000;
     const windowLabel = new Date(windowStart).toISOString().slice(0, 10);
 
     console.log(`\n=== Processing ${windowLabel} (${symbols.length} symbols) ===`);
@@ -305,13 +338,68 @@ function chunkSymbols(symbols: string[], size: number): string[][] {
   return chunks;
 }
 
+interface ResolvedConfig {
+  startDate: Date;
+  endDate: Date;
+  perDayLimit: number;
+  maxSymbols: number;
+  chunkSize: number;
+  chunkDelayMs: number;
+  skipSymbols: Set<string>;
+}
+
+function parseDate(raw: string | undefined, label: string): Date | null {
+  if (!raw) return null;
+  const parsed = new Date(`${raw}T00:00:00Z`);
+  if (Number.isNaN(parsed.getTime())) {
+    throw new Error(`Invalid ${label}: ${raw}`);
+  }
+  return parsed;
+}
+
+function parseArgsAndEnv(): ResolvedConfig {
+  const args = process.argv.slice(2);
+  const argMap = new Map<string, string>();
+  for (let i = 0; i < args.length; i += 1) {
+    const token = args[i];
+    if (!token.startsWith('--')) continue;
+    const key = token.replace(/^--/, '');
+    const value = args[i + 1];
+    if (!value || value.startsWith('--')) {
+      throw new Error(`Missing value for argument ${token}`);
+    }
+    argMap.set(key, value);
+    i += 1;
+  }
+
+  const startDate = parseDate(argMap.get('start-date') || process.env.ST_BACKFILL_START_DATE, 'start-date');
+  const endDateInclusive = parseDate(argMap.get('end-date') || process.env.ST_BACKFILL_END_DATE, 'end-date');
+  if (!startDate || !endDateInclusive) {
+    throw new Error('Must provide start/end dates via --start-date/--end-date or ST_BACKFILL_START_DATE/ST_BACKFILL_END_DATE');
+  }
+  if (endDateInclusive < startDate) {
+    throw new Error(`End date must be on/after start date (start=${startDate.toISOString().slice(0,10)}, end=${endDateInclusive.toISOString().slice(0,10)})`);
+  }
+
+  const perDayLimit = Number(argMap.get('per-day') || process.env.ST_BACKFILL_PER_DAY || 150);
+  const maxSymbols = Number(argMap.get('max-symbols') || process.env.ST_BACKFILL_MAX_SYMBOLS || 0);
+  const chunkSize = Number(argMap.get('chunk-size') || process.env.ST_BACKFILL_CHUNK_SIZE || 0);
+  const chunkDelayMs = Number(argMap.get('chunk-delay-ms') || process.env.ST_BACKFILL_CHUNK_DELAY_MS || 60_000);
+  const skipSymbols = new Set(parseSymbolList(argMap.get('skip-symbols') || process.env.ST_BACKFILL_SKIP_SYMBOLS));
+
+  return {
+    startDate,
+    endDate: endDateInclusive,
+    perDayLimit,
+    maxSymbols,
+    chunkSize,
+    chunkDelayMs,
+    skipSymbols,
+  };
+}
+
 async function run() {
-  const daysBack = Number(process.env.ST_BACKFILL_DAYS || 7);
-  const perDayLimit = Number(process.env.ST_BACKFILL_PER_DAY || 150);
-  const maxSymbols = Number(process.env.ST_BACKFILL_MAX_SYMBOLS || 0);
-  const chunkSize = Number(process.env.ST_BACKFILL_CHUNK_SIZE || 0);
-  const chunkDelayMs = Number(process.env.ST_BACKFILL_CHUNK_DELAY_MS || 60_000);
-  const skipSymbols = new Set(parseSymbolList(process.env.ST_BACKFILL_SKIP_SYMBOLS));
+  const { startDate, endDate, perDayLimit, maxSymbols, chunkSize, chunkDelayMs, skipSymbols } = parseArgsAndEnv();
 
   let symbols = await fetchSymbols();
   if (skipSymbols.size > 0) {
@@ -331,7 +419,7 @@ async function run() {
   for (let i = 0; i < batches.length; i += 1) {
     const batch = batches[i];
     console.log(`\n>>> Batch ${i + 1}/${batches.length}: ${batch.join(', ')}`);
-    await processSymbolBatch(batch, { daysBack, perDayLimit });
+    await processSymbolBatch(batch, { startDate, endDate, perDayLimit });
     if (i < batches.length - 1 && chunkDelayMs > 0) {
       console.log(`\nPausing ${chunkDelayMs}ms before next batch...`);
       await sleep(chunkDelayMs);
