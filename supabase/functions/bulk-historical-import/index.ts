@@ -54,10 +54,12 @@ Deno.serve(async (req) => {
     // Start background task without blocking response
     const backgroundImport = async () => {
       let processed = 0
-      const startDate = new Date(Date.now() - (days * 24 * 60 * 60 * 1000))
+      // Use more calendar days to ensure we get enough trading days
+      const startDate = new Date(Date.now() - (days * 24 * 60 * 60 * 1000 * 1.5)) // Add 50% buffer for weekends/holidays
       const endDate = new Date()
       
       console.log(`Date range: ${startDate.toISOString()} to ${endDate.toISOString()}`)
+      console.log(`Requesting ${days} trading days with ${Math.floor((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24))} calendar days buffer`)
 
       for (let i = 0; i < symbols.length; i += batch_size) {
         const batch = symbols.slice(i, i + batch_size)
@@ -72,25 +74,49 @@ Deno.serve(async (req) => {
             const period1 = Math.floor(startDate.getTime() / 1000)
             const period2 = Math.floor(endDate.getTime() / 1000)
             
-            const yahooUrl = `https://query1.finance.yahoo.com/v8/finance/chart/${symbol}?period1=${period1}&period2=${period2}&interval=1d`
+            // Try multiple Yahoo Finance endpoints
+            const yahooUrls = [
+              `https://query1.finance.yahoo.com/v8/finance/chart/${symbol}?period1=${period1}&period2=${period2}&interval=1d&includePrePost=false`,
+              `https://query2.finance.yahoo.com/v8/finance/chart/${symbol}?period1=${period1}&period2=${period2}&interval=1d&includePrePost=false`
+            ]
             
-            const controller = new AbortController()
-            const timeoutId = setTimeout(() => controller.abort(), 10000) // 10 second timeout
+            let data = null
+            let usedUrl = ''
             
-            const response = await fetch(yahooUrl, { 
-              signal: controller.signal,
-              headers: {
-                'User-Agent': 'Mozilla/5.0 (compatible; FinanceBot/1.0)'
+            for (const yahooUrl of yahooUrls) {
+              try {
+                console.log(`${symbol}: Trying ${yahooUrl}`)
+                
+                const controller = new AbortController()
+                const timeoutId = setTimeout(() => controller.abort(), 15000) // 15 second timeout
+                
+                const response = await fetch(yahooUrl, { 
+                  signal: controller.signal,
+                  headers: {
+                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+                    'Accept': 'application/json',
+                    'Accept-Language': 'en-US,en;q=0.9'
+                  }
+                })
+                clearTimeout(timeoutId)
+                
+                if (response.ok) {
+                  data = await response.json()
+                  usedUrl = yahooUrl
+                  break
+                } else {
+                  console.log(`${symbol}: HTTP ${response.status} from ${yahooUrl}`)
+                }
+              } catch (urlError) {
+                console.log(`${symbol}: Error with ${yahooUrl}:`, urlError instanceof Error ? urlError.message : String(urlError))
+                continue
               }
-            })
-            clearTimeout(timeoutId)
+            }
             
-            if (!response.ok) {
-              console.error(`Failed to fetch data for ${symbol}:`, response.status)
+            if (!data) {
+              console.error(`${symbol}: All Yahoo Finance endpoints failed`)
               return null
             }
-
-            const data = await response.json()
             
             if (!data.chart?.result?.[0]) {
               console.error(`No data found for symbol: ${symbol}`)
@@ -100,7 +126,13 @@ Deno.serve(async (req) => {
             const result = data.chart.result[0]
             const timestamps = result.timestamp
             
-            console.log(`${symbol}: Yahoo returned ${timestamps?.length || 0} data points from ${yahooUrl}`)
+            console.log(`${symbol}: Yahoo returned ${timestamps?.length || 0} data points from ${usedUrl}`)
+            
+            if (timestamps && timestamps.length > 0) {
+              const firstDate = new Date(timestamps[0] * 1000).toISOString().split('T')[0]
+              const lastDate = new Date(timestamps[timestamps.length - 1] * 1000).toISOString().split('T')[0]
+              console.log(`${symbol}: Date range in response: ${firstDate} to ${lastDate}`)
+            }
             const quotes = result.indicators.quote[0]
             const prices = quotes.close
             const openPrices = quotes.open
