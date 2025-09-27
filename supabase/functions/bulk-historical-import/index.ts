@@ -56,6 +56,8 @@ Deno.serve(async (req) => {
       let processed = 0
       const startDate = new Date(Date.now() - (days * 24 * 60 * 60 * 1000))
       const endDate = new Date()
+      
+      console.log(`Date range: ${startDate.toISOString()} to ${endDate.toISOString()}`)
 
       for (let i = 0; i < symbols.length; i += batch_size) {
         const batch = symbols.slice(i, i + batch_size)
@@ -97,6 +99,8 @@ Deno.serve(async (req) => {
 
             const result = data.chart.result[0]
             const timestamps = result.timestamp
+            
+            console.log(`${symbol}: Yahoo returned ${timestamps?.length || 0} data points from ${yahooUrl}`)
             const quotes = result.indicators.quote[0]
             const prices = quotes.close
             const openPrices = quotes.open
@@ -114,7 +118,7 @@ Deno.serve(async (req) => {
               const validPrices = prices.slice(Math.max(0, j - 19), j + 1).filter((p: any) => p !== null)
               const validVolumes = volumes.slice(Math.max(0, j - 19), j + 1).filter((v: any) => v !== null && v > 0)
 
-              if (validPrices.length < 10) continue // Need minimum data for indicators
+              if (validPrices.length < 2) continue // Need minimum data for indicators
 
               // Calculate technical indicators
               const rsi = calculateRSI(validPrices.slice(-14))
