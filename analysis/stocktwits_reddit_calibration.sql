@@ -1,10 +1,30 @@
 -- stocktwits_reddit_calibration.sql
--- Usage: psql "$PGURI" -f analysis/stocktwits_reddit_calibration.sql > analysis/stocktwits_reddit_calibration.csv
--- Exports up to the three most recent StockTwits messages per ticker-day alongside
--- Reddit sentiment aggregates for the same window; adjust the hard-coded dates as needed.
+-- Usage examples:
+--   # default window (today-7d .. today+1) and top 3 StockTwits messages per ticker-day
+--   psql "$PGURI" -f analysis/stocktwits_reddit_calibration.sql > analysis/stocktwits_reddit_calibration.csv
+--
+--   # explicit window + different message cap
+--   psql "$PGURI" \
+--     -v start_date='2025-09-11' \
+--     -v end_date='2025-09-27'   \
+--     -v max_messages=5           \
+--     -f analysis/stocktwits_reddit_calibration.sql \
+--     > /tmp/stocktwits_reddit_calibration.csv
+
+\if :{?start_date}    \else \set start_date ''    \endif
+\if :{?end_date}      \else \set end_date ''      \endif
+\if :{?max_messages}  \else \set max_messages ''  \endif
 
 COPY (
-with stocktwits_messages as (
+WITH params AS (
+  SELECT
+    COALESCE(NULLIF(:'start_date','')::date,
+             (now() AT TIME ZONE 'utc')::date - 7) AS start_date,
+    COALESCE(NULLIF(:'end_date','')::date,
+             (now() AT TIME ZONE 'utc')::date + 1) AS end_date_exclusive,
+    COALESCE(NULLIF(:'max_messages','')::int, 3)    AS max_messages
+),
+stocktwits_messages AS (
   select
     sh.collected_at::date as day,
     sh.symbol,
@@ -17,13 +37,13 @@ with stocktwits_messages as (
       partition by sh.collected_at::date, sh.symbol
       order by (msg->>'created_at')::timestamptz desc
     ) as rn
-  from sentiment_history sh
+  from params, sentiment_history sh
   cross join lateral jsonb_array_elements(sh.metadata->'messages') msg
   where sh.source = 'stocktwits'
-    and sh.collected_at >= '2025-09-18'::date
-    and sh.collected_at <  '2025-09-27'::date
+    and sh.collected_at >= params.start_date
+    and sh.collected_at <  params.end_date_exclusive
 ),
-reddit_sentiment_agg as (
+reddit_sentiment_agg AS (
   select
     date_trunc('day', m.created_utc)::date as day,
     m.symbol,
@@ -31,10 +51,10 @@ reddit_sentiment_agg as (
     sum(case when s.label = 'POSITIVE' then 1 else 0 end) as reddit_positive,
     sum(case when s.label = 'NEGATIVE' then 1 else 0 end) as reddit_negative,
     round(avg(s.score)::numeric, 3) as reddit_avg_score
-  from reddit_mentions m
+  from params, reddit_mentions m
   join reddit_sentiment s on s.mention_id = m.mention_id
-  where m.created_utc >= '2025-09-18'::timestamptz
-    and m.created_utc <  '2025-09-27'::timestamptz
+  where m.created_utc >= params.start_date
+    and m.created_utc <  params.end_date_exclusive
   group by 1, 2
 )
 select
@@ -52,6 +72,7 @@ select
 from stocktwits_messages sm
 join reddit_sentiment_agg ra
   on ra.day = sm.day and ra.symbol = sm.symbol
-where sm.rn <= 3
+join params on true
+where sm.rn <= params.max_messages
 order by sm.day desc, sm.symbol, sm.st_created_at desc
 ) TO STDOUT WITH CSV HEADER;
