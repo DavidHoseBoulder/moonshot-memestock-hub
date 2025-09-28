@@ -52,8 +52,8 @@ reddit AS (
 ),
 stocktwits AS (
   SELECT
-    sh.collected_at::date                        AS trade_date,
-    upper(sh.symbol)                             AS symbol,
+    sub.collected_at::date                       AS trade_date,
+    upper(sub.symbol)                            AS symbol,
     COUNT(*)::numeric                            AS st_mentions,
     SUM(CASE WHEN label = 'Bullish' THEN 1 ELSE 0 END)::numeric AS st_pos_messages,
     SUM(CASE WHEN label = 'Bearish' THEN 1 ELSE 0 END)::numeric AS st_neg_messages,
@@ -118,8 +118,8 @@ SELECT
   j.st_pos_messages,
   j.st_neg_messages,
   j.st_first_ts,
-  (j.st_first_ts - j.reddit_first_ts) / INTERVAL '1 minute' AS stocktwits_leads_minutes,
-  (j.reddit_first_ts - j.st_first_ts) / INTERVAL '1 minute' AS reddit_leads_minutes,
+  (EXTRACT(EPOCH FROM (j.st_first_ts - j.reddit_first_ts)) / 60.0)::numeric AS stocktwits_leads_minutes,
+  (EXTRACT(EPOCH FROM (j.reddit_first_ts - j.st_first_ts)) / 60.0)::numeric AS reddit_leads_minutes,
   -- blended metrics
   CASE
     WHEN denom_weighted > 0 THEN blended_avg
