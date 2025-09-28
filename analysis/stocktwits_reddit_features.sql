@@ -27,12 +27,12 @@
 
 WITH params AS (
   SELECT
-    COALESCE(NULLIF(:start_date, '')::date,
+    COALESCE(NULLIF(:'start_date', '')::date,
              (now() AT TIME ZONE 'utc')::date - 14)                               AS start_date,
-    COALESCE(NULLIF(:end_date, '')::date,
+    COALESCE(NULLIF(:'end_date', '')::date,
              (now() AT TIME ZONE 'utc')::date + 1)                                AS end_date_exclusive,
-    COALESCE(NULLIF(:reddit_weight, '')::numeric, 1.0)                            AS w_reddit,
-    COALESCE(NULLIF(:stocktwits_weight, '')::numeric, 0.0)                        AS w_stocktwits
+    COALESCE(NULLIF(:'reddit_weight', '')::numeric, 1.0)                          AS w_reddit,
+    COALESCE(NULLIF(:'stocktwits_weight', '')::numeric, 0.0)                      AS w_stocktwits
 ),
 reddit AS (
   SELECT
@@ -54,19 +54,29 @@ stocktwits AS (
   SELECT
     sh.collected_at::date                        AS trade_date,
     upper(sh.symbol)                             AS symbol,
-    COALESCE((metadata->'stats'->>'total_messages')::int,
-             CASE WHEN metadata ? 'messages' THEN jsonb_array_length(metadata->'messages') ELSE 0 END,
-             0)                                   AS st_mentions,
-    COALESCE((metadata->'stats'->>'bullish_messages')::int, 0)::numeric AS st_pos_messages,
-    COALESCE((metadata->'stats'->>'bearish_messages')::int, 0)::numeric AS st_neg_messages,
-    COALESCE(sentiment_score, 0)::numeric        AS st_sentiment_score,
-    MIN((msg->>'created_at')::timestamptz)       AS st_first_ts
-  FROM params, sentiment_history sh
-  CROSS JOIN LATERAL jsonb_array_elements(sh.metadata->'messages') msg
-  WHERE sh.source = 'stocktwits'
-    AND sh.collected_at >= params.start_date
-    AND sh.collected_at <  params.end_date_exclusive
-  GROUP BY 1,2, st_sentiment_score
+    COUNT(*)::numeric                            AS st_mentions,
+    SUM(CASE WHEN label = 'Bullish' THEN 1 ELSE 0 END)::numeric AS st_pos_messages,
+    SUM(CASE WHEN label = 'Bearish' THEN 1 ELSE 0 END)::numeric AS st_neg_messages,
+    AVG(sentiment_numeric)::numeric              AS st_sentiment_score,
+    MIN(created_ts)                              AS st_first_ts
+  FROM (
+    SELECT
+      sh.collected_at,
+      sh.symbol,
+      (msg->>'created_at')::timestamptz AS created_ts,
+      COALESCE(msg->'entities'->'sentiment'->>'basic', msg->'sentiment'->>'basic') AS label,
+      CASE
+        WHEN COALESCE(msg->'entities'->'sentiment'->>'basic', msg->'sentiment'->>'basic') = 'Bullish' THEN 1
+        WHEN COALESCE(msg->'entities'->'sentiment'->>'basic', msg->'sentiment'->>'basic') = 'Bearish' THEN -1
+        ELSE 0
+      END AS sentiment_numeric
+    FROM params, sentiment_history sh
+    CROSS JOIN LATERAL jsonb_array_elements(sh.metadata->'messages') msg
+    WHERE sh.source = 'stocktwits'
+      AND sh.collected_at >= params.start_date
+      AND sh.collected_at <  params.end_date_exclusive
+  ) sub
+  GROUP BY 1,2
 ),
 prices AS (
   SELECT
@@ -140,26 +150,26 @@ FROM (
     (COALESCE(j.reddit_mentions,0) + COALESCE(j.st_mentions,0))              AS total_mentions,
     (COALESCE(j.reddit_pos_mentions,0) + COALESCE(j.st_pos_messages,0))      AS total_pos,
     (COALESCE(j.reddit_neg_mentions,0) + COALESCE(j.st_neg_messages,0))      AS total_neg,
-    (:reddit_weight::numeric * COALESCE(j.reddit_mentions,0) +
-     :stocktwits_weight::numeric * COALESCE(j.st_mentions,0))               AS denom_weighted,
+    (params.w_reddit * COALESCE(j.reddit_mentions,0) +
+     params.w_stocktwits * COALESCE(j.st_mentions,0))                       AS denom_weighted,
     CASE
-      WHEN (:reddit_weight::numeric * COALESCE(j.reddit_mentions,0) +
-            :stocktwits_weight::numeric * COALESCE(j.st_mentions,0)) > 0
+      WHEN (params.w_reddit * COALESCE(j.reddit_mentions,0) +
+            params.w_stocktwits * COALESCE(j.st_mentions,0)) > 0
       THEN (
-        :reddit_weight::numeric * COALESCE(j.reddit_avg_score,0) * COALESCE(j.reddit_mentions,0) +
-        :stocktwits_weight::numeric * COALESCE(j.st_sentiment_score,0) * COALESCE(j.st_mentions,0)
-      ) / (:reddit_weight::numeric * COALESCE(j.reddit_mentions,0) +
-            :stocktwits_weight::numeric * COALESCE(j.st_mentions,0))
+        params.w_reddit * COALESCE(j.reddit_avg_score,0) * COALESCE(j.reddit_mentions,0) +
+        params.w_stocktwits * COALESCE(j.st_sentiment_score,0) * COALESCE(j.st_mentions,0)
+      ) / (params.w_reddit * COALESCE(j.reddit_mentions,0) +
+            params.w_stocktwits * COALESCE(j.st_mentions,0))
       ELSE NULL
     END AS blended_avg,
     CASE
-      WHEN (:reddit_weight::numeric * COALESCE(j.reddit_mentions,0) +
-            :stocktwits_weight::numeric * COALESCE(j.st_mentions,0)) > 0
+      WHEN (params.w_reddit * COALESCE(j.reddit_mentions,0) +
+            params.w_stocktwits * COALESCE(j.st_mentions,0)) > 0
       THEN (
-        :reddit_weight::numeric * COALESCE(j.reddit_avg_abs,0) * COALESCE(j.reddit_mentions,0) +
-        :stocktwits_weight::numeric * ABS(COALESCE(j.st_sentiment_score,0)) * COALESCE(j.st_mentions,0)
-      ) / (:reddit_weight::numeric * COALESCE(j.reddit_mentions,0) +
-            :stocktwits_weight::numeric * COALESCE(j.st_mentions,0))
+        params.w_reddit * COALESCE(j.reddit_avg_abs,0) * COALESCE(j.reddit_mentions,0) +
+        params.w_stocktwits * ABS(COALESCE(j.st_sentiment_score,0)) * COALESCE(j.st_mentions,0)
+      ) / (params.w_reddit * COALESCE(j.reddit_mentions,0) +
+            params.w_stocktwits * COALESCE(j.st_mentions,0))
       ELSE NULL
     END AS blended_abs
   FROM joined j, params

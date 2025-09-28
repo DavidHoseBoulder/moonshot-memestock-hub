@@ -1,0 +1,1 @@
+model_version,start_date,end_date,symbol,horizon,side,min_mentions,pos_thresh,band,trades,avg_ret,median_ret,win_rate,stdev_ret,sharpe,train_trades,valid_trades,train_sharpe,valid_sharpe,r_train_rank,r_valid_rank,lb

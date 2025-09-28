@@ -29,6 +29,8 @@ OUT_COMMENTS_DIR=${OUT_COMMENTS_DIR:-"$WORKING_DIR/out_comments"}
 # their hardcoded /tmp targets directly, but keeping the variable lets us point
 # the pipeline elsewhere if those scripts are updated.
 CLEANED_REDDIT_JSON_FILE=${CLEANED_REDDIT_JSON_FILE:-"/tmp/reddit_clean.b64"}
+# Comments loader expects newline-delimited JSON rather than base64.
+CLEANED_REDDIT_COMMENTS_FILE=${CLEANED_REDDIT_COMMENTS_FILE:-"/tmp/reddit_clean.ndjson"}
 
 # Hardcoded asset paths (prefer CODE_DIR)
 LOAD_POSTS_SQL="$CODE_DIR/load_reddit_posts.sql"
@@ -345,11 +347,11 @@ load_comments() {
               else .
               end
             )
-        ' "$f" > "$CLEANED_REDDIT_JSON_FILE" ; then
+        ' "$f" > "$CLEANED_REDDIT_COMMENTS_FILE" ; then
           echo "  (skip) jq parse error" ; continue
         fi
 
-        clean_lines=$(wc -l < "$CLEANED_REDDIT_JSON_FILE" || echo 0)
+        clean_lines=$(wc -l < "$CLEANED_REDDIT_COMMENTS_FILE" || echo 0)
         orig_lines=$(wc -l < "$f" || echo 0)
         echo "  kept ${clean_lines}/${orig_lines} lines (dropped $((orig_lines - clean_lines)))"
 
@@ -358,7 +360,7 @@ load_comments() {
         psql "$PGURI" -v ON_ERROR_STOP=1 -X \
           -v DEBUG="$DEBUG" \
           -v sub="$sub" \
-          -v CLEANED_REDDIT_JSON_FILE="$CLEANED_REDDIT_JSON_FILE" \
+          -v CLEANED_REDDIT_JSON_FILE="$CLEANED_REDDIT_COMMENTS_FILE" \
           -f "$LOAD_COMMENTS_SQL"
 
         say "DONE load $f"

@@ -65,6 +65,8 @@
 \if :{?MIN_MENTIONS_REQ}  \else \set MIN_MENTIONS_REQ   3                      \endif
 \if :{?POS_RATE_MIN}      \else \set POS_RATE_MIN       0.55                   \endif
 \if :{?AVG_ABS_MIN}       \else \set AVG_ABS_MIN        0.10                   \endif
+\if :{?W_REDDIT}          \else \set W_REDDIT           1.0                    \endif
+\if :{?W_STOCKTWITS}      \else \set W_STOCKTWITS       0.0                    \endif
 -- Debug logging toggle (0/1). Default 0 if not set by caller.
 \if :{?DEBUG} \else \set DEBUG 0 \endif
 \if :{?EXPORT_CSV}       \else \set EXPORT_CSV        0                        \endif
@@ -149,17 +151,118 @@ WHERE s.model_version = :'MODEL_VERSION'
 -- 2) Daily sentiment aggregates (per symbol/day)
 -- ================================
 DROP TABLE IF EXISTS tmp_daily;
-CREATE TEMP TABLE tmp_daily AS
+DROP TABLE IF EXISTS tmp_daily_reddit;
+DROP TABLE IF EXISTS tmp_stocktwits;
+
+CREATE TEMP TABLE tmp_daily_reddit AS
 SELECT
   symbol,
   d,
-  COUNT(*)                                  AS mentions,
-  AVG(score)                                AS avg_raw,
-  AVG(ABS(score))                           AS avg_abs,
-  AVG((score > 0)::int)::numeric            AS pos_rate,
-  AVG((score < 0)::int)::numeric            AS neg_rate
+  COUNT(*)                                    AS reddit_mentions,
+  AVG(score)                                  AS reddit_avg_raw,
+  AVG(ABS(score))                             AS reddit_avg_abs,
+  SUM((score > 0)::int)::numeric              AS reddit_pos_mentions,
+  SUM((score < 0)::int)::numeric              AS reddit_neg_mentions
 FROM tmp_scored
 GROUP BY 1,2;
+
+CREATE TEMP TABLE tmp_stocktwits AS
+SELECT
+  trade_date::date                      AS d,
+  upper(symbol)                         AS symbol,
+  COALESCE(total_messages, 0)::numeric  AS st_mentions,
+  COALESCE(bullish_messages, 0)::numeric AS st_pos_messages,
+  COALESCE(bearish_messages, 0)::numeric AS st_neg_messages,
+  COALESCE(neutral_messages, 0)::numeric AS st_neu_messages,
+  COALESCE(sentiment_score, 0)::numeric  AS st_sentiment_score
+FROM public.v_stocktwits_daily_signals
+WHERE trade_date >= (:'START_DATE')::date
+  AND trade_date <  (:'END_DATE')::date;
+
+CREATE TEMP TABLE tmp_daily AS
+WITH merged AS (
+  SELECT
+    COALESCE(r.symbol, s.symbol) AS symbol,
+    COALESCE(r.d, s.d)          AS d,
+    COALESCE(r.reddit_mentions, 0)     AS reddit_mentions,
+    COALESCE(r.reddit_pos_mentions, 0) AS reddit_pos_mentions,
+    COALESCE(r.reddit_neg_mentions, 0) AS reddit_neg_mentions,
+    COALESCE(r.reddit_avg_raw, 0)      AS reddit_avg_raw,
+    COALESCE(r.reddit_avg_abs, 0)      AS reddit_avg_abs,
+    COALESCE(s.st_mentions, 0)         AS st_mentions,
+    COALESCE(s.st_pos_messages, 0)     AS st_pos_messages,
+    COALESCE(s.st_neg_messages, 0)     AS st_neg_messages,
+    COALESCE(s.st_sentiment_score, 0)  AS st_sentiment_score
+  FROM tmp_daily_reddit r
+  FULL OUTER JOIN tmp_stocktwits s
+    ON r.symbol = s.symbol AND r.d = s.d
+)
+SELECT
+  symbol,
+  d,
+  reddit_mentions,
+  st_mentions,
+  reddit_pos_mentions,
+  reddit_neg_mentions,
+  st_pos_messages,
+  st_neg_messages,
+  -- combined mention count (unweighted)
+  (reddit_mentions + st_mentions) AS mentions,
+  -- blended average score using per-source weights and mention counts
+  CASE
+    WHEN denom_weighted > 0 THEN blended_avg
+    ELSE COALESCE(reddit_avg_raw, st_sentiment_score)
+  END AS avg_raw,
+  CASE
+    WHEN denom_weighted > 0 THEN blended_abs
+    ELSE COALESCE(reddit_avg_abs, ABS(st_sentiment_score))
+  END AS avg_abs,
+  CASE
+    WHEN total_mentions > 0 THEN total_pos::numeric / total_mentions
+    ELSE 0
+  END AS pos_rate,
+  CASE
+    WHEN total_mentions > 0 THEN total_neg::numeric / total_mentions
+    ELSE 0
+  END AS neg_rate
+FROM (
+  SELECT
+    symbol,
+    d,
+    reddit_mentions,
+    reddit_pos_mentions,
+    reddit_neg_mentions,
+    reddit_avg_raw,
+    reddit_avg_abs,
+    st_mentions,
+    st_pos_messages,
+    st_neg_messages,
+    st_sentiment_score,
+    (reddit_mentions + st_mentions) AS total_mentions,
+    (reddit_pos_mentions + st_pos_messages) AS total_pos,
+    (reddit_neg_mentions + st_neg_messages) AS total_neg,
+    (:W_REDDIT::numeric * reddit_mentions + :W_STOCKTWITS::numeric * st_mentions) AS denom_weighted,
+    CASE
+      WHEN (:W_REDDIT::numeric * reddit_mentions + :W_STOCKTWITS::numeric * st_mentions) > 0
+      THEN (
+        :W_REDDIT::numeric * reddit_avg_raw * reddit_mentions +
+        :W_STOCKTWITS::numeric * st_sentiment_score * st_mentions
+      ) / (:W_REDDIT::numeric * reddit_mentions + :W_STOCKTWITS::numeric * st_mentions)
+      ELSE NULL
+    END AS blended_avg,
+    CASE
+      WHEN (:W_REDDIT::numeric * reddit_mentions + :W_STOCKTWITS::numeric * st_mentions) > 0
+      THEN (
+        :W_REDDIT::numeric * reddit_avg_abs * reddit_mentions +
+        :W_STOCKTWITS::numeric * ABS(st_sentiment_score) * st_mentions
+      ) / (:W_REDDIT::numeric * reddit_mentions + :W_STOCKTWITS::numeric * st_mentions)
+      ELSE NULL
+    END AS blended_abs
+  FROM merged
+) t;
+
+DROP TABLE IF EXISTS tmp_daily_reddit;
+DROP TABLE IF EXISTS tmp_stocktwits;
 
 \if :DEBUG
   SELECT 'tmp_daily_n' AS label, COUNT(*) AS n FROM tmp_daily;
@@ -389,14 +492,49 @@ FROM enhanced_market_data;
 
 \if :DEBUG
   SELECT 'tmp_px_n' AS label, COUNT(*) AS n FROM tmp_px;
-  -- check price coverage on signal starts
+  -- check price coverage on signal starts (both original day and first tradable day)
   WITH k AS (
     SELECT DISTINCT symbol, start_day FROM tmp_sig_start
+  ),
+  aligned AS (
+    SELECT k.symbol, k.start_day, MIN(p.d) AS trading_day
+    FROM k
+    JOIN tmp_px p
+      ON p.symbol = k.symbol
+     AND p.d >= k.start_day
+    GROUP BY 1,2
   )
   SELECT 'starts' AS label, COUNT(*) FROM k
   UNION ALL
-  SELECT 'starts_with_px' AS label,
-         COUNT(*) FROM k JOIN tmp_px p ON p.symbol=k.symbol AND p.d=k.start_day;
+  SELECT 'starts_with_px_same_day' AS label,
+         COUNT(*) FROM k JOIN tmp_px p ON p.symbol=k.symbol AND p.d=k.start_day
+  UNION ALL
+  SELECT 'starts_with_px_shifted' AS label, COUNT(*) FROM aligned;
+\endif
+
+DROP TABLE IF EXISTS tmp_sig_aligned;
+CREATE TEMP TABLE tmp_sig_aligned AS
+SELECT
+  s.*,
+  p_trading.trading_day
+FROM tmp_sig_start s
+JOIN LATERAL (
+  SELECT p.d AS trading_day
+  FROM tmp_px p
+  WHERE p.symbol = s.symbol
+    AND p.d >= s.start_day
+    AND CASE s.hold_days
+          WHEN 1 THEN p.close_t1
+          WHEN 3 THEN p.close_t3
+          WHEN 5 THEN p.close_t5
+          ELSE NULL
+        END IS NOT NULL
+  ORDER BY p.d
+  LIMIT 1
+) p_trading ON TRUE;
+
+\if :DEBUG
+  SELECT 'tmp_sig_aligned_n' AS label, COUNT(*) AS n FROM tmp_sig_aligned;
 \endif
 
 -- ================================
@@ -405,12 +543,19 @@ FROM enhanced_market_data;
 DROP TABLE IF EXISTS tmp_fwd;
 CREATE TEMP TABLE tmp_fwd AS
 SELECT
-  s.symbol, s.horizon, s.side, s.dir, s.min_mentions, s.pos_thresh,
+  s.symbol,
+  s.horizon,
+  s.side,
+  s.dir,
+  s.min_mentions,
+  s.pos_thresh,
   s.volume_zscore_20,
   s.volume_ratio_avg_20,
   s.volume_share_20,
   s.rsi_14,
-  s.start_day, s.hold_days,
+  s.start_day,
+  s.trading_day,
+  s.hold_days,
   p.close AS entry_close,
   CASE s.hold_days
     WHEN 1 THEN p.close_t1
@@ -422,10 +567,10 @@ SELECT
     WHEN 3 THEN s.dir * (p.close_t3 / NULLIF(p.close, 0) - 1.0)
     WHEN 5 THEN s.dir * (p.close_t5 / NULLIF(p.close, 0) - 1.0)
   END AS fwd_ret
-FROM tmp_sig_start s
+FROM tmp_sig_aligned s
 JOIN tmp_px p
   ON p.symbol = s.symbol
- AND p.d      = s.start_day
+ AND p.d      = s.trading_day
 WHERE CASE s.hold_days
         WHEN 1 THEN p.close_t1
         WHEN 3 THEN p.close_t3
@@ -448,11 +593,11 @@ WHERE CASE s.hold_days
 DROP TABLE IF EXISTS tmp_folds;
 CREATE TEMP TABLE tmp_folds AS
 WITH bounds AS (
-  SELECT MIN(start_day) AS min_d, MAX(start_day) AS max_d FROM tmp_fwd
+  SELECT MIN(trading_day) AS min_d, MAX(trading_day) AS max_d FROM tmp_fwd
 )
 SELECT f.*,
        CASE
-         WHEN f.start_day < (
+         WHEN f.trading_day < (
                 b.min_d + ((b.max_d - b.min_d) * (:'FOLD_FRAC')::numeric)::int
               )
          THEN 'train' ELSE 'valid'
@@ -623,10 +768,31 @@ FROM tmp_candidates c
 JOIN (SELECT DISTINCT horizon FROM tmp_grid) g ON TRUE
 WHERE CASE g.horizon WHEN '1d' THEN 1 WHEN '3d' THEN 3 WHEN '5d' THEN 5 END IS NOT NULL;
 
+DROP TABLE IF EXISTS tmp_baseline_sig_aligned;
+CREATE TEMP TABLE tmp_baseline_sig_aligned AS
+SELECT
+  s.*,
+  p_trading.trading_day
+FROM tmp_baseline_sig_start s
+JOIN LATERAL (
+  SELECT p.d AS trading_day
+  FROM tmp_px p
+  WHERE p.symbol = s.symbol
+    AND p.d >= s.start_day
+    AND CASE s.hold_days
+          WHEN 1 THEN p.close_t1
+          WHEN 3 THEN p.close_t3
+          WHEN 5 THEN p.close_t5
+          ELSE NULL
+        END IS NOT NULL
+  ORDER BY p.d
+  LIMIT 1
+) p_trading ON TRUE;
+
 DROP TABLE IF EXISTS tmp_baseline_fwd;
 CREATE TEMP TABLE tmp_baseline_fwd AS
 SELECT
-  s.symbol, s.horizon, s.side, s.dir, s.start_day, s.hold_days,
+  s.symbol, s.horizon, s.side, s.dir, s.start_day, s.trading_day, s.hold_days,
   p.close AS entry_close,
   CASE s.hold_days
     WHEN 1 THEN p.close_t1
@@ -638,8 +804,8 @@ SELECT
     WHEN 3 THEN s.dir * (p.close_t3 / NULLIF(p.close, 0) - 1.0)
     WHEN 5 THEN s.dir * (p.close_t5 / NULLIF(p.close, 0) - 1.0)
   END AS fwd_ret
-FROM tmp_baseline_sig_start s
-JOIN tmp_px p ON p.symbol=s.symbol AND p.d=s.start_day
+FROM tmp_baseline_sig_aligned s
+JOIN tmp_px p ON p.symbol=s.symbol AND p.d=s.trading_day
 WHERE CASE s.hold_days
         WHEN 1 THEN p.close_t1
         WHEN 3 THEN p.close_t3

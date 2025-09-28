@@ -43,6 +43,11 @@ SELECT doc
 FROM pg_temp.stage_parsed
 WHERE doc IS NOT NULL;
 
+-- Persist raw lines for downstream views that parse directly from text
+INSERT INTO public.reddit_comments_raw (src_line)
+SELECT line
+FROM pg_temp.stage_lines;
+
 -- FINAL INSERT: move parsed rows into the real table
 INSERT INTO public.reddit_comments (
   comment_id,

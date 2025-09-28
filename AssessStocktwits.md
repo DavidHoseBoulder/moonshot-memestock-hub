@@ -32,39 +32,65 @@
   - The plan is to persist numeric StockTwits sentiment metrics so both feeds plug into the same normalization path, then build hourly join views for overlap/lead–lag analysis or blended trading signals.
 
 ## 3. Key Questions to Answer
-1. **Coverage**: Which tickers appear on StockTwits that we miss on Reddit (and vice versa)? How often does StockTwits fill Reddit gaps within the same time window?
-2. **Timeliness**: Does StockTwits provide earlier sentiment shifts (lead/lag) compared to Reddit mentions?
-3. **Quality**: Are StockTwits sentiment scores/noise ratios comparable to Reddit? Do messages correlate with subsequent price action or our internal trading signals?
-4. **Incremental Value**: When StockTwits data is added to our sentiment stack, do downstream models, alerts, or trading strategies perform measurably better vs. Reddit-only baselines?
-5. **Operational Cost**: What is the latency + infra cost of covering the ticker universe under current rate limits? What is the engineering cost to maintain/refactor the scraper?
+1. [x] **Coverage**: Which tickers appear on StockTwits that we miss on Reddit (and vice versa)? How often does StockTwits fill Reddit gaps within the same time window?
+2. [x] **Timeliness**: Does StockTwits provide earlier sentiment shifts (lead/lag) compared to Reddit mentions?
+3. [ ] **Quality** *(in progress)*: Are StockTwits sentiment scores/noise ratios comparable to Reddit? Do messages correlate with subsequent price action or our internal trading signals?
+4. [ ] **Incremental Value**: When StockTwits data is added to our sentiment stack, do downstream models, alerts, or trading strategies perform measurably better vs. Reddit-only baselines?
+5. [ ] **Operational Cost**: What is the latency + infra cost of covering the ticker universe under current rate limits? What is the engineering cost to maintain/refactor the scraper?
 
 ## 4. Metrics & Signals
-| Dimension | Concrete Metric | Data Source(s) |
-|-----------|-----------------|----------------|
-| Coverage | % of tracked tickers with StockTwits posts in past N hours; overlap ratio with Reddit mentions | `sentiment_history`, `reddit_mentions`, `stocktwits` metadata |
-| Freshness | Median minutes between StockTwits vs Reddit first mention per ticker/event | timestamps in `sentiment_history`, `reddit_mentions` |
-| Volume | Messages per ticker/day; unique users per ticker | StockTwits metadata (message body, user info) |
-| Sentiment Quality | Bullish/Bearish counts vs Reddit positive/negative; sentiment polarity consistency | Derived sentiment scoring (needs implementation) |
-| Predictive Power | Change in win-rate/Sharpe when StockTwits sentiment is included vs excluded | Backtests (`backtest_sweep_results`), new ablation runs |
-| Pipeline Reliability | Fetch success rate, average runtime, rate-limit hit rate | Edge function logs (Supabase), new metrics instrumentation |
-| Cost | API call counts, compute time, Supabase function invocations | Supabase metrics dashboard |
+| Dimension | Concrete Metric | Data Source(s) | Status/Notes |
+|-----------|-----------------|----------------|--------------|
+| Coverage | % of tracked tickers with StockTwits posts in past N hours; overlap ratio with Reddit mentions | `sentiment_history`, `reddit_mentions`, `stocktwits` metadata | ✅ Sep 18–26: 23–56 shared tickers/day; StockTwits added 37–66 tickers/day, Reddit added 0–18 |
+| Freshness | Median minutes between StockTwits vs Reddit first mention per ticker/event | timestamps in `sentiment_history`, `reddit_mentions` | ✅ Sep 18–26 lead/lag: median +48 min (Reddit earlier), StockTwits led 43% of overlaps |
+| Volume | Messages per ticker/day; unique users per ticker | StockTwits metadata (message body, user info) | ✅ Sep 18–26: avg 68 msgs/ticker-day; median 29; follower median 36K (p90 ≈ 487K) |
+| Sentiment Quality | Bullish/Bearish counts vs Reddit positive/negative; sentiment polarity consistency | Derived sentiment scoring (needs implementation) | ▶️ Calibration & correlation sample (200 ticker-days): ST bullish ⇄ Reddit bullish 44%, Reddit bullish ⇄ ST bullish 98%; follower-weighted vs Reddit avg corr ≈0.11 (simple ≈0.17); still neutral-heavy, need larger window |
+| Predictive Power | Change in win-rate/Sharpe when StockTwits sentiment is included vs excluded | Backtests (`backtest_sweep_results`), new ablation runs | ⚠️ Short window: Reddit-only pockets sparse; StockTwits-only sweep (W_ST=1) yielded +0.31% avg but Sharpe ≈0, mixed uplift. Need longer horizon + blended tests |
+| Pipeline Reliability | Fetch success rate, average runtime, rate-limit hit rate | Edge function logs (Supabase), new metrics instrumentation | ❌ Logging gaps; need instrumentation |
+| Cost | API call counts, compute time, Supabase function invocations | Supabase metrics dashboard | ⏳ Pull from Supabase metrics once reliability instrumentation exists |
+
+### Recent Findings (Sep 18–26 2025)
+- **Coverage:** StockTwits delivered broad reach—37–66 tickers/day that Reddit missed—while Reddit added 0–18 unique tickers. Overlap sat between 23 and 56 tickers/day through Sep 24, then tightened to 23–31 once Reddit coverage rebounded on Sep 25–26.
+- **Timeliness:** Across 305 shared ticker-days the median lag was +48 minutes (Reddit earlier); interquartile range spanned –279 to +830 minutes. StockTwits led 131 overlaps (43%), reinforcing that it surfaces meaningful early sentiment even though Reddit still fires first slightly more often.
+- **Volume:** Across 2025-09-18..26 we observed an average 68 messages per ticker-day (median 29); 197 ticker-days hit the 150 message cap, and median follower reach per ticker-day was ~36K (p90 ≈ 487K), underscoring meaningful author influence.
+- **Sentiment alignment:** Calibration sample (200 ticker-days) shows StockTwits bullish labels agreeing with Reddit bullish 44% of the time (98% the other direction); follower-weighted vs Reddit average score correlation ≈0.11 (simple ≈0.17). Neutral days dominate, suggesting more history + NLP fallbacks are needed.
+- **Backtest pulse:** Reddit-only window remains sparse (few pockets ≥10 trades). StockTwits-only sweep (W_ST=1) produced +0.31% average return but Sharpe ≈0 with negative uplift vs random/naive baselines—evidence we need longer windows and blended thresholds before drawing conclusions.
 
 ## 5. Data & Instrumentation Needs
 ### Temporary Backfill Script
+- [x] Document `scripts/stocktwits-backfill.ts` usage, tunables, and throttling behaviour.
+- [x] Automate verification via `v_stocktwits_daily_signals` / `v_sentiment_daily_overlap` after each run.
+
 ### Universe Tuning
-- After the backfill completes, audit low-traffic tickers (e.g., A, ATER, BANC, BBIG, BILI) and either demote them to a lower-frequency list or swap in higher-volume/crypto symbols.
-- Monitor per-symbol message totals during backfill; downgrade or pause names that consistently deliver minimal traffic and reallocate the quota toward higher-velocity equities or crypto tickers with richer StockTwits coverage.
+- [ ] Audit low-traffic tickers (e.g., A, ATER, BANC, BBIG, BILI) once the 2025-09-25/26 backfill lands; demote or replace laggards.
+- [ ] Monitor per-symbol message totals during nightly sweeps and reallocate quota toward higher-velocity symbols.
 
-- One-off backfill lives at `scripts/stocktwits-backfill.ts`; it paginates StockTwits per symbol/day, summarises messages, and inserts daily rows into `sentiment_history`.
-- Requires `SUPABASE_URL` + `SUPABASE_SERVICE_ROLE_KEY`; optional tunables: `ST_BACKFILL_DAYS` (default 7), `ST_BACKFILL_PER_DAY` (150), `ST_BACKFILL_MAX_SYMBOLS`, `ST_BACKFILL_SYMBOLS` (comma list override), `ST_BACKFILL_SKIP_SYMBOLS` (exclude already-processed tickers), `ST_BACKFILL_CHUNK_SIZE`, `ST_BACKFILL_CHUNK_DELAY_MS`, `ST_BACKFILL_PAGE_DELAY_MS`, `ST_BACKFILL_SYMBOL_DELAY_MS`, `ST_BACKFILL_FETCH_RETRIES`.
-- Run with `npx ts-node --esm scripts/stocktwits-backfill.ts`; the script throttles calls (25-msg pages, 1.2s between symbols) and upserts per-day stats.
-- Verify results via `v_stocktwits_daily_signals` / `v_sentiment_daily_overlap` (expect distinct `trade_date` rows per symbol after the run).
+### Integration Roadmap
+- [ ] Persist StockTwits bullish/bearish labels, inferred polarity scores, and author metadata so sentiment can be normalized alongside Reddit.
+- [ ] Build an hourly aggregation that joins Reddit + StockTwits sentiment/volume per symbol for lead/lag analysis.
+- [ ] Extend the daily overlap view (`v_sentiment_daily_overlap`) with StockTwits volume + sentiment columns.
+- [ ] Add run-level observability (coverage counts, retries, latency) to the StockTwits fetch path.
+- [ ] Evaluate migrating the StockTwits fetcher into `SentimentBatchProcessor` primitives for consistency with Reddit ingestion.
 
-- **Sentiment enrichment first**: persist StockTwits bullish/bearish labels, inferred polarity scores, and lightweight author metadata (followers, activity) so we can normalize alongside Reddit.
-- **Cross-source alignment**: build an hourly (or finer) aggregation that joins Reddit + StockTwits sentiment/volume per symbol to support lead/lag and overlap analysis.
-- **Cross-source alignment**: daily view (`v_sentiment_daily_overlap`) joins Reddit + StockTwits sentiment/volume per symbol so we can inspect coverage matrices, run overlap stats, and compare signals head-to-head. (Extend to intraday later if needed.)
-- **Pipeline observability (nice-to-have once the above lands)**: lightweight run-level logging of symbol coverage, API retries, and latency so we can sanity-check rate-limit impacts when we exercise the plan.
-- **Optional**: when we revisit operations, consider testing the StockTwits fetch path inside `SentimentBatchProcessor` to reuse staging/queueing primitives already vetted for Reddit.
+### Sentiment Quality Prep
+- [x] Define StockTwits sentiment scoring rubric (bullish/bearish labels with NLP fallback for neutral messages).
+  - Use `entities.sentiment.basic` > `sentiment.basic` when present; treat `Bullish` as +1, `Bearish` as –1.
+  - For unlabeled posts, run a lightweight classifier (OpenAI `text-embedding-3-large` + logistic head or keyword heuristic) to assign {-1, 0, +1}.
+  - Keep follower weighting capped at 10K (existing backfill logic) to average out whale influence.
+- Calibration snapshot: 956 ticker-days; mean Reddit mentions 16, median 3. 68% of joined days have ≥1 positive/negative Reddit mention, 32% remain neutral-only.
+- [x] Stage a sample set of StockTwits messages vs Reddit sentiment labels for calibration (`analysis/stocktwits_reddit_calibration.csv`, 9/18–9/26; all StockTwits messages per ticker-day with Reddit sentiment aggregates).
+  - Follower-weighted vs Reddit average score correlation ≈0.11 (simple avg ≈0.17) across 200 ticker-days. StockTwits bullish days overlap Reddit bullish ≈44%; Reddit bullish days align with StockTwits bullish ≈98%.
+- [ ] Prototype follower-weighted sentiment aggregation and compare variance vs. Reddit baselines.
+- [ ] Identify backtest hooks to ingest provisional StockTwits sentiment scores for offline evaluation.
+- [ ] Run correlation checks (notebook tasks): cross-label agreement, follower-weighted sentiment vs Reddit averages, add next-day price-change join.
+  - Price correlation now possible (enhanced_market_data/prices_daily updated through 2025-09-26). First pass: corr(ST weighted, next-day returns) ≈ -0.12; corr(Reddit avg, next-day returns) ≈ 0.00 across 40 ticker-days. Need more history before drawing conclusions.
+  - Lead/lag snapshot (2025-09-18..26): 289 ticker-days; StockTwits leads on 120 (median lead ≈ -270 min), Reddit leads on 169 (median lead ≈ +56 min), no simultaneous cases.
+
+### Status Log
+- [x] StockTwits backlog caught up through 2025-09-24; catch-up job running for 2025-09-25/26.
+- [x] Daily StockTwits import stable—246 new records processed on 2025-09-27 with latest timestamp 15:04 UTC.
+- [x] Schedule follow-up Reddit 7-day backfill to align baselines before incremental-value tests. (Completed; coverage counts for 2025-09-18..26 now at 33–56 tickers/day per `reddit_mentions`.)
+- [ ] Analyze combined overlap + lead/lag once 2025-09-26 data is fully validated post-backfill.
 
 ## 6. Evaluation Plan
 **Phase 0 – Instrumentation (1 week)**
@@ -72,12 +98,12 @@
 - Create hourly aggregation job/view combining Reddit + StockTwits signals (counts, average sentiment, latest timestamp).
 - Normalize StockTwits sentiment (bullish/bearish → [-1,1]) before persisting.
 
-**Phase 1 – Descriptive Analysis (1-2 weeks)**
+**Phase 1 – Descriptive Analysis (1-2 weeks)** *(partially underway)*
 - Compute coverage overlap matrices (ticker × day) for StockTwits vs Reddit.
 - Analyze lead/lag: for spikes in Reddit sentiment, measure if StockTwits leads/lags by >30 minutes.
 - Evaluate noise ratio: distribution of sentiment scores, variance, user follower-weighted signals.
 
-**Phase 2 – Incremental Value Tests (2 weeks)**
+**Phase 2 – Incremental Value Tests (2 weeks)** *(blocked on larger sample)*
 - Run backtests or historical simulations with and without StockTwits-derived features (bullish ratio, sentiment velocity) using identical parameters.
 - Perform feature ablation in the sentiment aggregator: measure changes in `qualityScore`, alert counts, trading signal precision/recall.
 - Investigate case studies where StockTwits uniquely surfaced symbols; quantify realized PnL or avoided losses.
@@ -109,7 +135,10 @@
 - Refactored ingestion plan integrating `SentimentBatchProcessor`.
 - Final recommendation memo (go/no-go + roadmap).
 
----
-**Next Action**: implement Phase 0 instrumentation tickets, then schedule the descriptive analysis workflow.
+### Pending Analysis Before Final Recommendation
+- Extend blended Reddit + StockTwits dataset beyond 2025-09-26 once nightly backfills finish; rerun calibration/correlation on the wider window.
+- Prototype follower-weighted StockTwits normalization (bullish/bearish to [-1,1]) and plug into the shared aggregator for side-by-side metrics.
+- Run blended grid backtests (e.g., W_REDDIT≈0.6, W_STOCKTWITS≈0.4) across multi-week spans to gauge incremental uplift vs. Reddit-only baselines.
 
-- Schedule a nightly Supabase cron job to rerun the StockTwits window capture once the 9/25 backfill completes.
+---
+**Next Action**: wrap remaining Phase 0 instrumentation tasks and launch the extended descriptive analysis (wider window + normalization prototype).

@@ -23,8 +23,10 @@ Environment overrides (optional):
   HORIZONS            Default: 1d,3d,5d
   SIDES               Default: LONG,SHORT
   SYMBOLS             Default: NULL (all symbols)
-  MIN_TRADES          Default: 10
+  MIN_TRADES          Default: 10 (set lower for short windows)
   MIN_SHARPE          Default: -999
+  W_REDDIT            Default: 1.0  (weight applied to Reddit avg score)
+  W_STOCKTWITS        Default: 0.0  (weight applied to StockTwits sentiment score)
   DO_PERSIST          Default: 0 (set to 1 to persist winners)
   PERSIST_FULL_GRID   Default: 0 (set to 1 to persist full grid)
   MIN_VOLUME_Z        Default: NULL (set to numeric to gate by 20d volume z-score)
@@ -86,6 +88,8 @@ SIDES="${SIDES:-LONG,SHORT}"
 SYMBOLS="${SYMBOLS:-NULL}"
 MIN_TRADES="${MIN_TRADES:-10}"
 MIN_SHARPE="${MIN_SHARPE:--999}"
+W_REDDIT="${W_REDDIT:-1.0}"
+W_STOCKTWITS="${W_STOCKTWITS:-0.0}"
 DO_PERSIST="${DO_PERSIST:-0}"
 PERSIST_FULL_GRID="${PERSIST_FULL_GRID:-0}"
 MIN_VOLUME_Z="${MIN_VOLUME_Z:-NULL}"
@@ -199,6 +203,10 @@ if [[ -n "$CSV_PATH_ARG" ]]; then
 fi
 echo "TA preset=$TA_PRESET_RAW (MIN_VOLUME_Z=$MIN_VOLUME_Z, MIN_VOLUME_RATIO=$MIN_VOLUME_RATIO, MIN_VOLUME_SHARE=$MIN_VOLUME_SHARE, RSI_LONG_MAX=$RSI_LONG_MAX, RSI_SHORT_MIN=$RSI_SHORT_MIN)" >&2
 echo "Per-symbol percentiles: VOLUME_RATIO_PCTL=$VOLUME_RATIO_PCTL, VOLUME_SHARE_PCTL=$VOLUME_SHARE_PCTL" >&2
+echo "Score weights: W_REDDIT=$W_REDDIT, W_STOCKTWITS=$W_STOCKTWITS" >&2
+echo "Filters: MIN_CONF=$MIN_CONF, MIN_MENTIONS_REQ=$MIN_MENTIONS_REQ, POS_RATE_MIN=$POS_RATE_MIN, AVG_ABS_MIN=$AVG_ABS_MIN" >&2
+echo "Bands: BAND_WEAK=$BAND_WEAK, BAND_MODERATE=$BAND_MODERATE, BAND_STRONG=$BAND_STRONG" >&2
+echo "Trades gate: MIN_TRADES=$MIN_TRADES, MIN_SHARPE=$MIN_SHARPE" >&2
 
 psql "$PGURI" \
   -v MODEL_VERSION="$MODEL_VERSION" \
@@ -215,6 +223,8 @@ psql "$PGURI" \
   -v SYMBOLS="$SYMBOLS" \
   -v MIN_TRADES="$MIN_TRADES" \
   -v MIN_SHARPE="$MIN_SHARPE" \
+  -v W_REDDIT="$W_REDDIT" \
+  -v W_STOCKTWITS="$W_STOCKTWITS" \
   -v DO_PERSIST="$DO_PERSIST" \
   -v PERSIST_FULL_GRID="$PERSIST_FULL_GRID" \
   -v MIN_VOLUME_Z="$MIN_VOLUME_Z" \
