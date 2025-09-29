@@ -471,7 +471,7 @@ Deno.serve(async (req) => {
     console.log(`Processing ${symbols.length} symbols over ${config.days} day(s), ${config.limitPerDay} messages/day`);
 
     // Process in smaller batches to avoid timeouts
-    const MAX_BATCH_SIZE = 20; // Process max 20 symbols per execution
+    const MAX_BATCH_SIZE = 25; // Process max 25 symbols per execution
     const batchToProcess = symbols.slice(0, MAX_BATCH_SIZE);
     const remainingSymbols = symbols.slice(MAX_BATCH_SIZE);
     
@@ -497,11 +497,16 @@ Deno.serve(async (req) => {
             finished_at: new Date().toISOString()
           });
           
-        // If there are remaining symbols, trigger next batch after a delay
+        // If there are remaining symbols, trigger next batch immediately in background
         if (remainingSymbols.length > 0) {
-          console.log(`Scheduling next batch for ${remainingSymbols.length} remaining symbols in 30 seconds`);
-          setTimeout(async () => {
+          console.log(`Triggering next batch for ${remainingSymbols.length} remaining symbols`);
+          
+          // Process next batch immediately without setTimeout
+          const triggerNextBatch = async () => {
             try {
+              // Add a small delay to avoid overwhelming the function
+              await sleep(5000); // 5 second delay between batches
+              
               const nextBatchConfig = { ...config, symbols: remainingSymbols };
               const response = await fetch(`${Deno.env.get('SUPABASE_URL')}/functions/v1/stocktwits-data`, {
                 method: 'POST',
@@ -511,11 +516,42 @@ Deno.serve(async (req) => {
                 },
                 body: JSON.stringify(nextBatchConfig)
               });
-              console.log(`Next batch triggered, status: ${response.status}`);
+              
+              if (!response.ok) {
+                throw new Error(`HTTP ${response.status}: ${await response.text()}`);
+              }
+              
+              console.log(`Next batch triggered successfully, status: ${response.status}`);
             } catch (error) {
               console.error('Failed to trigger next batch:', error);
+              
+              // Log the failure to database for monitoring
+              await supabase
+                .from('import_runs')
+                .insert({
+                  run_id: `stocktwits-batch-failed-${Date.now()}`,
+                  status: 'failed',
+                  file: `Failed to trigger batch: ${remainingSymbols.slice(0, 10).join(',')}...`,
+                  error: error instanceof Error ? error.message : String(error),
+                  finished_at: new Date().toISOString()
+                });
             }
-          }, 30000); // 30 second delay between batches
+          };
+          
+          // Execute the next batch trigger in the background
+          try {
+            // @ts-ignore EdgeRuntime is available in deployed edge functions
+            if (typeof globalThis.EdgeRuntime !== 'undefined' && globalThis.EdgeRuntime.waitUntil) {
+              // @ts-ignore
+              globalThis.EdgeRuntime.waitUntil(triggerNextBatch());
+            } else {
+              // Fallback - start task without waiting (fire-and-forget)
+              triggerNextBatch().catch(error => console.error('Next batch trigger error:', error));
+            }
+          } catch (e) {
+            // If EdgeRuntime not available, just run in background
+            triggerNextBatch().catch(error => console.error('Next batch trigger error:', error));
+          }
         } else {
           console.log('All symbols processed across all batches');
         }
