@@ -13,7 +13,8 @@
 --   -v TP_PCT=0.00 \
 --   -v DO_INSERT=0 \
 --   -v SIDE='LONG' \
---   -v DEBUG=0
+--   -v DEBUG=0 \
+--   -v W_REDDIT=0.7 -v W_STOCKTWITS=0.3   # optional blended sentiment weights
 --   -f tmp4.sql
 -- psql "$PGURI"   -v MODEL_VERSION="'gpt-sent-v1'"   -v START_DATE="'2025-08-01'"   -v END_DATE="'2025-09-02'"   -v MIN_TRADES=0 -v MIN_SHARPE=-999 -v MIN_MENTIONS=0 -v POS_THRESH=0   -f tmp4.sql
 
@@ -31,6 +32,15 @@
 \if :{?TP_PCT} 	      \else \set TP_PCT       0 		   \endif
 \if :{?TRADE_VALUE}   \else \set TRADE_VALUE  1000.00  		   \endif
 \if :{?DO_INSERT}     \else \set DO_INSERT    0  		   \endif
+\if :{?W_REDDIT}      \else \set W_REDDIT      1.0                 \endif
+\if :{?W_STOCKTWITS}  \else \set W_STOCKTWITS  0.0                 \endif
+\if :{?MIN_VOLUME_Z}      \else \set MIN_VOLUME_Z      'NULL'      \endif
+\if :{?MIN_VOLUME_RATIO}  \else \set MIN_VOLUME_RATIO  'NULL'      \endif
+\if :{?MIN_VOLUME_SHARE}  \else \set MIN_VOLUME_SHARE  'NULL'      \endif
+\if :{?RSI_LONG_MAX}      \else \set RSI_LONG_MAX      'NULL'      \endif
+\if :{?RSI_SHORT_MIN}     \else \set RSI_SHORT_MIN     'NULL'      \endif
+\if :{?W_REDDIT}      \else \set W_REDDIT      1.0                 \endif
+\if :{?W_STOCKTWITS}  \else \set W_STOCKTWITS  0.0                 \endif
 -- Default DEBUG=1 (verbose) if not passed in
 \if :{?DEBUG}
 \else
@@ -63,7 +73,14 @@ SELECT
   COALESCE(:MIN_SHARPE, -999) AS min_sharpe,
   COALESCE(:MIN_MENTIONS,     0)    AS min_mentions,
   COALESCE(:TRADE_VALUE,1000.00)::numeric AS notional,
-  COALESCE(:POS_THRESH, 0)    AS pos_thresh;
+  COALESCE(:POS_THRESH, 0)    AS pos_thresh,
+  (:W_REDDIT)::numeric        AS w_reddit,
+  (:W_STOCKTWITS)::numeric    AS w_stocktwits,
+  NULLIF(:'MIN_VOLUME_Z','NULL')::numeric       AS min_volume_z,
+  NULLIF(:'MIN_VOLUME_RATIO','NULL')::numeric   AS min_volume_ratio,
+  NULLIF(:'MIN_VOLUME_SHARE','NULL')::numeric   AS min_volume_share,
+  NULLIF(:'RSI_LONG_MAX','NULL')::numeric       AS rsi_long_max,
+  NULLIF(:'RSI_SHORT_MIN','NULL')::numeric      AS rsi_short_min;
 
 -- Rules (filter by model_version if present in your table)
 -- If your rules table DOESN'T have model_version, remove that WHERE line.
@@ -92,13 +109,44 @@ WHERE r.is_enabled IS TRUE
 -- Signals (use your actual columns)
 CREATE TEMP TABLE tmp_signals_all AS
 SELECT
-  s.trade_date::date AS trade_date,
-  s.symbol,
-  s.n_mentions,
-  s.used_score
-FROM v_reddit_daily_signals s
-JOIN tmp_params p ON TRUE
-WHERE s.trade_date::date BETWEEN p.start_date AND p.end_date;
+  sub.trade_date::date AS trade_date,
+  sub.symbol,
+  COALESCE(sub.reddit_n_mentions, 0)                 AS reddit_mentions,
+  COALESCE(sub.stocktwits_total_messages, 0)         AS stocktwits_mentions,
+  COALESCE(sub.reddit_n_mentions, 0) + COALESCE(sub.stocktwits_total_messages, 0) AS total_mentions,
+  COALESCE(sub.reddit_used_score, 0)::numeric        AS reddit_used_score,
+  COALESCE(sub.stocktwits_sentiment_score, 0)::numeric AS stocktwits_sentiment_score,
+  CASE
+    WHEN sub.denom_weighted > 0 THEN sub.blended_score
+    ELSE COALESCE(sub.reddit_used_score, sub.stocktwits_sentiment_score, 0)::numeric
+  END AS used_score,
+  COALESCE(sub.reddit_n_mentions, 0)                 AS n_mentions,
+  m.volume_zscore_20,
+  m.volume_ratio_avg_20,
+  m.volume_share_20,
+  m.rsi_14
+FROM (
+  SELECT
+    o.*,
+    (p.w_reddit * COALESCE(o.reddit_n_mentions, 0) +
+     p.w_stocktwits * COALESCE(o.stocktwits_total_messages, 0)) AS denom_weighted,
+    CASE
+      WHEN (p.w_reddit * COALESCE(o.reddit_n_mentions, 0) +
+            p.w_stocktwits * COALESCE(o.stocktwits_total_messages, 0)) > 0
+      THEN (
+        p.w_reddit * COALESCE(o.reddit_used_score, 0)::numeric * COALESCE(o.reddit_n_mentions, 0) +
+        p.w_stocktwits * COALESCE(o.stocktwits_sentiment_score, 0)::numeric * COALESCE(o.stocktwits_total_messages, 0)
+      ) / (p.w_reddit * COALESCE(o.reddit_n_mentions, 0) +
+            p.w_stocktwits * COALESCE(o.stocktwits_total_messages, 0))
+      ELSE NULL
+    END AS blended_score
+  FROM v_sentiment_daily_overlap o
+  JOIN tmp_params p ON TRUE
+  WHERE o.trade_date BETWEEN p.start_date AND p.end_date
+) sub
+LEFT JOIN v_market_rolling_features m
+  ON m.symbol = sub.symbol
+ AND m.data_date = sub.trade_date;
 
 -- Pair signals to rules (inherit horizon/side from rule)
 CREATE TEMP TABLE tmp_paired AS
@@ -108,7 +156,14 @@ SELECT
   r.horizon,
   r.side,
   s.n_mentions,
+  s.reddit_mentions,
+  s.stocktwits_mentions,
+  s.total_mentions,
   s.used_score,
+  s.volume_zscore_20,
+  s.volume_ratio_avg_20,
+  s.volume_share_20,
+  s.rsi_14,
   r.min_mentions AS rule_min_mentions,
   r.pos_thresh   AS rule_pos_thresh,
   r.trades       AS rule_trades,
@@ -117,13 +172,38 @@ FROM tmp_signals_all s
 JOIN tmp_rules r USING (symbol)
 JOIN tmp_params p ON TRUE
 WHERE s.n_mentions >= GREATEST(COALESCE(r.min_mentions,0), p.min_mentions)
-  AND s.used_score >= GREATEST(COALESCE(r.pos_thresh,0),   p.pos_thresh);
+  AND s.used_score >= GREATEST(COALESCE(r.pos_thresh,0),   p.pos_thresh)
+  AND (
+        p.min_volume_z IS NULL
+        OR (s.volume_zscore_20 IS NOT NULL AND s.volume_zscore_20 >= p.min_volume_z)
+      )
+  AND (
+        p.min_volume_ratio IS NULL
+        OR (s.volume_ratio_avg_20 IS NOT NULL AND s.volume_ratio_avg_20 >= p.min_volume_ratio)
+      )
+  AND (
+        p.min_volume_share IS NULL
+        OR (s.volume_share_20 IS NOT NULL AND s.volume_share_20 >= p.min_volume_share)
+      )
+  AND (
+        p.rsi_long_max IS NULL
+        OR r.side <> 'LONG'
+        OR (s.rsi_14 IS NOT NULL AND s.rsi_14 <= p.rsi_long_max)
+      )
+  AND (
+        p.rsi_short_min IS NULL
+        OR r.side <> 'SHORT'
+        OR (s.rsi_14 IS NOT NULL AND s.rsi_14 >= p.rsi_short_min)
+      );
 
 -- Hits = unique (date, symbol, horizon, side)
 CREATE TEMP TABLE tmp_hits AS
 SELECT DISTINCT
   trade_date, symbol, horizon, side,
   MAX(n_mentions) AS n_mentions,
+  MAX(total_mentions) AS total_mentions,
+  MAX(stocktwits_mentions) AS stocktwits_mentions,
+  MAX(reddit_mentions) AS reddit_mentions,
   MAX(used_score) AS used_score
 FROM tmp_paired
 GROUP BY trade_date, symbol, horizon, side;
