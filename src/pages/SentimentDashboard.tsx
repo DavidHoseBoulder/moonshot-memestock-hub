@@ -11,6 +11,7 @@ import RedditVelocitySpikes from "@/components/RedditVelocitySpikes";
 import SymbolSentimentHistory from "@/components/SymbolSentimentHistory";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { MessageSquare, History, Zap, Activity, Settings, TrendingUp } from "lucide-react";
+import { SourceType } from "@/components/SourceFilter";
 
 const SentimentDashboardPage = () => {
   const [searchParams] = useSearchParams();
@@ -21,6 +22,9 @@ const SentimentDashboardPage = () => {
   
   // State for selected symbol - starts with a default, gets updated by spikes
   const [selectedSymbol, setSelectedSymbol] = useState('TSLA');
+  
+  // Global source filter state (persists across tabs)
+  const [globalSourceFilter, setGlobalSourceFilter] = useState<SourceType>('all');
   
   const handleSymbolClick = (symbol: string) => {
     setSelectedSymbol(symbol);

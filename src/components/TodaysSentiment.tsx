@@ -25,8 +25,12 @@ import {
   ArrowUpDown,
   ChevronDown,
   ChevronUp,
-  History
+  History,
+  CheckCircle2,
+  AlertTriangle
 } from 'lucide-react';
+import SourceFilter, { SourceType, getSourceIcon, getSourceColor, getSourceBadgeColor } from '@/components/SourceFilter';
+import { aggregateSentiment, getSentimentLabel } from '@/utils/sentimentAggregator';
 
 // Types
 interface SentimentData {
@@ -39,6 +43,14 @@ interface SentimentData {
   neu: number;
   neg: number;
   sentiment: 'Bullish' | 'Neutral' | 'Bearish';
+  // Multi-source fields
+  reddit_score?: number;
+  reddit_mentions?: number;
+  stocktwits_score?: number;
+  stocktwits_mentions?: number;
+  combined_score?: number;
+  sources: string[];
+  consensus?: 'agreement' | 'divergence' | 'single';
 }
 
 interface SparklineData {
@@ -54,6 +66,7 @@ interface FilterState {
   minConfidence: number;
   selectedSymbol: string;
   selectedHorizon: string;
+  sourceFilter: SourceType;
 }
 
 interface RuleDefaults {
@@ -83,6 +96,7 @@ const TodaysSentiment = () => {
     minConfidence: 0.70, // Fallback default
     selectedSymbol: 'ALL',
     selectedHorizon: 'ALL',
+    sourceFilter: 'all' as SourceType,
   });
 
   const { toast } = useToast();
@@ -270,62 +284,140 @@ const TodaysSentiment = () => {
   };
 
   const fetchSentimentData = async () => {
-    console.log('📊 Fetching sentiment data for date:', formatDate(filters.date));
+    console.log('📊 Fetching multi-source sentiment data for date:', formatDate(filters.date));
     try {
       const dateStr = format(filters.date, 'yyyy-MM-dd');
-      const { data, error } = await supabase
-        .from('v_reddit_daily_signals')
-        .select('*')
-        .eq('trade_date', dateStr)
-        .gte('n_mentions', filters.minPosts)
-        .order('n_mentions', { ascending: false });
+      
+      // Fetch Reddit data
+      let redditData: any[] = [];
+      if (filters.sourceFilter === 'all' || filters.sourceFilter === 'reddit') {
+        const { data, error } = await supabase
+          .from('v_reddit_daily_signals')
+          .select('*')
+          .eq('trade_date', dateStr)
+          .gte('n_mentions', filters.minPosts)
+          .order('n_mentions', { ascending: false });
 
-      if (error) {
-        console.error('❌ Sentiment data query error:', error);
-        throw error;
+        if (error) {
+          console.error('❌ Reddit data query error:', error);
+        } else {
+          redditData = data || [];
+          console.log('📊 Reddit data received:', redditData.length, 'items');
+        }
       }
 
-      console.log('📊 Sentiment data received:', data?.length || 0, 'items');
+      // Fetch StockTwits data
+      let stocktwitsData: any[] = [];
+      if (filters.sourceFilter === 'all' || filters.sourceFilter === 'stocktwits') {
+        const { data, error } = await supabase
+          .from('sentiment_history')
+          .select('symbol, sentiment_score, confidence_score, volume_indicator')
+          .eq('source', 'stocktwits')
+          .eq('collected_date', dateStr)
+          .gte('volume_indicator', filters.minPosts)
+          .order('volume_indicator', { ascending: false });
 
-      if (data) {
-        const processed = data
-          .filter(item => Math.abs(item.avg_score || 0) >= filters.minScore)
-          .map((item: any) => {
-            const score = item.avg_score || 0;
-            const mentions = item.n_mentions || 0;
-            let sentiment: 'Bullish' | 'Neutral' | 'Bearish';
-            
-            if (score > 0.1) {
-              sentiment = 'Bullish';
-            } else if (score < -0.1) {
-              sentiment = 'Bearish';
-            } else {
-              sentiment = 'Neutral';
-            }
+        if (error) {
+          console.error('❌ StockTwits data query error:', error);
+        } else {
+          stocktwitsData = data || [];
+          console.log('📊 StockTwits data received:', stocktwitsData.length, 'items');
+        }
+      }
 
-            return {
-              symbol: item.symbol,
-              mentions: mentions,
-              avg_score: score,
-              avg_confidence: 0.75, // Default confidence for v_reddit_daily_signals
-              used_score: item.used_score || score * mentions,
-              pos: Math.max(0, Math.round(score * mentions)), // Estimate based on score
-              neu: Math.round(mentions * 0.2), // Estimate
-              neg: Math.max(0, Math.round(-score * mentions)), // Estimate
-              sentiment: sentiment,
-            };
+      // Merge and process data
+      const symbolMap = new Map<string, SentimentData>();
+
+      // Process Reddit data
+      redditData.forEach((item: any) => {
+        const score = item.avg_score || 0;
+        if (Math.abs(score) < filters.minScore) return;
+
+        const mentions = item.n_mentions || 0;
+        symbolMap.set(item.symbol, {
+          symbol: item.symbol,
+          mentions: mentions,
+          avg_score: score,
+          avg_confidence: 0.75,
+          used_score: item.used_score || score * mentions,
+          pos: Math.max(0, Math.round(score * mentions)),
+          neu: Math.round(mentions * 0.2),
+          neg: Math.max(0, Math.round(-score * mentions)),
+          sentiment: score > 0.1 ? 'Bullish' : score < -0.1 ? 'Bearish' : 'Neutral',
+          reddit_score: score,
+          reddit_mentions: mentions,
+          sources: ['reddit'],
+          consensus: 'single',
+        });
+      });
+
+      // Process StockTwits data and merge
+      stocktwitsData.forEach((item: any) => {
+        const score = item.sentiment_score || 0;
+        if (Math.abs(score) < filters.minScore) return;
+
+        const volume = item.volume_indicator || 0;
+        const existing = symbolMap.get(item.symbol);
+
+        if (existing) {
+          // Merge with Reddit data
+          const aggregated = aggregateSentiment(
+            existing.reddit_score,
+            score,
+            undefined,
+            undefined,
+            undefined,
+            undefined,
+            0.75,
+            item.confidence_score || 0.8
+          );
+
+          // Determine consensus
+          const redditDir = (existing.reddit_score || 0) > 0 ? 1 : -1;
+          const stocktwitsDir = score > 0 ? 1 : -1;
+          const consensus = redditDir === stocktwitsDir ? 'agreement' : 'divergence';
+
+          symbolMap.set(item.symbol, {
+            ...existing,
+            stocktwits_score: score,
+            stocktwits_mentions: volume,
+            avg_score: aggregated.overall,
+            combined_score: aggregated.overall,
+            avg_confidence: aggregated.confidence,
+            sentiment: aggregated.overall > 0.1 ? 'Bullish' : aggregated.overall < -0.1 ? 'Bearish' : 'Neutral',
+            sources: ['reddit', 'stocktwits'],
+            consensus,
+            mentions: existing.mentions + volume,
           });
-
-        setSentimentData(processed);
-        
-        if (processed.length === 0) {
-          toast({
-            title: 'No Data Found',
-            description: `No sentiment data available for ${formatDate(filters.date)} with current filters. Try adjusting the date or filter settings.`,
+        } else {
+          // StockTwits only
+          symbolMap.set(item.symbol, {
+            symbol: item.symbol,
+            mentions: volume,
+            avg_score: score,
+            avg_confidence: item.confidence_score || 0.8,
+            used_score: score * volume,
+            pos: Math.max(0, Math.round(score * volume)),
+            neu: Math.round(volume * 0.2),
+            neg: Math.max(0, Math.round(-score * volume)),
+            sentiment: score > 0.1 ? 'Bullish' : score < -0.1 ? 'Bearish' : 'Neutral',
+            stocktwits_score: score,
+            stocktwits_mentions: volume,
+            sources: ['stocktwits'],
+            consensus: 'single',
           });
         }
-      } else {
-        setSentimentData([]);
+      });
+
+      const processed = Array.from(symbolMap.values());
+      console.log('📊 Merged data:', processed.length, 'unique symbols');
+      setSentimentData(processed);
+      
+      if (processed.length === 0) {
+        toast({
+          title: 'No Data Found',
+          description: `No sentiment data available for ${formatDate(filters.date)} with current filters.`,
+        });
       }
     } catch (error) {
       console.error('❌ Error fetching sentiment data:', error);
@@ -443,7 +535,7 @@ const TodaysSentiment = () => {
 
   useEffect(() => {
     fetchAllData();
-  }, [filters.date, filters.minPosts, filters.minScore, filters.minConfidence, filters.contentType]);
+  }, [filters.date, filters.minPosts, filters.minScore, filters.minConfidence, filters.contentType, filters.sourceFilter]);
 
   useEffect(() => {
     if (sentimentData.length > 0) {
@@ -503,17 +595,23 @@ const TodaysSentiment = () => {
   return (
     <div className="container mx-auto p-6 space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between flex-wrap gap-4">
         <div>
           <h1 className="text-3xl font-bold text-foreground">Today's Sentiment</h1>
           <p className="text-muted-foreground">
-            Daily sentiment leaders with 7-day trends
+            Multi-source sentiment analysis with consensus tracking
           </p>
         </div>
-        <Button onClick={handleRefresh} disabled={isRefreshing}>
-          <RefreshCw className={`w-4 h-4 mr-2 ${isRefreshing ? 'animate-spin' : ''}`} />
-          Refresh
-        </Button>
+        <div className="flex items-center gap-4">
+          <SourceFilter 
+            selected={filters.sourceFilter} 
+            onChange={(source) => setFilters(prev => ({ ...prev, sourceFilter: source }))}
+          />
+          <Button onClick={handleRefresh} disabled={isRefreshing}>
+            <RefreshCw className={`w-4 h-4 mr-2 ${isRefreshing ? 'animate-spin' : ''}`} />
+            Refresh
+          </Button>
+        </div>
       </div>
 
       {/* Filter Bar */}
@@ -696,6 +794,9 @@ const TodaysSentiment = () => {
               <div className="space-y-3">
                 {bullishLeaders.map((item) => {
                   const sparkline = sparklineData.find(s => s.symbol === item.symbol);
+                  const RedditIcon = getSourceIcon('reddit');
+                  const StockTwitsIcon = getSourceIcon('stocktwits');
+                  
                   return (
                     <div key={item.symbol} className="p-3 border rounded-lg hover:shadow-md transition-shadow">
                       <div className="flex items-center justify-between mb-2">
@@ -704,6 +805,18 @@ const TodaysSentiment = () => {
                           <Badge variant={getSentimentBadge(item.sentiment)}>
                             {item.sentiment}
                           </Badge>
+                          {item.consensus === 'agreement' && (
+                            <Badge variant="outline" className="gap-1 bg-green-500/10 text-green-600 border-green-300">
+                              <CheckCircle2 className="w-3 h-3" />
+                              Agreement
+                            </Badge>
+                          )}
+                          {item.consensus === 'divergence' && (
+                            <Badge variant="outline" className="gap-1 bg-orange-500/10 text-orange-600 border-orange-300">
+                              <AlertTriangle className="w-3 h-3" />
+                              Divergence
+                            </Badge>
+                          )}
                         </div>
                         <div className="flex items-center gap-2">
                           {sparkline && <RechartsSparkline data={sparkline.data} symbol={item.symbol} />}
@@ -716,10 +829,55 @@ const TodaysSentiment = () => {
                           </Button>
                         </div>
                       </div>
-                      <div className="grid grid-cols-2 gap-4 text-sm text-muted-foreground">
-                        <div>Mentions: {item.mentions}</div>
-                        <div>Score: {item.avg_score.toFixed(3)}</div>
-                      </div>
+                      
+                      {/* Multi-source breakdown */}
+                      {item.sources.length > 1 ? (
+                        <div className="space-y-2 mb-2">
+                          {item.reddit_score !== undefined && (
+                            <div className="flex items-center justify-between text-sm">
+                              <div className="flex items-center gap-2">
+                                <RedditIcon className="w-4 h-4 text-blue-500" />
+                                <span className="text-muted-foreground">Reddit:</span>
+                              </div>
+                              <div className="flex items-center gap-3">
+                                <span className={item.reddit_score > 0 ? 'text-green-600' : 'text-red-600'}>
+                                  {item.reddit_score > 0 ? '🟢' : '🔴'} {item.reddit_score.toFixed(3)}
+                                </span>
+                                <span className="text-muted-foreground">({item.reddit_mentions})</span>
+                              </div>
+                            </div>
+                          )}
+                          {item.stocktwits_score !== undefined && (
+                            <div className="flex items-center justify-between text-sm">
+                              <div className="flex items-center gap-2">
+                                <StockTwitsIcon className="w-4 h-4 text-green-500" />
+                                <span className="text-muted-foreground">StockTwits:</span>
+                              </div>
+                              <div className="flex items-center gap-3">
+                                <span className={item.stocktwits_score > 0 ? 'text-green-600' : 'text-red-600'}>
+                                  {item.stocktwits_score > 0 ? '🟢' : '🔴'} {item.stocktwits_score.toFixed(3)}
+                                </span>
+                                <span className="text-muted-foreground">({item.stocktwits_mentions})</span>
+                              </div>
+                            </div>
+                          )}
+                          <div className="border-t pt-2 flex items-center justify-between text-sm font-medium">
+                            <span>Combined:</span>
+                            <span className={item.combined_score! > 0 ? 'text-green-600' : 'text-red-600'}>
+                              {item.combined_score!.toFixed(3)}
+                            </span>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="grid grid-cols-2 gap-4 text-sm text-muted-foreground">
+                          <div className="flex items-center gap-2">
+                            {item.sources.includes('reddit') && <RedditIcon className="w-4 h-4 text-blue-500" />}
+                            {item.sources.includes('stocktwits') && <StockTwitsIcon className="w-4 h-4 text-green-500" />}
+                            Mentions: {item.mentions}
+                          </div>
+                          <div>Score: {item.avg_score.toFixed(3)}</div>
+                        </div>
+                      )}
                     </div>
                   );
                 })}
@@ -761,6 +919,9 @@ const TodaysSentiment = () => {
               <div className="space-y-3">
                 {bearishLeaders.map((item) => {
                   const sparkline = sparklineData.find(s => s.symbol === item.symbol);
+                  const RedditIcon = getSourceIcon('reddit');
+                  const StockTwitsIcon = getSourceIcon('stocktwits');
+                  
                   return (
                     <div key={item.symbol} className="p-3 border rounded-lg hover:shadow-md transition-shadow">
                       <div className="flex items-center justify-between mb-2">
@@ -769,6 +930,18 @@ const TodaysSentiment = () => {
                           <Badge variant={getSentimentBadge(item.sentiment)}>
                             {item.sentiment}
                           </Badge>
+                          {item.consensus === 'agreement' && (
+                            <Badge variant="outline" className="gap-1 bg-green-500/10 text-green-600 border-green-300">
+                              <CheckCircle2 className="w-3 h-3" />
+                              Agreement
+                            </Badge>
+                          )}
+                          {item.consensus === 'divergence' && (
+                            <Badge variant="outline" className="gap-1 bg-orange-500/10 text-orange-600 border-orange-300">
+                              <AlertTriangle className="w-3 h-3" />
+                              Divergence
+                            </Badge>
+                          )}
                         </div>
                         <div className="flex items-center gap-2">
                           {sparkline && <RechartsSparkline data={sparkline.data} symbol={item.symbol} />}
@@ -781,10 +954,55 @@ const TodaysSentiment = () => {
                           </Button>
                         </div>
                       </div>
-                      <div className="grid grid-cols-2 gap-4 text-sm text-muted-foreground">
-                        <div>Mentions: {item.mentions}</div>
-                        <div>Score: {item.avg_score.toFixed(3)}</div>
-                      </div>
+                      
+                      {/* Multi-source breakdown */}
+                      {item.sources.length > 1 ? (
+                        <div className="space-y-2 mb-2">
+                          {item.reddit_score !== undefined && (
+                            <div className="flex items-center justify-between text-sm">
+                              <div className="flex items-center gap-2">
+                                <RedditIcon className="w-4 h-4 text-blue-500" />
+                                <span className="text-muted-foreground">Reddit:</span>
+                              </div>
+                              <div className="flex items-center gap-3">
+                                <span className={item.reddit_score > 0 ? 'text-green-600' : 'text-red-600'}>
+                                  {item.reddit_score > 0 ? '🟢' : '🔴'} {item.reddit_score.toFixed(3)}
+                                </span>
+                                <span className="text-muted-foreground">({item.reddit_mentions})</span>
+                              </div>
+                            </div>
+                          )}
+                          {item.stocktwits_score !== undefined && (
+                            <div className="flex items-center justify-between text-sm">
+                              <div className="flex items-center gap-2">
+                                <StockTwitsIcon className="w-4 h-4 text-green-500" />
+                                <span className="text-muted-foreground">StockTwits:</span>
+                              </div>
+                              <div className="flex items-center gap-3">
+                                <span className={item.stocktwits_score > 0 ? 'text-green-600' : 'text-red-600'}>
+                                  {item.stocktwits_score > 0 ? '🟢' : '🔴'} {item.stocktwits_score.toFixed(3)}
+                                </span>
+                                <span className="text-muted-foreground">({item.stocktwits_mentions})</span>
+                              </div>
+                            </div>
+                          )}
+                          <div className="border-t pt-2 flex items-center justify-between text-sm font-medium">
+                            <span>Combined:</span>
+                            <span className={item.combined_score! > 0 ? 'text-green-600' : 'text-red-600'}>
+                              {item.combined_score!.toFixed(3)}
+                            </span>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="grid grid-cols-2 gap-4 text-sm text-muted-foreground">
+                          <div className="flex items-center gap-2">
+                            {item.sources.includes('reddit') && <RedditIcon className="w-4 h-4 text-blue-500" />}
+                            {item.sources.includes('stocktwits') && <StockTwitsIcon className="w-4 h-4 text-green-500" />}
+                            Mentions: {item.mentions}
+                          </div>
+                          <div>Score: {item.avg_score.toFixed(3)}</div>
+                        </div>
+                      )}
                     </div>
                   );
                 })}

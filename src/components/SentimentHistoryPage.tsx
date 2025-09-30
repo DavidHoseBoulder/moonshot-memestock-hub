@@ -12,6 +12,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { History, RefreshCw, TrendingUp, TrendingDown, Check, ChevronsUpDown } from 'lucide-react';
 import { format, subDays } from 'date-fns';
+import SourceFilter, { SourceType, getSourceIcon, getSourceColor } from '@/components/SourceFilter';
 import {
   ComposedChart,
   Line,
@@ -34,6 +35,10 @@ interface SentimentHistoryData {
   n_mentions: number;
   z_score_score?: number;
   delta_mentions?: number;
+  reddit_score?: number;
+  stocktwits_score?: number;
+  reddit_mentions?: number;
+  stocktwits_mentions?: number;
 }
 
 const SentimentHistoryPage = () => {
@@ -47,6 +52,9 @@ const SentimentHistoryPage = () => {
   const [availableSymbols, setAvailableSymbols] = useState<string[]>([]);
   const [symbolSearchOpen, setSymbolSearchOpen] = useState(false);
   const [chartMode, setChartMode] = useState<'both' | 'score' | 'mentions'>('both');
+  const [sourceFilter, setSourceFilter] = useState<SourceType>('all');
+  const [showReddit, setShowReddit] = useState(true);
+  const [showStockTwits, setShowStockTwits] = useState(true);
 
   const { toast } = useToast();
 
@@ -114,10 +122,10 @@ const SentimentHistoryPage = () => {
         })
       });
 
-      console.log('📊 Fetching sentiment history for:', selectedSymbol, 'from', startDateStr, 'to', endDateStr);
+      console.log('📊 Fetching multi-source sentiment history for:', selectedSymbol, 'from', startDateStr, 'to', endDateStr);
 
-      // Fetch base sentiment data
-      const { data: sentimentData, error: sentimentError } = await supabase
+      // Fetch Reddit sentiment data
+      const { data: redditData, error: redditError } = await supabase
         .from('v_reddit_daily_signals')
         .select('trade_date, symbol, avg_score, used_score, n_mentions')
         .eq('symbol', selectedSymbol)
@@ -125,7 +133,21 @@ const SentimentHistoryPage = () => {
         .lte('trade_date', endDateStr)
         .order('trade_date', { ascending: true });
 
-      if (sentimentError) throw sentimentError;
+      if (redditError) throw redditError;
+
+      // Fetch StockTwits sentiment data
+      const { data: stocktwitsData, error: stocktwitsError } = await supabase
+        .from('sentiment_history')
+        .select('collected_date, symbol, sentiment_score, volume_indicator')
+        .eq('source', 'stocktwits')
+        .eq('symbol', selectedSymbol)
+        .gte('collected_date', startDateStr)
+        .lte('collected_date', endDateStr)
+        .order('collected_date', { ascending: true });
+
+      if (stocktwitsError) {
+        console.warn('⚠️ StockTwits data not available:', stocktwitsError);
+      }
 
       // Fetch velocity data (optional) - skip for now as table doesn't exist
       // const { data: velocityData, error: velocityError } = await supabase
@@ -139,18 +161,51 @@ const SentimentHistoryPage = () => {
       //   console.warn('⚠️ Velocity data not available:', velocityError);
       // }
 
-      // Merge the data (without velocity for now)
-      const processedData = (sentimentData || []).map(item => {
-        return {
+      // Merge the data from both sources
+      const dateMap = new Map<string, SentimentHistoryData>();
+
+      // Add Reddit data
+      (redditData || []).forEach(item => {
+        dateMap.set(item.trade_date, {
           data_date: item.trade_date,
           symbol: item.symbol,
           avg_score: item.avg_score || 0,
           used_score: item.used_score || 0,
           n_mentions: item.n_mentions || 0,
-          z_score_score: null, // velocity?.z_score_score || null,
-          delta_mentions: null, // velocity?.delta_mentions || null,
-        };
+          reddit_score: item.avg_score || 0,
+          reddit_mentions: item.n_mentions || 0,
+          z_score_score: null,
+          delta_mentions: null,
+        });
       });
+
+      // Add StockTwits data
+      (stocktwitsData || []).forEach(item => {
+        const existing = dateMap.get(item.collected_date);
+        if (existing) {
+          existing.stocktwits_score = item.sentiment_score || 0;
+          existing.stocktwits_mentions = item.volume_indicator || 0;
+          // Update combined score as average
+          existing.avg_score = ((existing.reddit_score || 0) + (item.sentiment_score || 0)) / 2;
+          existing.n_mentions = (existing.reddit_mentions || 0) + (item.volume_indicator || 0);
+        } else {
+          dateMap.set(item.collected_date, {
+            data_date: item.collected_date,
+            symbol: item.symbol,
+            avg_score: item.sentiment_score || 0,
+            used_score: 0,
+            n_mentions: item.volume_indicator || 0,
+            stocktwits_score: item.sentiment_score || 0,
+            stocktwits_mentions: item.volume_indicator || 0,
+            z_score_score: null,
+            delta_mentions: null,
+          });
+        }
+      });
+
+      const processedData = Array.from(dateMap.values()).sort((a, b) => 
+        a.data_date.localeCompare(b.data_date)
+      );
 
       console.log('📊 Processed data points:', processedData.length);
       console.log('📊 Sample data:', processedData.slice(0, 3));
@@ -203,19 +258,35 @@ const SentimentHistoryPage = () => {
     });
   };
 
-  // Custom tooltip component
+  // Custom tooltip component with multi-source support
   const CustomTooltip = ({ active, payload, label }: any) => {
     if (active && payload && payload.length) {
       const data = payload[0].payload;
       const hasSpike = data.z_score_score && Math.abs(data.z_score_score) > 2;
+      const RedditIcon = getSourceIcon('reddit');
+      const StockTwitsIcon = getSourceIcon('stocktwits');
 
       return (
         <div className="bg-background border rounded-lg p-3 shadow-lg">
           <p className="font-medium">{formatTooltipDate(label)}</p>
           <div className="space-y-1 mt-2">
-            <p className="text-sm">
-              <span className="font-medium">Score:</span> {data.avg_score?.toFixed(3) || 'N/A'}
-            </p>
+            {data.reddit_score !== undefined && (
+              <p className="text-sm flex items-center gap-2">
+                <RedditIcon className="w-4 h-4 text-blue-500" />
+                <span className="font-medium">Reddit:</span> {data.reddit_score.toFixed(3)}
+              </p>
+            )}
+            {data.stocktwits_score !== undefined && (
+              <p className="text-sm flex items-center gap-2">
+                <StockTwitsIcon className="w-4 h-4 text-green-500" />
+                <span className="font-medium">StockTwits:</span> {data.stocktwits_score.toFixed(3)}
+              </p>
+            )}
+            {data.reddit_score !== undefined && data.stocktwits_score !== undefined && (
+              <p className="text-sm border-t pt-1">
+                <span className="font-medium">Combined:</span> {data.avg_score?.toFixed(3) || 'N/A'}
+              </p>
+            )}
             <p className="text-sm">
               <span className="font-medium">Mentions:</span> {data.n_mentions?.toLocaleString() || 'N/A'}
             </p>
@@ -401,10 +472,38 @@ const SentimentHistoryPage = () => {
       {/* Chart */}
       <Card>
         <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <History className="w-5 h-5" />
-            {selectedSymbol} Sentiment History
-          </CardTitle>
+          <div className="flex items-center justify-between">
+            <CardTitle className="flex items-center gap-2">
+              <History className="w-5 h-5" />
+              {selectedSymbol} Sentiment History
+            </CardTitle>
+            <div className="flex items-center gap-3">
+              <SourceFilter 
+                selected={sourceFilter} 
+                onChange={setSourceFilter}
+              />
+              <div className="flex items-center gap-2 ml-4">
+                <Button
+                  variant={showReddit ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => setShowReddit(!showReddit)}
+                  className="gap-2"
+                >
+                  {React.createElement(getSourceIcon('reddit'), { className: 'w-4 h-4' })}
+                  Reddit
+                </Button>
+                <Button
+                  variant={showStockTwits ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => setShowStockTwits(!showStockTwits)}
+                  className="gap-2"
+                >
+                  {React.createElement(getSourceIcon('stocktwits'), { className: 'w-4 h-4' })}
+                  StockTwits
+                </Button>
+              </div>
+            </div>
+          </div>
         </CardHeader>
         <CardContent>
           {isLoading ? (
@@ -480,18 +579,51 @@ const SentimentHistoryPage = () => {
                     />
                   )}
                   
-                  {/* Sentiment score line */}
+                  {/* Multi-source sentiment lines */}
                   {(chartMode === 'both' || chartMode === 'score') && (
-                    <Line
-                      yAxisId="score"
-                      type="monotone"
-                      dataKey="avg_score"
-                      stroke="#82ca9d"
-                      strokeWidth={chartMode === 'score' ? 3 : 2}
-                      dot={{ fill: '#82ca9d', strokeWidth: 2, r: chartMode === 'score' ? 4 : 3 }}
-                      activeDot={{ r: 6, stroke: '#82ca9d', strokeWidth: 2 }}
-                      name="Sentiment Score"
-                    />
+                    <>
+                      {/* Reddit sentiment line */}
+                      {showReddit && (
+                        <Line
+                          yAxisId="score"
+                          type="monotone"
+                          dataKey="reddit_score"
+                          stroke="#3b82f6"
+                          strokeWidth={2}
+                          dot={{ fill: '#3b82f6', strokeWidth: 2, r: 3 }}
+                          activeDot={{ r: 6, stroke: '#3b82f6', strokeWidth: 2 }}
+                          name="Reddit Score"
+                        />
+                      )}
+                      
+                      {/* StockTwits sentiment line */}
+                      {showStockTwits && (
+                        <Line
+                          yAxisId="score"
+                          type="monotone"
+                          dataKey="stocktwits_score"
+                          stroke="#22c55e"
+                          strokeWidth={2}
+                          dot={{ fill: '#22c55e', strokeWidth: 2, r: 3 }}
+                          activeDot={{ r: 6, stroke: '#22c55e', strokeWidth: 2 }}
+                          name="StockTwits Score"
+                        />
+                      )}
+                      
+                      {/* Combined/Average line (dashed) */}
+                      {showReddit && showStockTwits && (
+                        <Line
+                          yAxisId="score"
+                          type="monotone"
+                          dataKey="avg_score"
+                          stroke="#8b5cf6"
+                          strokeWidth={2}
+                          strokeDasharray="5 5"
+                          dot={false}
+                          name="Combined Average"
+                        />
+                      )}
+                    </>
                   )}
                   
                   {/* Velocity spike indicators */}
