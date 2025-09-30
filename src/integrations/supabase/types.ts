@@ -2947,9 +2947,12 @@ export type Database = {
           stocktwits_bullish_messages: number | null
           stocktwits_bullish_ratio: number | null
           stocktwits_confidence_score: number | null
+          stocktwits_follower_sum: number | null
           stocktwits_neutral_messages: number | null
           stocktwits_sentiment_score: number | null
+          stocktwits_simple_score: number | null
           stocktwits_total_messages: number | null
+          stocktwits_weighted_score: number | null
           symbol: string | null
           trade_date: string | null
         }
@@ -2987,8 +2990,11 @@ export type Database = {
           bullish_messages: number | null
           bullish_ratio: number | null
           confidence_score: number | null
+          follower_sum: number | null
           neutral_messages: number | null
           sentiment_score: number | null
+          st_simple_avg: number | null
+          st_weighted_avg: number | null
           symbol: string | null
           total_messages: number | null
           trade_date: string | null
@@ -3185,6 +3191,18 @@ export type Database = {
       }
       json_try: {
         Args: { txt: string }
+        Returns: Json
+      }
+      reddit_ingest_comments: {
+        Args: { rows: Json }
+        Returns: Json
+      }
+      reddit_ingest_posts: {
+        Args: { rows: Json }
+        Returns: Json
+      }
+      reddit_refresh_mentions: {
+        Args: { d0: string; d3: string }
         Returns: Json
       }
       try_parse_jsonb: {
