@@ -524,7 +524,16 @@ const DailyTradingPipeline = () => {
         const { data: stocktwitsSignals, error: stocktwitsError } = await supabase
           .from('v_stocktwits_daily_signals')
           .select('symbol, stocktwits_stat_score, confidence_score, total_messages, follower_sum')
-          .eq('trade_date', today);
+          .eq('trade_date', today) as { 
+            data: Array<{
+              symbol: string;
+              stocktwits_stat_score: number | null;
+              confidence_score: number | null;
+              total_messages: number | null;
+              follower_sum: number | null;
+            }> | null;
+            error: any;
+          };
         
         if (stocktwitsError) {
           console.warn('Failed to fetch StockTwits signals:', stocktwitsError);
