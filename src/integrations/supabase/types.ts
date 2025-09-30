@@ -2951,6 +2951,7 @@ export type Database = {
           stocktwits_neutral_messages: number | null
           stocktwits_sentiment_score: number | null
           stocktwits_simple_score: number | null
+          stocktwits_stat_score: number | null
           stocktwits_total_messages: number | null
           stocktwits_weighted_score: number | null
           symbol: string | null
@@ -2995,6 +2996,10 @@ export type Database = {
           sentiment_score: number | null
           st_simple_avg: number | null
           st_weighted_avg: number | null
+          stocktwits_follower_sum: number | null
+          stocktwits_simple_score: number | null
+          stocktwits_stat_score: number | null
+          stocktwits_weighted_score: number | null
           symbol: string | null
           total_messages: number | null
           trade_date: string | null
