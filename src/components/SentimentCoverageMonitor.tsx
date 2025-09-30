@@ -7,12 +7,15 @@ import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { todayInDenverDateString } from '@/utils/timezone';
 
-interface RedditCoverage {
+interface SentimentCoverage {
   totalTickers: number;
   withRedditSentiment: number;
+  withStockTwitsSentiment: number;
   zeroSentiment: number;
-  coveragePercentage: number;
+  redditCoveragePercentage: number;
+  stockTwitsCoveragePercentage: number;
   redditStatus: 'active' | 'awaiting';
+  stockTwitsStatus: 'active' | 'awaiting';
   lastUpdate: Date | null;
 }
 
@@ -23,12 +26,15 @@ interface SentimentCoverageProps {
 export const SentimentCoverageMonitor: React.FC<SentimentCoverageProps> = ({
   refreshInterval = 300000 // 5 minutes default
 }) => {
-  const [coverage, setCoverage] = useState<RedditCoverage>({
+  const [coverage, setCoverage] = useState<SentimentCoverage>({
     totalTickers: 0,
     withRedditSentiment: 0,
+    withStockTwitsSentiment: 0,
     zeroSentiment: 0,
-    coveragePercentage: 0,
+    redditCoveragePercentage: 0,
+    stockTwitsCoveragePercentage: 0,
     redditStatus: 'awaiting',
+    stockTwitsStatus: 'awaiting',
     lastUpdate: null
   });
   const [isLoading, setIsLoading] = useState(false);
@@ -64,13 +70,9 @@ export const SentimentCoverageMonitor: React.FC<SentimentCoverageProps> = ({
         }
       }
 
-      // Get symbols with Reddit sentiment today using priority system:
-      // 1. Try v_reddit_today_signals if present
-      // 2. Fallback to v_reddit_daily_signals
-      // 3. Fallback to sentiment_history filtered to today + Reddit
+      // Get symbols with Reddit sentiment today
       let withRedditSentiment = 0;
       
-      // Try v_reddit_daily_signals first (this is what we have available)
       const { data: signalsData, error: signalsError } = await supabase
         .from('v_reddit_daily_signals')
         .select('symbol')
@@ -79,7 +81,6 @@ export const SentimentCoverageMonitor: React.FC<SentimentCoverageProps> = ({
       if (!signalsError && signalsData) {
         withRedditSentiment = signalsData.length;
       } else {
-        // Fallback to sentiment_history
         const { data: historyData } = await supabase
           .from('sentiment_history')
           .select('symbol')
@@ -93,18 +94,37 @@ export const SentimentCoverageMonitor: React.FC<SentimentCoverageProps> = ({
         }
       }
 
-      const zeroSentiment = Math.max(0, totalUniverse - withRedditSentiment);
-      const coveragePercentage = totalUniverse > 0 ? (withRedditSentiment / totalUniverse) * 100 : 0;
+      // Get symbols with StockTwits sentiment today
+      let withStockTwitsSentiment = 0;
+      const { data: stocktwitsData } = await supabase
+        .from('sentiment_history')
+        .select('symbol')
+        .eq('source', 'stocktwits')
+        .gte('data_timestamp', `${today}T00:00:00Z`)
+        .lt('data_timestamp', `${today}T23:59:59Z`);
+      
+      if (stocktwitsData) {
+        const uniqueSymbols = new Set(stocktwitsData.map(h => h.symbol));
+        withStockTwitsSentiment = uniqueSymbols.size;
+      }
 
-      // Determine Reddit status based on whether we have data for today
+      const withAnySentiment = Math.max(withRedditSentiment, withStockTwitsSentiment);
+      const zeroSentiment = Math.max(0, totalUniverse - withAnySentiment);
+      const redditCoveragePercentage = totalUniverse > 0 ? (withRedditSentiment / totalUniverse) * 100 : 0;
+      const stockTwitsCoveragePercentage = totalUniverse > 0 ? (withStockTwitsSentiment / totalUniverse) * 100 : 0;
+
       const redditStatus = withRedditSentiment > 0 ? 'active' : 'awaiting';
+      const stockTwitsStatus = withStockTwitsSentiment > 0 ? 'active' : 'awaiting';
 
       setCoverage({
         totalTickers: totalUniverse,
         withRedditSentiment,
+        withStockTwitsSentiment,
         zeroSentiment,
-        coveragePercentage,
+        redditCoveragePercentage,
+        stockTwitsCoveragePercentage,
         redditStatus,
+        stockTwitsStatus,
         lastUpdate: new Date()
       });
 
@@ -117,7 +137,7 @@ export const SentimentCoverageMonitor: React.FC<SentimentCoverageProps> = ({
       } else {
         toast({
           title: "Coverage Updated",
-          description: `${Math.round(coveragePercentage)}% Reddit coverage (${withRedditSentiment}/${totalUniverse})`,
+          description: `Reddit: ${Math.round(redditCoveragePercentage)}% • StockTwits: ${Math.round(stockTwitsCoveragePercentage)}%`,
         });
       }
 
@@ -158,28 +178,19 @@ export const SentimentCoverageMonitor: React.FC<SentimentCoverageProps> = ({
 
   const getStatusText = (status: string) => {
     switch (status) {
-      case 'active': return 'Active (MVP)';
-      case 'awaiting': return 'Awaiting today\'s run';
+      case 'active': return 'Active';
+      case 'awaiting': return 'Awaiting';
       default: return 'Unknown';
     }
   };
 
   return (
     <div className="space-y-4">
-      {/* Reddit-only MVP Badge */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <Badge className="bg-gradient-primary text-primary-foreground">
-            Reddit-only MVP
-          </Badge>
-        </div>
-      </div>
-
       <Card>
         <CardHeader className="flex flex-row items-center justify-between">
           <CardTitle className="flex items-center gap-2">
             <TrendingUp className="w-5 h-5" />
-            Reddit Sentiment Coverage
+            Sentiment Data Coverage
           </CardTitle>
           <div className="flex items-center gap-2">
             <div className="text-sm text-muted-foreground">
@@ -193,33 +204,35 @@ export const SentimentCoverageMonitor: React.FC<SentimentCoverageProps> = ({
         </CardHeader>
         <CardContent>
           {coverage.totalTickers > 0 ? (
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-              <div className="text-center p-4 border rounded-lg">
-                <div className="text-2xl font-bold text-primary">{coverage.totalTickers}</div>
-                <div className="text-sm text-muted-foreground">Total Universe</div>
-                <div className="text-xs text-muted-foreground mt-1">
-                  (symbol, horizon) pairs
+            <div className="space-y-6">
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                <div className="text-center p-4 border rounded-lg">
+                  <div className="text-2xl font-bold text-primary">{coverage.totalTickers}</div>
+                  <div className="text-sm text-muted-foreground">Total Universe</div>
+                  <div className="text-xs text-muted-foreground mt-1">
+                    (symbol, horizon) pairs
+                  </div>
                 </div>
-              </div>
-              <div className="text-center p-4 border rounded-lg">
-                <div className="text-2xl font-bold text-green-600">{coverage.withRedditSentiment}</div>
-                <div className="text-sm text-muted-foreground">With Reddit Sentiment</div>
-                <div className="text-xs text-muted-foreground mt-1">
-                  Today's Reddit data
+                <div className="text-center p-4 border rounded-lg">
+                  <div className="text-2xl font-bold text-green-600">{coverage.withRedditSentiment}</div>
+                  <div className="text-sm text-muted-foreground">Reddit Symbols</div>
+                  <div className="text-xs text-muted-foreground mt-1">
+                    Today's Reddit data
+                  </div>
                 </div>
-              </div>
-              <div className="text-center p-4 border rounded-lg">
-                <div className="text-2xl font-bold text-red-600">{coverage.zeroSentiment}</div>
-                <div className="text-sm text-muted-foreground">Zero Sentiment</div>
-                <div className="text-xs text-muted-foreground mt-1">
-                  No Reddit mentions today
+                <div className="text-center p-4 border rounded-lg">
+                  <div className="text-2xl font-bold text-blue-600">{coverage.withStockTwitsSentiment}</div>
+                  <div className="text-sm text-muted-foreground">StockTwits Symbols</div>
+                  <div className="text-xs text-muted-foreground mt-1">
+                    Today's StockTwits data
+                  </div>
                 </div>
-              </div>
-              <div className="text-center p-4 border rounded-lg">
-                <div className="text-2xl font-bold text-blue-600">{Math.round(coverage.coveragePercentage)}%</div>
-                <div className="text-sm text-muted-foreground">Coverage %</div>
-                <div className="text-xs text-muted-foreground mt-1">
-                  Reddit sentiment today
+                <div className="text-center p-4 border rounded-lg">
+                  <div className="text-2xl font-bold text-red-600">{coverage.zeroSentiment}</div>
+                  <div className="text-sm text-muted-foreground">No Coverage</div>
+                  <div className="text-xs text-muted-foreground mt-1">
+                    Missing both sources
+                  </div>
                 </div>
               </div>
             </div>
@@ -237,56 +250,82 @@ export const SentimentCoverageMonitor: React.FC<SentimentCoverageProps> = ({
             </div>
           )}
           
-          <div className="space-y-3 mb-6">
-            <div className="flex justify-between text-sm">
-              <span>Reddit Coverage</span>
-              <span className="font-semibold">{coverage.coveragePercentage.toFixed(1)}%</span>
-            </div>
-            <Progress value={coverage.coveragePercentage} className="h-3" />
-            <div className="text-xs text-muted-foreground text-center">
-              Coverage updates after daily Reddit pipeline run
-            </div>
-          </div>
-
-          {/* Reddit Data Source Status */}
-          <Card className="border-2">
-            <CardHeader>
-              <CardTitle className="text-base">Reddit Data Source</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="flex items-center justify-between p-3 border rounded-lg">
-                <div className="flex items-center gap-3">
-                  {getStatusIcon(coverage.redditStatus)}
-                  <div>
-                    <div className="font-medium">Reddit</div>
-                    <div className="text-sm text-muted-foreground">
-                      {coverage.coveragePercentage.toFixed(1)}% coverage • 
-                      {coverage.withRedditSentiment} symbols today
+          {/* Data Source Status Cards */}
+          <div className="grid md:grid-cols-2 gap-4 mt-6">
+            {/* Reddit Data Source */}
+            <Card className="border-2">
+              <CardHeader>
+                <CardTitle className="text-base">Reddit</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    {getStatusIcon(coverage.redditStatus)}
+                    <div>
+                      <div className="font-medium">Status</div>
+                      <div className="text-sm text-muted-foreground">
+                        {coverage.withRedditSentiment} symbols today
+                      </div>
                     </div>
                   </div>
-                </div>
-                <div className="flex items-center gap-2">
                   <Badge className={getStatusColor(coverage.redditStatus)}>
                     {getStatusText(coverage.redditStatus)}
                   </Badge>
-                  {coverage.lastUpdate && (
-                    <div className="text-xs text-muted-foreground">
-                      {coverage.lastUpdate.toLocaleTimeString()}
-                    </div>
-                  )}
                 </div>
-              </div>
-              
-              {coverage.redditStatus === 'awaiting' && (
-                <div className="mt-3 p-3 bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800 rounded-lg">
-                  <div className="text-sm text-amber-800 dark:text-amber-200">
-                    <strong>Waiting for today's data:</strong> Reddit sentiment pipeline runs daily. 
-                    Coverage will update after processing completes.
+                
+                <div className="space-y-2">
+                  <div className="flex justify-between text-sm">
+                    <span>Coverage</span>
+                    <span className="font-semibold">{coverage.redditCoveragePercentage.toFixed(1)}%</span>
                   </div>
+                  <Progress value={coverage.redditCoveragePercentage} className="h-2" />
                 </div>
-              )}
-            </CardContent>
-          </Card>
+
+                {coverage.redditStatus === 'awaiting' && (
+                  <div className="p-2 bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800 rounded text-xs text-amber-800 dark:text-amber-200">
+                    Waiting for today's Reddit pipeline run
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
+            {/* StockTwits Data Source */}
+            <Card className="border-2">
+              <CardHeader>
+                <CardTitle className="text-base">StockTwits</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    {getStatusIcon(coverage.stockTwitsStatus)}
+                    <div>
+                      <div className="font-medium">Status</div>
+                      <div className="text-sm text-muted-foreground">
+                        {coverage.withStockTwitsSentiment} symbols today
+                      </div>
+                    </div>
+                  </div>
+                  <Badge className={getStatusColor(coverage.stockTwitsStatus)}>
+                    {getStatusText(coverage.stockTwitsStatus)}
+                  </Badge>
+                </div>
+                
+                <div className="space-y-2">
+                  <div className="flex justify-between text-sm">
+                    <span>Coverage</span>
+                    <span className="font-semibold">{coverage.stockTwitsCoveragePercentage.toFixed(1)}%</span>
+                  </div>
+                  <Progress value={coverage.stockTwitsCoveragePercentage} className="h-2" />
+                </div>
+
+                {coverage.stockTwitsStatus === 'awaiting' && (
+                  <div className="p-2 bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800 rounded text-xs text-amber-800 dark:text-amber-200">
+                    Waiting for today's StockTwits data
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </div>
         </CardContent>
       </Card>
     </div>
