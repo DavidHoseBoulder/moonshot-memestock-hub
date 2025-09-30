@@ -1,152 +1,112 @@
+import "https://deno.land/x/xhr@0.1.0/mod.ts";
+import { serve } from "https://deno.land/std@0.223.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.7.1";
 
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-};
+import { fetchPostsForWindow } from "./lib/fetch_posts.ts";
+import { fetchCommentsForWindow } from "./lib/fetch_comments.ts";
 
-const supabase = createClient(
-  Deno.env.get('SUPABASE_URL') ?? '',
-  Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
-);
-
-interface LoaderRequest {
+interface LoaderPayload {
   start_date?: string;
   end_date?: string;
+  subreddit_filter?: string[];
   persist_raw?: boolean;
   skip_comments?: boolean;
-  subreddit_filter?: string[];
 }
 
-Deno.serve(async (req) => {
+const corsHeaders = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+};
+
+const SUPABASE_URL = Deno.env.get("SUPABASE_URL");
+const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+
+if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
+  console.error("Missing Supabase credentials in Edge function environment.");
+}
+
+const supabase = SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY
+  ? createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
+  : null;
+
+serve(async (req) => {
   if (req.method === "OPTIONS") {
-    return new Response(null, { headers: corsHeaders });
+    return new Response("ok", { headers: corsHeaders });
   }
 
+  if (!supabase) {
+    return new Response("Supabase client not configured", { status: 500, headers: corsHeaders });
+  }
+
+  let payload: LoaderPayload = {};
   try {
-    const body: LoaderRequest = await req.json().catch(() => ({}));
-    
-    // Default to yesterday if no dates provided
-    const yesterday = new Date();
-    yesterday.setDate(yesterday.getDate() - 1);
-    const today = new Date();
-    
-    const startDate = body.start_date || yesterday.toISOString().split('T')[0];
-    const endDate = body.end_date || today.toISOString().split('T')[0];
-    const persistRaw = body.persist_raw ?? false;
-    const skipComments = body.skip_comments ?? false;
-    const subredditFilter = body.subreddit_filter || [];
-    
-    console.log('[reddit-loader-orchestrator] Starting Reddit load', {
+    payload = await req.json() as LoaderPayload;
+  } catch (_) {
+    // allow empty body
+  }
+
+  console.log("[reddit-loader-orchestrator] payload", payload);
+
+  const now = new Date();
+  const endDefault = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+  const startDefault = new Date(endDefault.getTime() - 24 * 60 * 60 * 1000);
+  const fmt = (d: Date) => d.toISOString().slice(0, 10);
+
+  const startDate = payload.start_date ?? fmt(startDefault);
+  const endDate = payload.end_date ?? fmt(endDefault);
+
+  try {
+    const postResult = await fetchPostsForWindow({
       startDate,
       endDate,
-      persistRaw,
-      skipComments,
-      subredditFilter
+      subreddits: payload.subreddit_filter,
+      supabaseClient: supabase,
+      persistRaw: payload.persist_raw ?? false,
     });
-    
-    const runId = `loader-${startDate}-${endDate}-${Date.now()}`;
-    
-    // Get active subreddits
-    let subredditsQuery = supabase
-      .from('subreddit_universe')
-      .select('name')
-      .eq('active', true)
-      .order('priority');
-    
-    const { data: subreddits, error: subError } = await subredditsQuery;
-    
-    if (subError) {
-      throw new Error(`Failed to fetch subreddits: ${subError.message}`);
-    }
-    
-    const targetSubreddits = subredditFilter.length > 0 
-      ? subredditFilter 
-      : (subreddits || []).map(s => s.name);
-    
-    console.log(`[reddit-loader-orchestrator] Loading ${targetSubreddits.length} subreddits`);
-    
-    // Fetch posts from reddit-backfill-import
-    const { data: postsResult, error: postsError } = await supabase.functions.invoke(
-      'reddit-backfill-import',
-      {
-        body: {
-          mode: 'fetch_posts',
-          start_date: startDate,
-          end_date: endDate,
-          subreddits: targetSubreddits,
-          persist_raw: persistRaw
-        }
-      }
-    );
-    
-    if (postsError) {
-      throw new Error(`Failed to fetch posts: ${postsError.message}`);
-    }
-    
-    console.log('[reddit-loader-orchestrator] Posts fetched:', postsResult);
-    
-    // Fetch comments if not skipped
-    let commentsResult = null;
-    if (!skipComments) {
-      const { data: commentsData, error: commentsError } = await supabase.functions.invoke(
-        'reddit-backfill-import',
-        {
-          body: {
-            mode: 'fetch_comments',
-            start_date: startDate,
-            end_date: endDate,
-            subreddits: targetSubreddits,
-            persist_raw: persistRaw
-          }
-        }
-      );
-      
-      if (commentsError) {
-        console.error('[reddit-loader-orchestrator] Comments fetch failed:', commentsError);
-      } else {
-        commentsResult = commentsData;
-        console.log('[reddit-loader-orchestrator] Comments fetched:', commentsResult);
-      }
-    }
-    
-    // Refresh mentions for the date range
-    const startTs = new Date(startDate + 'T00:00:00Z').toISOString();
-    const endTs = new Date(endDate + 'T23:59:59Z').toISOString();
-    
-    const { data: mentionsResult, error: mentionsError } = await supabase.rpc(
-      'reddit_refresh_mentions',
-      { d0: startTs, d3: endTs }
-    );
-    
-    if (mentionsError) {
-      console.error('[reddit-loader-orchestrator] Mentions refresh failed:', mentionsError);
-    } else {
-      console.log('[reddit-loader-orchestrator] Mentions refreshed:', mentionsResult);
-    }
-    
-    return new Response(
-      JSON.stringify({ 
-        success: true,
-        run_id: runId,
-        start_date: startDate,
-        end_date: endDate,
-        subreddits_count: targetSubreddits.length,
-        posts: postsResult,
-        comments: commentsResult,
-        mentions: mentionsResult
-      }),
-      {
-        status: 200,
-        headers: { ...corsHeaders, "Content-Type": "application/json" }
-      }
-    );
 
-  } catch (error: any) {
-    console.error('[reddit-loader-orchestrator] Error:', error);
-    return new Response(
-      JSON.stringify({ error: error.message }),
-      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-    );
+    let commentResult: Awaited<ReturnType<typeof fetchCommentsForWindow>> = [];
+    let mentionsResult: Record<string, unknown> | null = null;
+
+    if (!payload.skip_comments) {
+      commentResult = await fetchCommentsForWindow({
+        startDate,
+        endDate,
+        subreddits: payload.subreddit_filter,
+        supabaseClient: supabase,
+        persistRaw: payload.persist_raw ?? false,
+        postsBySubreddit: postResult.postsBySubreddit,
+      });
+
+      try {
+        const { data, error } = await supabase.rpc("reddit_refresh_mentions", {
+          d0: `${startDate}T00:00:00Z`,
+          d3: `${endDate}T00:00:00Z`,
+        });
+        if (error) throw error;
+        if (data && typeof data === "object") {
+          mentionsResult = data as Record<string, unknown>;
+        }
+        console.log("[reddit-loader-orchestrator] mentions refresh", mentionsResult);
+      } catch (err) {
+        console.warn("[reddit-loader-orchestrator] mentions refresh failed", err);
+      }
+    }
+
+    return new Response(JSON.stringify({
+      status: "ok",
+      startDate,
+      endDate,
+      posts: postResult.batches,
+      comments: commentResult,
+      mentions: mentionsResult,
+    }), {
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  } catch (err) {
+    console.error("[reddit-loader-orchestrator] failure", err);
+    return new Response(JSON.stringify({ error: (err as Error).message ?? "unknown" }), {
+      status: 500,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
   }
 });
