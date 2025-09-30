@@ -128,3 +128,6 @@ verify_jwt = false
 
 [functions.reddit-loader-orchestrator]
 verify_jwt = false
+
+[functions.sentiment-score]
+verify_jwt = false
