@@ -515,70 +515,64 @@ const DailyTradingPipeline = () => {
         });
       }
       
-      // Process Stocktwits sentiment with improved granular scoring
+      // Fetch pre-calculated StockTwits sentiment from v_stocktwits_daily_signals
       const stocktwitsSentimentMap = new Map<string, number>();
       const stocktwitsConfidenceMap = new Map<string, number>();
       
-      if (stocktwitsData?.messages) {
-        const symbolSentiments = new Map<string, number[]>();
+      try {
+        const today = new Date().toISOString().split('T')[0];
+        const { data: stocktwitsSignals, error: stocktwitsError } = await supabase
+          .from('v_stocktwits_daily_signals')
+          .select('symbol, stocktwits_stat_score, confidence_score, total_messages, follower_sum')
+          .eq('trade_date', today);
         
-        stocktwitsData.messages.forEach((msg: any) => {
-          const extractedSymbols = extractSymbolsFromText(msg.body, allTickers);
-          extractedSymbols.forEach(symbol => {
-            if (msg.sentiment) {
-              // More nuanced sentiment scoring based on context
-              let sentiment = 0.5; // neutral default
+        if (stocktwitsError) {
+          console.warn('Failed to fetch StockTwits signals:', stocktwitsError);
+          addDebugInfo("STOCKTWITS_SIGNALS_ERROR", { error: stocktwitsError.message });
+        } else if (stocktwitsSignals && stocktwitsSignals.length > 0) {
+          stocktwitsSignals.forEach((signal: any) => {
+            if (signal.symbol && signal.stocktwits_stat_score !== null) {
+              // stocktwits_stat_score is -1 to 1, normalize to 0-1 for internal use
+              const normalizedScore = (signal.stocktwits_stat_score + 1) / 2;
+              stocktwitsSentimentMap.set(signal.symbol, normalizedScore);
               
-              if (msg.sentiment?.basic === 'Bullish') {
-                sentiment = 0.75; // Fixed bullish sentiment
-                if (msg.body.includes('🚀') || msg.body.includes('moon')) sentiment = 0.9;
-              } else if (msg.sentiment?.basic === 'Bearish') {
-                sentiment = 0.25; // Fixed bearish sentiment  
-                if (msg.body.includes('crash') || msg.body.includes('dump')) sentiment = 0.1;
-              } else {
-                sentiment = 0.5; // Neutral sentiment
-              }
+              // Use confidence_score from view or calculate from message count
+              const confidence = signal.confidence_score || 
+                Math.min(1.0, (signal.total_messages || 0) / 10);
+              stocktwitsConfidenceMap.set(signal.symbol, confidence);
               
-              if (!symbolSentiments.has(symbol)) {
-                symbolSentiments.set(symbol, []);
-              }
-              symbolSentiments.get(symbol)!.push(sentiment);
+              // Store in sentiment history
+              supabase.from('sentiment_history').insert({
+                symbol: signal.symbol,
+                source: 'stocktwits',
+                sentiment_score: normalizedScore,
+                raw_sentiment: signal.stocktwits_stat_score,
+                confidence_score: confidence,
+                data_timestamp: new Date().toISOString(),
+                metadata: {
+                  stat_score: signal.stocktwits_stat_score,
+                  message_count: signal.total_messages,
+                  follower_sum: signal.follower_sum
+                },
+                content_snippet: `StockTwits stat_score: ${signal.stocktwits_stat_score?.toFixed(2)} from ${signal.total_messages} messages`,
+                volume_indicator: signal.total_messages,
+                engagement_score: confidence
+              }).then(({ error }) => {
+                if (error && !error.message?.includes('duplicate key')) {
+                  console.warn('Error storing StockTwits sentiment:', error);
+                }
+              });
             }
           });
-        });
-        
-        // Average sentiments per symbol, calculate confidence, and store in history
-        for (const [symbol, sentiments] of symbolSentiments.entries()) {
-          const avgSentiment = sentiments.reduce((a, b) => a + b, 0) / sentiments.length;
-          const confidence = Math.min(1.0, sentiments.length / 5); // Higher confidence with more messages
           
-          stocktwitsSentimentMap.set(symbol, avgSentiment);
-          stocktwitsConfidenceMap.set(symbol, confidence);
-          
-          // Store in sentiment history
-          try {
-            await supabase.from('sentiment_history').insert({
-              symbol,
-              source: 'stocktwits',
-              sentiment_score: avgSentiment,
-              raw_sentiment: avgSentiment,
-              confidence_score: confidence,
-              data_timestamp: new Date().toISOString(),
-              metadata: {
-                content_id: `stocktwits_${symbol}_${Date.now()}`,
-                message_count: sentiments.length
-              },
-              content_snippet: `StockTwits sentiment from ${sentiments.length} messages`,
-              volume_indicator: sentiments.length,
-              engagement_score: confidence
-            });
-          } catch (error) {
-            // Ignore duplicate key errors
-            if (!error.message?.includes('duplicate key')) {
-              console.warn('Error storing StockTwits sentiment data:', error);
-            }
-          }
+          addDebugInfo("STOCKTWITS_SIGNALS_LOADED", {
+            symbolsLoaded: stocktwitsSignals.length,
+            sampleSignal: stocktwitsSignals[0]
+          });
         }
+      } catch (error) {
+        console.warn('Error fetching StockTwits signals:', error);
+        addDebugInfo("STOCKTWITS_SIGNALS_EXCEPTION", { error: String(error) });
       }
       
       // Process News sentiment with better analysis
