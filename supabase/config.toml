@@ -125,3 +125,6 @@ verify_jwt = false
 
 [functions.close-paper-trade]
 verify_jwt = false
+
+[functions.reddit-loader-orchestrator]
+verify_jwt = false
