@@ -5,6 +5,8 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.7.1";
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL");
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
 const OPENAI_API_KEY = Deno.env.get("OPENAI_API_KEY") ?? "";
+const OPENAI_MODEL = Deno.env.get("OPENAI_MODEL") ?? "gpt-4o-mini";
+const DEFAULT_MODEL_TAG = Deno.env.get("MODEL_TAG") ?? "gpt-sent-v1";
 
 const corsHeaders: Record<string, string> = {
   "Access-Control-Allow-Origin": "*",
@@ -339,7 +341,7 @@ async function processReddit(options: {
       for (const group of chunks) {
         let predictions: Map<string, ScoreResult>;
         try {
-          predictions = await scoreBatch(group, Deno.env.get("OPENAI_MODEL") ?? "gpt-4o-mini", options.pauseOn429Ms);
+          predictions = await scoreBatch(group, OPENAI_MODEL, options.pauseOn429Ms);
         } catch (err) {
           if (err instanceof Error && err.message === "RPD_EXHAUSTED") {
             summary.rpd_exhausted = true;
@@ -413,7 +415,7 @@ serve(async (req: Request) => {
   const start = parseDateISO(payload.start_date) ?? window.start;
   const end = parseDateISO(payload.end_date) ?? window.end;
   const sources = payload.sources?.length ? payload.sources : ["reddit"];
-  const modelTag = payload.model_tag ?? Deno.env.get("MODEL_TAG") ?? "gpt-sent-v1";
+  const modelTag = payload.model_tag ?? DEFAULT_MODEL_TAG;
   const batchSize = Math.max(1, Number(payload.batch_size ?? 25));
   const maxBatches = Math.max(1, Number(payload.max_batches ?? 3));
   const microBatch = Math.max(1, Number(payload.micro_batch ?? 12));
