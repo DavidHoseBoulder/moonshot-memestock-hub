@@ -31,24 +31,102 @@ const supabase = SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY
   ? createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
   : null;
 
-function enumerateHourlyWindows(
+function enumerateDayBounds(
   start: string,
   end: string,
-  stepHours = 1,
-): { label: string; startIso: string; endIso: string }[] {
+): { day: string; startMs: number; endMs: number }[] {
   const startDate = new Date(`${start}T00:00:00Z`);
   const endDate = new Date(`${end}T00:00:00Z`);
-  const windows: { label: string; startIso: string; endIso: string }[] = [];
-
-  const stepMs = stepHours * 60 * 60 * 1000;
-  for (let cursor = startDate.getTime(); cursor < endDate.getTime(); cursor += stepMs) {
-    const startIso = new Date(cursor).toISOString();
-    const endIso = new Date(Math.min(cursor + stepMs, endDate.getTime())).toISOString();
-    const label = `${startIso.slice(0, 13)}:00`; // e.g. 2025-09-29T08
-    windows.push({ label, startIso, endIso });
+  const out: { day: string; startMs: number; endMs: number }[] = [];
+  for (const cursor = new Date(startDate); cursor < endDate;) {
+    const day = cursor.toISOString().slice(0, 10);
+    const dayStartMs = cursor.getTime();
+    cursor.setUTCDate(cursor.getUTCDate() + 1);
+    const dayEndMs = cursor.getTime();
+    out.push({ day, startMs: dayStartMs, endMs: dayEndMs });
   }
+  return out;
+}
 
-  return windows;
+interface MentionWindowPayload {
+  windowStart: string;
+  windowEnd: string;
+  data: Record<string, unknown>;
+}
+
+async function refreshMentionsWindow(
+  supabase: ReturnType<typeof createClient>,
+  startIso: string,
+  endIso: string,
+  debug: boolean,
+  label: string,
+): Promise<MentionWindowPayload | null> {
+  if (debug) {
+    console.log(`[reddit-loader] mentions refresh start ${label}`);
+  }
+  const { data, error } = await supabase.rpc("reddit_refresh_mentions", {
+    d0: startIso,
+    d3: endIso,
+  });
+  if (error) {
+    throw error;
+  }
+  if (data && typeof data === "object") {
+    if (debug) {
+      console.log(`[reddit-loader] mentions refresh complete ${label}`);
+    }
+    return { windowStart: startIso, windowEnd: endIso, data: data as Record<string, unknown> };
+  }
+  return null;
+}
+
+async function refreshMentionsRecursively(
+  supabase: ReturnType<typeof createClient>,
+  startMs: number,
+  endMs: number,
+  debug: boolean,
+  stepMs: number,
+  minStepMs: number,
+  depth = 0,
+): Promise<MentionWindowPayload[]> {
+  if (startMs >= endMs) return [];
+  const startIso = new Date(startMs).toISOString();
+  const endIso = new Date(endMs).toISOString();
+  const label = `${startIso.slice(0, 13)}:${startIso.slice(14, 16)}`;
+
+  try {
+    const payload = await refreshMentionsWindow(supabase, startIso, endIso, debug, label);
+    return payload ? [payload] : [];
+  } catch (error) {
+    if ((error as { code?: string }).code === "57014" && stepMs > minStepMs) {
+      const mid = startMs + Math.floor((endMs - startMs) / 2);
+      if (debug) {
+        console.warn(
+          `[reddit-loader-orchestrator] mentions timeout ${label}; splitting (depth=${depth})`,
+        );
+      }
+      const left = await refreshMentionsRecursively(
+        supabase,
+        startMs,
+        mid,
+        debug,
+        Math.floor(stepMs / 2),
+        minStepMs,
+        depth + 1,
+      );
+      const right = await refreshMentionsRecursively(
+        supabase,
+        mid,
+        endMs,
+        debug,
+        Math.floor(stepMs / 2),
+        minStepMs,
+        depth + 1,
+      );
+      return [...left, ...right];
+    }
+    throw error;
+  }
 }
 
 serve(async (req) => {
@@ -108,48 +186,22 @@ serve(async (req) => {
       });
 
       try {
-        const windows = enumerateHourlyWindows(startDate, endDate);
-        const combinedMentions: Record<string, unknown> = {};
-        for (const window of windows) {
-          if (payload.debug) {
-            console.log(
-              `[reddit-loader] mentions refresh start ${window.label}`,
-            );
-          }
-          const { data, error } = await supabase.rpc("reddit_refresh_mentions", {
-            d0: window.startIso,
-            d3: window.endIso,
-          });
-          if (error) {
-            if ((error as { code?: string }).code === "57014") {
-              console.warn(
-                `[reddit-loader-orchestrator] mentions refresh timeout ${window.label}`,
-                error,
-              );
-              continue;
-            }
-            throw error;
-          }
-          if (data && typeof data === "object") {
-            const day = window.startIso.slice(0, 10);
-            const bucket = combinedMentions[day] as
-              | { windowStart: string; windowEnd: string; data: Record<string, unknown> }[]
-              | undefined;
-            const payload = {
-              windowStart: window.startIso,
-              windowEnd: window.endIso,
-              data: data as Record<string, unknown>,
-            };
-            if (!bucket) {
-              combinedMentions[day] = [payload];
-            } else {
-              bucket.push(payload);
-            }
-          }
-          if (payload.debug) {
-            console.log(
-              `[reddit-loader] mentions refresh complete ${window.label}`,
-            );
+        const combinedMentions: Record<string, MentionWindowPayload[]> = {};
+        const dayBounds = enumerateDayBounds(startDate, endDate);
+        const hourMs = 60 * 60 * 1000;
+        const minStepMs = 15 * 60 * 1000;
+
+        for (const { day, startMs, endMs } of dayBounds) {
+          const results = await refreshMentionsRecursively(
+            supabase,
+            startMs,
+            endMs,
+            payload.debug ?? false,
+            hourMs,
+            minStepMs,
+          );
+          if (results.length > 0) {
+            combinedMentions[day] = results;
           }
         }
         if (Object.keys(combinedMentions).length > 0) {
