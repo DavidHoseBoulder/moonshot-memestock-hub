@@ -7,8 +7,17 @@ import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { todayInDenverDateString } from '@/utils/timezone';
 
+interface SymbolCoverage {
+  symbol: string;
+  hasReddit: boolean;
+  hasStockTwits: boolean;
+  isActive: boolean;
+}
+
 interface SentimentCoverage {
   totalTickers: number;
+  activeTickers: number;
+  inactiveTickers: number;
   withRedditSentiment: number;
   withStockTwitsSentiment: number;
   zeroSentiment: number;
@@ -17,6 +26,7 @@ interface SentimentCoverage {
   redditStatus: 'active' | 'awaiting';
   stockTwitsStatus: 'active' | 'awaiting';
   lastUpdate: Date | null;
+  symbolBreakdown: SymbolCoverage[];
 }
 
 interface SentimentCoverageProps {
@@ -28,6 +38,8 @@ export const SentimentCoverageMonitor: React.FC<SentimentCoverageProps> = ({
 }) => {
   const [coverage, setCoverage] = useState<SentimentCoverage>({
     totalTickers: 0,
+    activeTickers: 0,
+    inactiveTickers: 0,
     withRedditSentiment: 0,
     withStockTwitsSentiment: 0,
     zeroSentiment: 0,
@@ -35,7 +47,8 @@ export const SentimentCoverageMonitor: React.FC<SentimentCoverageProps> = ({
     stockTwitsCoveragePercentage: 0,
     redditStatus: 'awaiting',
     stockTwitsStatus: 'awaiting',
-    lastUpdate: null
+    lastUpdate: null,
+    symbolBreakdown: []
   });
   const [isLoading, setIsLoading] = useState(false);
   
@@ -46,56 +59,29 @@ export const SentimentCoverageMonitor: React.FC<SentimentCoverageProps> = ({
     try {
       const today = todayInDenverDateString();
       
-      // First try to get universe from live_sentiment_entry_rules for stable denominator
-      let totalUniverse = 0;
-      const { data: rulesData, error: rulesError } = await supabase
-        .from('live_sentiment_entry_rules')
-        .select('symbol, horizon')
-        .eq('is_enabled', true);
+      // Get universe from ticker_universe
+      const { data: tickerData, error: tickerError } = await supabase
+        .from('ticker_universe')
+        .select('symbol, active');
 
-      if (!rulesError && rulesData && rulesData.length > 0) {
-        // Use rules as universe (symbol, horizon pairs)
-        const uniquePairs = new Set(rulesData.map(r => `${r.symbol}:${r.horizon}`));
-        totalUniverse = uniquePairs.size;
-      } else {
-        // Fallback to v_reddit_daily_signals for today
-        const { data: candidatesData } = await supabase
-          .from('v_reddit_daily_signals')
-          .select('symbol')
-          .eq('trade_date', today);
-        
-        if (candidatesData) {
-          const uniqueSymbols = new Set(candidatesData.map(c => c.symbol));
-          totalUniverse = uniqueSymbols.size;
-        }
+      if (tickerError || !tickerData) {
+        throw tickerError || new Error('No ticker data');
       }
+
+      const activeTickers = tickerData.filter(t => t.active);
+      const inactiveTickers = tickerData.filter(t => !t.active);
 
       // Get symbols with Reddit sentiment today
-      let withRedditSentiment = 0;
-      
-      const { data: signalsData, error: signalsError } = await supabase
-        .from('v_reddit_daily_signals')
+      const { data: redditData } = await supabase
+        .from('sentiment_history')
         .select('symbol')
-        .eq('trade_date', today);
-
-      if (!signalsError && signalsData) {
-        withRedditSentiment = signalsData.length;
-      } else {
-        const { data: historyData } = await supabase
-          .from('sentiment_history')
-          .select('symbol')
-          .eq('source', 'reddit')
-          .gte('data_timestamp', `${today}T00:00:00Z`)
-          .lt('data_timestamp', `${today}T23:59:59Z`);
-        
-        if (historyData) {
-          const uniqueSymbols = new Set(historyData.map(h => h.symbol));
-          withRedditSentiment = uniqueSymbols.size;
-        }
-      }
+        .eq('source', 'reddit')
+        .gte('data_timestamp', `${today}T00:00:00Z`)
+        .lt('data_timestamp', `${today}T23:59:59Z`);
+      
+      const redditSymbols = new Set(redditData?.map(h => h.symbol.toUpperCase()) || []);
 
       // Get symbols with StockTwits sentiment today
-      let withStockTwitsSentiment = 0;
       const { data: stocktwitsData } = await supabase
         .from('sentiment_history')
         .select('symbol')
@@ -103,21 +89,39 @@ export const SentimentCoverageMonitor: React.FC<SentimentCoverageProps> = ({
         .gte('data_timestamp', `${today}T00:00:00Z`)
         .lt('data_timestamp', `${today}T23:59:59Z`);
       
-      if (stocktwitsData) {
-        const uniqueSymbols = new Set(stocktwitsData.map(h => h.symbol));
-        withStockTwitsSentiment = uniqueSymbols.size;
-      }
+      const stocktwitsSymbols = new Set(stocktwitsData?.map(h => h.symbol.toUpperCase()) || []);
 
-      const withAnySentiment = Math.max(withRedditSentiment, withStockTwitsSentiment);
-      const zeroSentiment = Math.max(0, totalUniverse - withAnySentiment);
-      const redditCoveragePercentage = totalUniverse > 0 ? (withRedditSentiment / totalUniverse) * 100 : 0;
-      const stockTwitsCoveragePercentage = totalUniverse > 0 ? (withStockTwitsSentiment / totalUniverse) * 100 : 0;
+      // Build per-symbol breakdown
+      const symbolBreakdown: SymbolCoverage[] = tickerData.map(ticker => ({
+        symbol: ticker.symbol,
+        hasReddit: redditSymbols.has(ticker.symbol.toUpperCase()),
+        hasStockTwits: stocktwitsSymbols.has(ticker.symbol.toUpperCase()),
+        isActive: ticker.active
+      }));
+
+      const withRedditSentiment = activeTickers.filter(t => 
+        redditSymbols.has(t.symbol.toUpperCase())
+      ).length;
+      
+      const withStockTwitsSentiment = activeTickers.filter(t => 
+        stocktwitsSymbols.has(t.symbol.toUpperCase())
+      ).length;
+
+      const withAnySentiment = activeTickers.filter(t => 
+        redditSymbols.has(t.symbol.toUpperCase()) || stocktwitsSymbols.has(t.symbol.toUpperCase())
+      ).length;
+
+      const zeroSentiment = activeTickers.length - withAnySentiment;
+      const redditCoveragePercentage = activeTickers.length > 0 ? (withRedditSentiment / activeTickers.length) * 100 : 0;
+      const stockTwitsCoveragePercentage = activeTickers.length > 0 ? (withStockTwitsSentiment / activeTickers.length) * 100 : 0;
 
       const redditStatus = withRedditSentiment > 0 ? 'active' : 'awaiting';
       const stockTwitsStatus = withStockTwitsSentiment > 0 ? 'active' : 'awaiting';
 
       setCoverage({
-        totalTickers: totalUniverse,
+        totalTickers: tickerData.length,
+        activeTickers: activeTickers.length,
+        inactiveTickers: inactiveTickers.length,
         withRedditSentiment,
         withStockTwitsSentiment,
         zeroSentiment,
@@ -125,21 +129,14 @@ export const SentimentCoverageMonitor: React.FC<SentimentCoverageProps> = ({
         stockTwitsCoveragePercentage,
         redditStatus,
         stockTwitsStatus,
-        lastUpdate: new Date()
+        lastUpdate: new Date(),
+        symbolBreakdown
       });
 
-      if (totalUniverse === 0) {
-        toast({
-          title: "No Universe Defined",
-          description: "No rule universe defined for today",
-          variant: "destructive",
-        });
-      } else {
-        toast({
-          title: "Coverage Updated",
-          description: `Reddit: ${Math.round(redditCoveragePercentage)}% • StockTwits: ${Math.round(stockTwitsCoveragePercentage)}%`,
-        });
-      }
+      toast({
+        title: "Coverage Updated",
+        description: `Reddit: ${Math.round(redditCoveragePercentage)}% • StockTwits: ${Math.round(stockTwitsCoveragePercentage)}%`,
+      });
 
     } catch (error) {
       console.error('Error fetching coverage data:', error);
@@ -205,34 +202,60 @@ export const SentimentCoverageMonitor: React.FC<SentimentCoverageProps> = ({
         <CardContent>
           {coverage.totalTickers > 0 ? (
             <div className="space-y-6">
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
                 <div className="text-center p-4 border rounded-lg">
                   <div className="text-2xl font-bold text-primary">{coverage.totalTickers}</div>
-                  <div className="text-sm text-muted-foreground">Total Universe</div>
-                  <div className="text-xs text-muted-foreground mt-1">
-                    (symbol, horizon) pairs
-                  </div>
+                  <div className="text-sm text-muted-foreground">Total Symbols</div>
                 </div>
                 <div className="text-center p-4 border rounded-lg">
-                  <div className="text-2xl font-bold text-green-600">{coverage.withRedditSentiment}</div>
-                  <div className="text-sm text-muted-foreground">Reddit Symbols</div>
-                  <div className="text-xs text-muted-foreground mt-1">
-                    Today's Reddit data
-                  </div>
+                  <div className="text-2xl font-bold text-green-600">{coverage.activeTickers}</div>
+                  <div className="text-sm text-muted-foreground">Active</div>
                 </div>
                 <div className="text-center p-4 border rounded-lg">
-                  <div className="text-2xl font-bold text-blue-600">{coverage.withStockTwitsSentiment}</div>
-                  <div className="text-sm text-muted-foreground">StockTwits Symbols</div>
-                  <div className="text-xs text-muted-foreground mt-1">
-                    Today's StockTwits data
-                  </div>
+                  <div className="text-2xl font-bold text-gray-600">{coverage.inactiveTickers}</div>
+                  <div className="text-sm text-muted-foreground">Inactive</div>
                 </div>
                 <div className="text-center p-4 border rounded-lg">
-                  <div className="text-2xl font-bold text-red-600">{coverage.zeroSentiment}</div>
-                  <div className="text-sm text-muted-foreground">No Coverage</div>
-                  <div className="text-xs text-muted-foreground mt-1">
-                    Missing both sources
-                  </div>
+                  <div className="text-2xl font-bold text-blue-600">{coverage.withRedditSentiment}</div>
+                  <div className="text-sm text-muted-foreground">Reddit Today</div>
+                </div>
+                <div className="text-center p-4 border rounded-lg">
+                  <div className="text-2xl font-bold text-purple-600">{coverage.withStockTwitsSentiment}</div>
+                  <div className="text-sm text-muted-foreground">StockTwits Today</div>
+                </div>
+              </div>
+
+              {/* Per-Symbol Breakdown */}
+              <div className="mt-6">
+                <h3 className="text-lg font-semibold mb-3">Symbol Coverage</h3>
+                <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-2">
+                  {coverage.symbolBreakdown
+                    .sort((a, b) => {
+                      if (a.isActive !== b.isActive) return a.isActive ? -1 : 1;
+                      return a.symbol.localeCompare(b.symbol);
+                    })
+                    .map((symbol) => (
+                      <div 
+                        key={symbol.symbol}
+                        className={`p-2 border rounded text-center ${
+                          !symbol.isActive ? 'opacity-50' : ''
+                        }`}
+                      >
+                        <div className="font-mono font-semibold text-sm">{symbol.symbol}</div>
+                        <div className="flex items-center justify-center gap-1 mt-1">
+                          <div className={`w-2 h-2 rounded-full ${symbol.hasReddit ? 'bg-blue-500' : 'bg-gray-300'}`} title="Reddit" />
+                          <div className={`w-2 h-2 rounded-full ${symbol.hasStockTwits ? 'bg-purple-500' : 'bg-gray-300'}`} title="StockTwits" />
+                        </div>
+                      </div>
+                    ))}
+                </div>
+                <div className="mt-2 text-xs text-muted-foreground flex items-center gap-4">
+                  <span className="flex items-center gap-1">
+                    <div className="w-2 h-2 rounded-full bg-blue-500" /> Reddit
+                  </span>
+                  <span className="flex items-center gap-1">
+                    <div className="w-2 h-2 rounded-full bg-purple-500" /> StockTwits
+                  </span>
                 </div>
               </div>
             </div>
