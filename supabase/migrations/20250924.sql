@@ -1,0 +1,2 @@
+-- Placeholder migration to match remote version 20250924
+-- Remote applied this already; no-op locally.
