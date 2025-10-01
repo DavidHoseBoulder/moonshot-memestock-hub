@@ -58,6 +58,9 @@ export const SentimentCoverageMonitor: React.FC<SentimentCoverageProps> = ({
     setIsLoading(true);
     try {
       const today = todayInDenverDateString();
+      const tomorrow = new Date(today);
+      tomorrow.setDate(tomorrow.getDate() + 1);
+      const tomorrowStr = tomorrow.toISOString().split('T')[0];
       
       // Get universe from ticker_universe
       const { data: tickerData, error: tickerError } = await supabase
@@ -77,7 +80,7 @@ export const SentimentCoverageMonitor: React.FC<SentimentCoverageProps> = ({
         .select('symbol')
         .eq('source', 'reddit')
         .gte('data_timestamp', `${today}T00:00:00Z`)
-        .lt('data_timestamp', `${today}T23:59:59Z`);
+        .lt('data_timestamp', `${tomorrowStr}T00:00:00Z`);
       
       const redditSymbols = new Set(redditData?.map(h => h.symbol.toUpperCase()) || []);
 
@@ -87,7 +90,7 @@ export const SentimentCoverageMonitor: React.FC<SentimentCoverageProps> = ({
         .select('symbol')
         .eq('source', 'stocktwits')
         .gte('data_timestamp', `${today}T00:00:00Z`)
-        .lt('data_timestamp', `${today}T23:59:59Z`);
+        .lt('data_timestamp', `${tomorrowStr}T00:00:00Z`);
       
       const stocktwitsSymbols = new Set(stocktwitsData?.map(h => h.symbol.toUpperCase()) || []);
 
