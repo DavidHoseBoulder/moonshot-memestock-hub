@@ -1,0 +1,2 @@
+-- Placeholder to represent remote migration 20250929093000_replace_para_with_psky
+-- The actual SQL was applied directly in production and is not managed locally.

@@ -15,7 +15,8 @@ interface LoaderPayload {
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Headers":
+    "authorization, x-client-info, apikey, content-type",
 };
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL");
@@ -35,7 +36,10 @@ serve(async (req) => {
   }
 
   if (!supabase) {
-    return new Response("Supabase client not configured", { status: 500, headers: corsHeaders });
+    return new Response("Supabase client not configured", {
+      status: 500,
+      headers: corsHeaders,
+    });
   }
 
   let payload: LoaderPayload = {};
@@ -48,7 +52,9 @@ serve(async (req) => {
   console.log("[reddit-loader-orchestrator] payload", payload);
 
   const now = new Date();
-  const endDefault = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+  const endDefault = new Date(
+    Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()),
+  );
   const startDefault = new Date(endDefault.getTime() - 24 * 60 * 60 * 1000);
   const fmt = (d: Date) => d.toISOString().slice(0, 10);
 
@@ -75,6 +81,7 @@ serve(async (req) => {
         supabaseClient: supabase,
         persistRaw: payload.persist_raw ?? false,
         postsBySubreddit: postResult.postsBySubreddit,
+        activeTickers: postResult.activeTickers,
       });
 
       try {
@@ -86,27 +93,40 @@ serve(async (req) => {
         if (data && typeof data === "object") {
           mentionsResult = data as Record<string, unknown>;
         }
-        console.log("[reddit-loader-orchestrator] mentions refresh", mentionsResult);
+        console.log(
+          "[reddit-loader-orchestrator] mentions refresh",
+          mentionsResult,
+        );
       } catch (err) {
-        console.warn("[reddit-loader-orchestrator] mentions refresh failed", err);
+        console.warn(
+          "[reddit-loader-orchestrator] mentions refresh failed",
+          err,
+        );
       }
     }
 
-    return new Response(JSON.stringify({
-      status: "ok",
-      startDate,
-      endDate,
-      posts: postResult.batches,
-      comments: commentResult,
-      mentions: mentionsResult,
-    }), {
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
+    return new Response(
+      JSON.stringify({
+        status: "ok",
+        startDate,
+        endDate,
+        postBatches: postResult.batches,
+        commentBatches: commentResult,
+        activeTickers: postResult.activeTickers,
+        mentions: mentionsResult,
+      }),
+      {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      },
+    );
   } catch (err) {
     console.error("[reddit-loader-orchestrator] failure", err);
-    return new Response(JSON.stringify({ error: (err as Error).message ?? "unknown" }), {
-      status: 500,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
+    return new Response(
+      JSON.stringify({ error: (err as Error).message ?? "unknown" }),
+      {
+        status: 500,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      },
+    );
   }
 });
