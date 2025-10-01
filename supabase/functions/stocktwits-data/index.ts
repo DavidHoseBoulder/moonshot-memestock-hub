@@ -350,8 +350,8 @@ async function processSymbol(symbol: string, config: BatchConfig): Promise<{ ins
   let updated = 0;
 
   try {
-    for (let dayOffset = 1; dayOffset <= config.days; dayOffset++) {
-      const windowEnd = todayStart.getTime() - (dayOffset - 1) * 24 * 60 * 60 * 1000;
+    for (let dayOffset = 0; dayOffset < config.days; dayOffset++) {
+      const windowEnd = todayStart.getTime() + (1 - dayOffset) * 24 * 60 * 60 * 1000;
       const windowStart = windowEnd - 24 * 60 * 60 * 1000;
       
       const messages = await fetchMessagesForDay(symbol, windowStart, windowEnd, config.limitPerDay, config.fetchRetries);
