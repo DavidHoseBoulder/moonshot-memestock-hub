@@ -1,1 +1,0 @@
--- Matches remote migration version 20250924; no-op locally.
