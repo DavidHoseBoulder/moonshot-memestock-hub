@@ -37,21 +37,19 @@ SELECT * FROM (
   )
   UNION ALL
 
-  -- Comments (already deduped)
+  -- Comments (structured table)
   SELECT
     'comment'::text              AS doc_type,
     c.comment_id::text           AS doc_id,
     c.post_id::text              AS post_id,
     c.subreddit::text            AS subreddit,
-    COALESCE(rc.author,'')::text AS author,
+    COALESCE(c.author,'')::text  AS author,
     NULL::numeric                AS author_karma,
     ''::text                     AS title,
     COALESCE(c.body,'')::text    AS body_text,
     c.created_utc::timestamptz   AS created_utc,
     char_length(COALESCE(c.body,'')) AS content_len
-  FROM public.reddit_comments_clean c
-  LEFT JOIN public.reddit_comments rc
-    ON rc.comment_id::text = c.comment_id::text
+  FROM public.reddit_comments c
   WHERE c.created_utc >= :d0::timestamptz AND c.created_utc < :d3::timestamptz
     AND c.comment_id IS NOT NULL
 ) s;
