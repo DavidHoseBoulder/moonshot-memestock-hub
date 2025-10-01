@@ -7,6 +7,7 @@ interface BuildMentionsPayload {
   end_date?: string;
   chunk_hours?: number;
   debug?: boolean;
+  max_attempts?: number;
 }
 
 interface WindowResult {
@@ -41,6 +42,9 @@ const DEFAULT_CHUNK_HOURS = Number(
 );
 const MIN_CHUNK_MINUTES = Number(
   Deno.env.get("REDDIT_MENTIONS_MIN_MINUTES") ?? "15",
+);
+const MAX_ATTEMPTS = Number(
+  Deno.env.get("REDDIT_MENTIONS_MAX_ATTEMPTS") ?? "3",
 );
 
 function normalizeDate(dateStr: string): string {
@@ -163,6 +167,7 @@ serve(async (req) => {
     : today.toISOString().slice(0, 10);
   const chunkHours = Math.max(1, payload.chunk_hours ?? DEFAULT_CHUNK_HOURS);
   const debug = payload.debug ?? false;
+  const maxAttempts = Math.max(1, payload.max_attempts ?? MAX_ATTEMPTS);
 
   const results: WindowResult[] = [];
 
@@ -185,17 +190,23 @@ serve(async (req) => {
   let cashtagTotal = 0;
   let keywordTotal = 0;
   let overallTotal = 0;
-  let currentStart = startDateTime.getTime();
 
-  while (currentStart < endDateTime.getTime()) {
-    const windowStart = new Date(currentStart);
-    const windowEnd = new Date(Math.min(currentStart + stepMs, endDateTime.getTime()));
-    currentStart = windowEnd.getTime();
+  const queue: Array<{ start: Date; end: Date; attempt: number }> = [];
+  for (let ts = startDateTime.getTime(); ts < endDateTime.getTime(); ts += stepMs) {
+    const windowStart = new Date(ts);
+    const windowEnd = new Date(Math.min(ts + stepMs, endDateTime.getTime()));
+    if (windowEnd <= windowStart) continue;
+    queue.push({ start: windowStart, end: windowEnd, attempt: 1 });
+  }
 
+  while (queue.length > 0) {
+    const { start, end, attempt } = queue.shift()!;
+    const d0 = formatIso(start);
+    const d3 = formatIso(end);
     try {
       const { stats, windows: subWindows } = await runWindowWithSplit(
-        windowStart,
-        windowEnd,
+        start,
+        end,
         Math.max(1, MIN_CHUNK_MINUTES),
         debug,
       );
@@ -204,19 +215,27 @@ serve(async (req) => {
       overallTotal += stats.total_rows;
       results.push(...subWindows);
     } catch (error) {
-      const d0 = formatIso(windowStart);
-      const d3 = formatIso(windowEnd);
-      console.error("[reddit-build-mentions] window failed", { d0, d3, error });
-      results.push({
-        start: d0,
-        end: d3,
-        cashtag_rows: 0,
-        keyword_rows: 0,
-        total_rows: 0,
-        status: "error",
-        error: (error as Error).message ?? String(error),
-      });
-      break;
+      const err = (error as Error).message ?? String(error);
+      console.error("[reddit-build-mentions] window failed", { d0, d3, attempt, err });
+      if (attempt < maxAttempts) {
+        queue.push({ start, end, attempt: attempt + 1 });
+        if (debug) {
+          console.warn(
+            "[reddit-build-mentions] retrying window",
+            { d0, d3, attempt: attempt + 1 },
+          );
+        }
+      } else {
+        results.push({
+          start: d0,
+          end: d3,
+          cashtag_rows: 0,
+          keyword_rows: 0,
+          total_rows: 0,
+          status: "error",
+          error: err,
+        });
+      }
     }
   }
 
@@ -227,6 +246,7 @@ serve(async (req) => {
       endDate,
       chunkHours,
       minChunkMinutes: Math.max(1, MIN_CHUNK_MINUTES),
+      maxAttempts,
       totals: {
         cashtag_rows: cashtagTotal,
         keyword_rows: keywordTotal,
