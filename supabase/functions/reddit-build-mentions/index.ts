@@ -199,6 +199,8 @@ serve(async (req) => {
     queue.push({ start: windowStart, end: windowEnd, attempt: 1 });
   }
 
+  const deferredFailures: Array<{ start: Date; end: Date; attempt: number; error: string }> = [];
+
   while (queue.length > 0) {
     const { start, end, attempt } = queue.shift()!;
     const d0 = formatIso(start);
@@ -218,14 +220,56 @@ serve(async (req) => {
       const err = (error as Error).message ?? String(error);
       console.error("[reddit-build-mentions] window failed", { d0, d3, attempt, err });
       if (attempt < maxAttempts) {
-        queue.push({ start, end, attempt: attempt + 1 });
-        if (debug) {
-          console.warn(
-            "[reddit-build-mentions] retrying window",
-            { d0, d3, attempt: attempt + 1 },
-          );
-        }
+        deferredFailures.push({ start, end, attempt: attempt + 1, error: err });
       } else {
+        results.push({
+          start: d0,
+          end: d3,
+          cashtag_rows: 0,
+          keyword_rows: 0,
+          total_rows: 0,
+          status: "error",
+          error: err,
+        });
+      }
+    }
+  }
+
+  if (deferredFailures.length > 0) {
+    if (debug) {
+      console.warn(
+        "[reddit-build-mentions] requeueing failed windows",
+        deferredFailures.map(({ start, end, attempt }) => ({
+          d0: formatIso(start),
+          d3: formatIso(end),
+          attempt,
+        })),
+      );
+    }
+    for (const failure of deferredFailures) {
+      queue.push(failure);
+    }
+    while (queue.length > 0) {
+      const { start, end, attempt } = queue.shift()!;
+      const d0 = formatIso(start);
+      const d3 = formatIso(end);
+      try {
+        const { stats, windows: subWindows } = await runWindowWithSplit(
+          start,
+          end,
+          Math.max(1, MIN_CHUNK_MINUTES),
+          debug,
+        );
+        cashtagTotal += stats.cashtag_rows;
+        keywordTotal += stats.keyword_rows;
+        overallTotal += stats.total_rows;
+        results.push(...subWindows);
+      } catch (error) {
+        const err = (error as Error).message ?? String(error);
+        console.error(
+          "[reddit-build-mentions] window failed on final retry",
+          { d0, d3, attempt, err },
+        );
         results.push({
           start: d0,
           end: d3,
