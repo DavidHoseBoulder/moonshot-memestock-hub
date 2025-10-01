@@ -74,15 +74,16 @@ export const SentimentCoverageMonitor: React.FC<SentimentCoverageProps> = ({
       const activeTickers = tickerData.filter(t => t.active);
       const inactiveTickers = tickerData.filter(t => !t.active);
 
-      // Get symbols with Reddit sentiment today
+      // Get symbols with Reddit sentiment today - check reddit_sentiment directly
       const { data: redditData } = await supabase
-        .from('sentiment_history')
-        .select('symbol')
-        .eq('source', 'reddit')
-        .gte('data_timestamp', `${today}T00:00:00Z`)
-        .lt('data_timestamp', `${tomorrowStr}T00:00:00Z`);
+        .from('reddit_sentiment')
+        .select('mention_id, reddit_mentions!inner(symbol, created_utc)')
+        .gte('reddit_mentions.created_utc', `${today}T00:00:00Z`)
+        .lt('reddit_mentions.created_utc', `${tomorrowStr}T00:00:00Z`);
       
-      const redditSymbols = new Set(redditData?.map(h => h.symbol.toUpperCase()) || []);
+      const redditSymbols = new Set(
+        redditData?.map(r => r.reddit_mentions?.symbol?.toUpperCase()).filter(Boolean) || []
+      );
 
       // Get symbols with StockTwits sentiment today
       const { data: stocktwitsData } = await supabase
