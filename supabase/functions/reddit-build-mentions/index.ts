@@ -39,27 +39,97 @@ const supabase = SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY
 const DEFAULT_CHUNK_HOURS = Number(
   Deno.env.get("REDDIT_MENTIONS_CHUNK_HOURS") ?? "6",
 );
+const MIN_CHUNK_MINUTES = Number(
+  Deno.env.get("REDDIT_MENTIONS_MIN_MINUTES") ?? "15",
+);
 
 function normalizeDate(dateStr: string): string {
   return new Date(`${dateStr}T00:00:00Z`).toISOString().slice(0, 10);
 }
 
-function enumerateWindows(
-  start: string,
-  end: string,
-  chunkHours: number,
-): Array<{ start: Date; end: Date }> {
-  const windows: Array<{ start: Date; end: Date }> = [];
-  const startDate = new Date(`${start}T00:00:00Z`);
-  const endDate = new Date(`${end}T00:00:00Z`);
-  const stepMs = chunkHours * 60 * 60 * 1000;
-  for (let ts = startDate.getTime(); ts < endDate.getTime(); ts += stepMs) {
-    const windowStart = new Date(ts);
-    const windowEnd = new Date(Math.min(ts + stepMs, endDate.getTime()));
-    if (windowEnd <= windowStart) continue;
-    windows.push({ start: windowStart, end: windowEnd });
+function formatIso(date: Date): string {
+  return date.toISOString();
+}
+
+interface MentionStats {
+  cashtag_rows: number;
+  keyword_rows: number;
+  total_rows: number;
+}
+
+async function runWindow(
+  d0: string,
+  d3: string,
+  debug: boolean,
+): Promise<MentionStats> {
+  if (debug) console.log("[reddit-build-mentions] window", { d0, d3 });
+  const { data, error } = await supabase!.rpc("reddit_refresh_mentions", {
+    d0,
+    d3,
+  });
+  if (error) throw error;
+  const payload = (data ?? {}) as Record<string, unknown>;
+  return {
+    cashtag_rows: Number(payload.cashtag_rows ?? 0),
+    keyword_rows: Number(payload.keyword_rows ?? 0),
+    total_rows: Number(payload.total_rows ?? 0),
+  };
+}
+
+async function runWindowWithSplit(
+  windowStart: Date,
+  windowEnd: Date,
+  minChunkMinutes: number,
+  debug: boolean,
+): Promise<{ stats: MentionStats; windows: WindowResult[] }> {
+  const diffMs = windowEnd.getTime() - windowStart.getTime();
+  const minMs = minChunkMinutes * 60 * 1000;
+  if (diffMs <= 0) {
+    return {
+      stats: { cashtag_rows: 0, keyword_rows: 0, total_rows: 0 },
+      windows: [],
+    };
   }
-  return windows;
+
+  const d0 = formatIso(windowStart);
+  const d3 = formatIso(windowEnd);
+
+  try {
+    const stats = await runWindow(d0, d3, debug);
+    return {
+      stats,
+      windows: [{
+        start: d0,
+        end: d3,
+        cashtag_rows: stats.cashtag_rows,
+        keyword_rows: stats.keyword_rows,
+        total_rows: stats.total_rows,
+        status: "ok",
+      }],
+    };
+  } catch (error) {
+    const err = error as { code?: string; message?: string };
+    if (err?.code === "57014" && diffMs > minMs) {
+      const mid = new Date(windowStart.getTime() + diffMs / 2);
+      if (debug) {
+        console.warn(
+          "[reddit-build-mentions] splitting window",
+          { d0, d3 },
+        );
+      }
+      const left = await runWindowWithSplit(windowStart, mid, minChunkMinutes, debug);
+      const right = await runWindowWithSplit(mid, windowEnd, minChunkMinutes, debug);
+      return {
+        stats: {
+          cashtag_rows: left.stats.cashtag_rows + right.stats.cashtag_rows,
+          keyword_rows: left.stats.keyword_rows + right.stats.keyword_rows,
+          total_rows: left.stats.total_rows + right.stats.total_rows,
+        },
+        windows: [...left.windows, ...right.windows],
+      };
+    }
+    throw error;
+  }
 }
 
 serve(async (req) => {
@@ -94,12 +164,16 @@ serve(async (req) => {
   const chunkHours = Math.max(1, payload.chunk_hours ?? DEFAULT_CHUNK_HOURS);
   const debug = payload.debug ?? false;
 
-  const windows = enumerateWindows(startDate, endDate, chunkHours);
-  if (windows.length === 0) {
+  const results: WindowResult[] = [];
+
+  const startDateTime = new Date(`${startDate}T00:00:00Z`);
+  const endDateTime = new Date(`${endDate}T00:00:00Z`);
+  const stepMs = chunkHours * 60 * 60 * 1000;
+  if (stepMs <= 0 || endDateTime <= startDateTime) {
     return new Response(
       JSON.stringify({
         status: "error",
-        message: "No windows to process",
+        message: "Invalid window parameters",
       }),
       {
         status: 400,
@@ -108,43 +182,31 @@ serve(async (req) => {
     );
   }
 
-  const results: WindowResult[] = [];
+  let cashtagTotal = 0;
+  let keywordTotal = 0;
+  let overallTotal = 0;
+  let currentStart = startDateTime.getTime();
 
-  for (const window of windows) {
-    const d0 = window.start.toISOString();
-    const d3 = window.end.toISOString();
-
-    if (debug) {
-      console.log("[reddit-build-mentions] window", { d0, d3 });
-    }
+  while (currentStart < endDateTime.getTime()) {
+    const windowStart = new Date(currentStart);
+    const windowEnd = new Date(Math.min(currentStart + stepMs, endDateTime.getTime()));
+    currentStart = windowEnd.getTime();
 
     try {
-      const { data, error } = await supabase.rpc("reddit_refresh_mentions", {
-        d0,
-        d3,
-      });
-      if (error) {
-        throw error;
-      }
-
-      const payloadResult = (data ?? {}) as Record<string, unknown>;
-      const cashtagRows = Number(payloadResult.cashtag_rows ?? 0);
-      const keywordRows = Number(payloadResult.keyword_rows ?? 0);
-      const totalRows = Number(payloadResult.total_rows ?? 0);
-
-      results.push({
-        start: d0,
-        end: d3,
-        cashtag_rows: cashtagRows,
-        keyword_rows: keywordRows,
-        total_rows: totalRows,
-        status: "ok",
-      });
-    } catch (error) {
-      console.error(
-        "[reddit-build-mentions] window failed",
-        { d0, d3, error },
+      const { stats, windows: subWindows } = await runWindowWithSplit(
+        windowStart,
+        windowEnd,
+        Math.max(1, MIN_CHUNK_MINUTES),
+        debug,
       );
+      cashtagTotal += stats.cashtag_rows;
+      keywordTotal += stats.keyword_rows;
+      overallTotal += stats.total_rows;
+      results.push(...subWindows);
+    } catch (error) {
+      const d0 = formatIso(windowStart);
+      const d3 = formatIso(windowEnd);
+      console.error("[reddit-build-mentions] window failed", { d0, d3, error });
       results.push({
         start: d0,
         end: d3,
@@ -164,6 +226,12 @@ serve(async (req) => {
       startDate,
       endDate,
       chunkHours,
+      minChunkMinutes: Math.max(1, MIN_CHUNK_MINUTES),
+      totals: {
+        cashtag_rows: cashtagTotal,
+        keyword_rows: keywordTotal,
+        total_rows: overallTotal,
+      },
       windows: results,
     }),
     {
