@@ -107,6 +107,62 @@ async function triggerNextInvocation(payload: LoaderPayload) {
   }
 }
 
+async function triggerMentionsBuild(
+  startDate: string,
+  endDate: string,
+  debug: boolean,
+) {
+  if (!supabase) {
+    console.error(
+      "[reddit-loader-orchestrator] cannot trigger mentions build (client missing)",
+    );
+    return;
+  }
+
+  const invoke = async () => {
+    try {
+      const { data, error } = await supabase.functions.invoke(
+        "reddit-build-mentions",
+        {
+          body: {
+            start_date: startDate,
+            end_date: endDate,
+            debug,
+          },
+        },
+      );
+      if (error) {
+        console.error(
+          "[reddit-loader-orchestrator] mentions build failed",
+          error.message ?? error,
+        );
+      } else {
+        console.log(
+          "[reddit-loader-orchestrator] mentions build triggered",
+          data,
+        );
+      }
+    } catch (err) {
+      console.error(
+        "[reddit-loader-orchestrator] error invoking mentions build",
+        err,
+      );
+    }
+  };
+
+  try {
+    // @ts-ignore Edge runtime types not available locally
+    if (typeof globalThis.EdgeRuntime !== "undefined" && globalThis.EdgeRuntime.waitUntil) {
+      // @ts-ignore
+      globalThis.EdgeRuntime.waitUntil(invoke());
+    } else {
+      invoke();
+    }
+  } catch (_) {
+    invoke();
+  }
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
@@ -263,6 +319,9 @@ serve(async (req) => {
           "[reddit-loader-orchestrator] batch chain complete",
           { batchId },
         );
+        if (payload.skip_comments ?? false) {
+          triggerMentionsBuild(startDate, endDate, payload.debug ?? false);
+        }
       }
     } else {
       commentResult = await fetchCommentsForWindow({
@@ -304,6 +363,7 @@ serve(async (req) => {
           "[reddit-loader-orchestrator] batch chain complete",
           { batchId },
         );
+        triggerMentionsBuild(startDate, endDate, payload.debug ?? false);
       }
     }
 
