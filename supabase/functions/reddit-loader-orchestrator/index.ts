@@ -11,6 +11,7 @@ interface LoaderPayload {
   subreddit_filter?: string[];
   persist_raw?: boolean;
   skip_comments?: boolean;
+  debug?: boolean;
 }
 
 const corsHeaders = {
@@ -29,6 +30,29 @@ if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
 const supabase = SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY
   ? createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
   : null;
+
+function enumerateDayWindows(
+  start: string,
+  end: string,
+): { day: string; startIso: string; endIso: string }[] {
+  const startDate = new Date(`${start}T00:00:00Z`);
+  const endDate = new Date(`${end}T00:00:00Z`);
+  const windows: { day: string; startIso: string; endIso: string }[] = [];
+
+  for (let cursor = new Date(startDate); cursor < endDate;
+    cursor.setUTCDate(cursor.getUTCDate() + 1)) {
+    const day = cursor.toISOString().slice(0, 10);
+    const next = new Date(cursor);
+    next.setUTCDate(next.getUTCDate() + 1);
+    windows.push({
+      day,
+      startIso: `${day}T00:00:00Z`,
+      endIso: `${next.toISOString().slice(0, 10)}T00:00:00Z`,
+    });
+  }
+
+  return windows;
+}
 
 serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -68,6 +92,7 @@ serve(async (req) => {
       subreddits: payload.subreddit_filter,
       supabaseClient: supabase,
       persistRaw: payload.persist_raw ?? false,
+      debug: payload.debug ?? false,
     });
 
     let commentResult: Awaited<ReturnType<typeof fetchCommentsForWindow>> = [];
@@ -82,21 +107,50 @@ serve(async (req) => {
         persistRaw: payload.persist_raw ?? false,
         postsBySubreddit: postResult.postsBySubreddit,
         activeTickers: postResult.activeTickers,
+        debug: payload.debug ?? false,
       });
 
       try {
-        const { data, error } = await supabase.rpc("reddit_refresh_mentions", {
-          d0: `${startDate}T00:00:00Z`,
-          d3: `${endDate}T00:00:00Z`,
-        });
-        if (error) throw error;
-        if (data && typeof data === "object") {
-          mentionsResult = data as Record<string, unknown>;
+        const windows = enumerateDayWindows(startDate, endDate);
+        const combinedMentions: Record<string, unknown> = {};
+        for (const window of windows) {
+          if (payload.debug) {
+            console.log(
+              `[reddit-loader] mentions refresh start ${window.day}`,
+            );
+          }
+          const { data, error } = await supabase.rpc("reddit_refresh_mentions", {
+            d0: window.startIso,
+            d3: window.endIso,
+          });
+          if (error) {
+            if ((error as { code?: string }).code === "57014") {
+              console.warn(
+                `[reddit-loader-orchestrator] mentions refresh timeout ${window.day}`,
+                error,
+              );
+              continue;
+            }
+            throw error;
+          }
+          if (data && typeof data === "object") {
+            combinedMentions[window.day] = data as Record<string, unknown>;
+          }
+          if (payload.debug) {
+            console.log(
+              `[reddit-loader] mentions refresh complete ${window.day}`,
+            );
+          }
         }
-        console.log(
-          "[reddit-loader-orchestrator] mentions refresh",
-          mentionsResult,
-        );
+        if (Object.keys(combinedMentions).length > 0) {
+          mentionsResult = combinedMentions;
+        }
+        if (payload.debug) {
+          console.log(
+            "[reddit-loader-orchestrator] mentions refresh aggregation",
+            mentionsResult,
+          );
+        }
       } catch (err) {
         console.warn(
           "[reddit-loader-orchestrator] mentions refresh failed",

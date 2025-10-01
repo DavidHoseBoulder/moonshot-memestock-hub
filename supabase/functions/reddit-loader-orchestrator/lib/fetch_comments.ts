@@ -10,6 +10,7 @@ export interface FetchCommentsParams {
   persistRaw: boolean;
   postsBySubreddit: PostsBySubreddit;
   activeTickers: string[];
+  debug: boolean;
 }
 
 export interface CommentBatchSummary {
@@ -373,6 +374,7 @@ export async function fetchCommentsForWindow(
     postsBySubreddit,
     subreddits: provided,
     activeTickers,
+    debug,
   } = params;
 
   const dates = daysBetween(startDate, endDate);
@@ -412,6 +414,11 @@ export async function fetchCommentsForWindow(
     for (const day of dates) {
       const postIds = dayMap?.[day] ?? [];
       if (!postIds.length) continue;
+      if (debug) {
+        console.log(
+          `[reddit-loader] comments start ${subreddit} ${day} posts=${postIds.length}`,
+        );
+      }
 
       const collected: RedditCommentDoc[] = [];
       for (const postId of postIds) {
@@ -422,11 +429,21 @@ export async function fetchCommentsForWindow(
       }
 
       if (collected.length === 0) continue;
+      if (debug) {
+        console.log(
+          `[reddit-loader] comments fetched ${subreddit} ${day} count=${collected.length}`,
+        );
+      }
 
       try {
         const upserted = await ingestComments(supabaseClient, collected);
         if (persistRawEnabled) {
           await persistRaw(supabaseClient, subreddit, day, collected);
+        }
+        if (debug) {
+          console.log(
+            `[reddit-loader] comments upserted ${subreddit} ${day} upserted=${upserted}`,
+          );
         }
         let activeTickerMentions = 0;
         if (activeTickerSet.size > 0) {
@@ -455,6 +472,12 @@ export async function fetchCommentsForWindow(
           `[reddit-loader] comment ingestion failed for ${subreddit} ${day}`,
           err,
         );
+        if (debug) {
+          console.warn(
+            `[reddit-loader] debug error detail for comments ${subreddit} ${day}`,
+            err?.stack ?? err,
+          );
+        }
       }
     }
   }

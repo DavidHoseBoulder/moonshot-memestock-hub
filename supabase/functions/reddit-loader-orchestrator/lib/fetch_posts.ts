@@ -6,6 +6,7 @@ export interface FetchPostsParams {
   subreddits?: string[];
   supabaseClient: SupabaseClient;
   persistRaw: boolean;
+  debug: boolean;
 }
 
 export interface PostBatchSummary {
@@ -339,6 +340,7 @@ export async function fetchPostsForWindow(
     supabaseClient,
     persistRaw: persistRawEnabled,
     subreddits: provided,
+    debug,
   } = params;
 
   const [subreddits, activeTickers] = await Promise.all([
@@ -355,13 +357,28 @@ export async function fetchPostsForWindow(
     const normalized = subreddit.trim();
     if (!normalized) continue;
     for (const day of dates) {
+      if (debug) {
+        console.log(
+          `[reddit-loader] posts start ${normalized} ${day}`,
+        );
+      }
       try {
         const docs = await fetchPostsForDay(normalized, day, token);
+        if (debug) {
+          console.log(
+            `[reddit-loader] posts fetched ${normalized} ${day} count=${docs.length}`,
+          );
+        }
         if (docs.length === 0) continue;
 
         const upserted = await ingestPosts(supabaseClient, docs);
         if (persistRawEnabled) {
           await persistRaw(supabaseClient, "posts", normalized, day, docs);
+        }
+        if (debug) {
+          console.log(
+            `[reddit-loader] posts upserted ${normalized} ${day} upserted=${upserted}`,
+          );
         }
 
         const postIds = docs
@@ -388,6 +405,12 @@ export async function fetchPostsForWindow(
           `[reddit-loader] post ingestion failed for ${normalized} ${day}`,
           err,
         );
+        if (debug) {
+          console.warn(
+            `[reddit-loader] debug error detail for ${normalized} ${day}`,
+            err?.stack ?? err,
+          );
+        }
       }
     }
   }
