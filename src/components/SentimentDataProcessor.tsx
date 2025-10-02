@@ -75,9 +75,10 @@ export function processStockData(
   
   // Enhanced sentiment aggregation with StockTwits support
   const stocktwitsData = stocktwitsSentiment.get(symbol);
+  // Prefer follower-weighted stat_score, fall back to score (both on -1..1 scale)
   const stocktwitsScore = typeof stocktwitsData === 'number' 
     ? stocktwitsData 
-    : stocktwitsData?.score;
+    : (stocktwitsData?.stat_score ?? stocktwitsData?.score);
   const stocktwitsConfidence = typeof stocktwitsData === 'object' 
     ? stocktwitsData.confidence 
     : 0.8;

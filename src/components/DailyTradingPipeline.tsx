@@ -553,12 +553,16 @@ const DailyTradingPipeline = () => {
             if (record.symbol && !seenSymbols.has(record.symbol)) {
               seenSymbols.add(record.symbol);
               
-              const statScore = record.metadata?.stat_score ?? record.raw_sentiment ?? 0;
-              const normalizedScore = record.sentiment_score ?? ((statScore + 1) / 2);
+              // Extract follower-weighted score from metadata.stats (on -1..1 scale)
+              const statScore = record.metadata?.stats?.sentiment_score 
+                ?? record.raw_sentiment 
+                ?? record.sentiment_score 
+                ?? 0;
               const confidence = record.confidence_score ?? 0.8;
               
+              // Keep score on -1..1 scale (don't normalize)
               stocktwitsSentimentMap.set(record.symbol, {
-                score: normalizedScore,
+                score: statScore,
                 confidence,
                 stat_score: statScore
               });
@@ -580,29 +584,33 @@ const DailyTradingPipeline = () => {
           if (!stocktwitsError && stocktwitsSignals && stocktwitsSignals.length > 0) {
             stocktwitsSignals.forEach((signal: any) => {
               if (signal.symbol && signal.stocktwits_stat_score !== null) {
-                const normalizedScore = (signal.stocktwits_stat_score + 1) / 2;
+                const statScore = signal.stocktwits_stat_score; // Keep on -1..1 scale
                 const confidence = signal.confidence_score || Math.min(1.0, (signal.total_messages || 0) / 10);
                 
+                // Store on -1..1 scale (don't normalize)
                 stocktwitsSentimentMap.set(signal.symbol, {
-                  score: normalizedScore,
+                  score: statScore,
                   confidence,
-                  stat_score: signal.stocktwits_stat_score
+                  stat_score: statScore
                 });
                 
-                // Also store in sentiment_history for future queries
+                // Store in sentiment_history with proper structure
                 supabase.from('sentiment_history').insert({
                   symbol: signal.symbol,
                   source: 'stocktwits',
-                  sentiment_score: normalizedScore,
+                  sentiment_score: statScore, // Keep -1..1 scale
                   raw_sentiment: signal.stocktwits_stat_score,
                   confidence_score: confidence,
                   data_timestamp: new Date().toISOString(),
                   metadata: {
-                    stat_score: signal.stocktwits_stat_score,
-                    message_count: signal.total_messages,
-                    follower_sum: signal.follower_sum
+                    stats: {
+                      sentiment_score: statScore,
+                      confidence_score: confidence,
+                      message_count: signal.total_messages,
+                      follower_sum: signal.follower_sum
+                    }
                   },
-                  content_snippet: `StockTwits stat_score: ${signal.stocktwits_stat_score?.toFixed(2)} from ${signal.total_messages} messages`,
+                  content_snippet: `StockTwits stat_score: ${statScore?.toFixed(2)} from ${signal.total_messages} messages`,
                   volume_indicator: signal.total_messages,
                   engagement_score: confidence
                 }).then(({ error }) => {
