@@ -608,7 +608,9 @@ const DailyTradingPipeline = () => {
                       confidence_score: confidence,
                       message_count: signal.total_messages,
                       follower_sum: signal.follower_sum
-                    }
+                    },
+                    total_messages: signal.total_messages,
+                    follower_sum: signal.follower_sum
                   },
                   content_snippet: `StockTwits stat_score: ${statScore?.toFixed(2)} from ${signal.total_messages} messages`,
                   volume_indicator: signal.total_messages,

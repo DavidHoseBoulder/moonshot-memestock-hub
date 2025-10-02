@@ -151,5 +151,9 @@
 - Prototype follower-weighted StockTwits normalization (bullish/bearish to [-1,1]) and plug into the shared aggregator for side-by-side metrics.
 - Run blended grid backtests (e.g., W_REDDIT≈0.6, W_STOCKTWITS≈0.4) across multi-week spans to gauge incremental uplift vs. Reddit-only baselines.
 
+### Sentiment Storage Consolidation (Note)
+- **Where computed stats live**: The edge function now writes the follower-weighted score into `sentiment_score` (−1..1) and mirrors the bundle under `metadata.stats`. This avoids schema churn, but if we keep adding derived metrics it may be cleaner to introduce a `computed_stats` column that carries normalized aggregates while leaving `metadata` for raw samples. That split would make intent clear, let us scope column-level security independently, and keep JSON lookups shallow.
+- **Reddit alignment**: One option is to publish Reddit sentiment into `sentiment_history` (or a derived view) so downstream tooling hits a single contract. Benefits: consistent normalization, simpler Lovable queries, easier cross-source comparisons. Trade-offs: the current Reddit UX relies on richer `reddit_mentions` detail tables and multi-stage processing; collapsing everything risks losing that fidelity unless we maintain both layers. A pragmatic hybrid is to keep Reddit’s specialized tables as the source of truth and backfill a unified `sentiment_history` row alongside them.
+
 ---
 **Next Action**: push follower-weighted sentiment prototype through the backtest harness, rerun overlap/correlation notebooks on the expanded (≥1 mo) window, and wire hourly overlap metrics into the trading stack evaluation.
