@@ -2944,16 +2944,17 @@ export type Database = {
           reddit_n_mentions: number | null
           reddit_used_score: number | null
           stocktwits_bearish_messages: number | null
+          stocktwits_bearish_ratio: number | null
           stocktwits_bullish_messages: number | null
           stocktwits_bullish_ratio: number | null
           stocktwits_confidence_score: number | null
           stocktwits_follower_sum: number | null
+          stocktwits_messages_truncated: boolean | null
+          stocktwits_net_sentiment: number | null
           stocktwits_neutral_messages: number | null
+          stocktwits_sample_size: number | null
           stocktwits_sentiment_score: number | null
-          stocktwits_simple_score: number | null
-          stocktwits_stat_score: number | null
           stocktwits_total_messages: number | null
-          stocktwits_weighted_score: number | null
           symbol: string | null
           trade_date: string | null
         }
@@ -2966,6 +2967,27 @@ export type Database = {
           n_mentions: number | null
           symbol: string | null
           used_score: number | null
+        }
+        Relationships: []
+      }
+      v_sentiment_hourly_overlap: {
+        Row: {
+          has_reddit: boolean | null
+          has_stocktwits: boolean | null
+          hour_bucket: string | null
+          reddit_avg_sentiment: number | null
+          reddit_confidence: number | null
+          reddit_engagement: number | null
+          reddit_latest_timestamp: string | null
+          reddit_mentions: number | null
+          reddit_net_sentiment: number | null
+          stocktwits_confidence_score: number | null
+          stocktwits_follower_sum: number | null
+          stocktwits_latest_timestamp: string | null
+          stocktwits_net_sentiment: number | null
+          stocktwits_sentiment_score: number | null
+          stocktwits_total_messages: number | null
+          symbol: string | null
         }
         Relationships: []
       }
@@ -2988,18 +3010,17 @@ export type Database = {
       v_stocktwits_daily_signals: {
         Row: {
           bearish_messages: number | null
+          bearish_ratio: number | null
           bullish_messages: number | null
           bullish_ratio: number | null
           confidence_score: number | null
           follower_sum: number | null
+          last_collected_at: string | null
+          messages_truncated: boolean | null
+          net_sentiment: number | null
           neutral_messages: number | null
+          sample_size: number | null
           sentiment_score: number | null
-          st_simple_avg: number | null
-          st_weighted_avg: number | null
-          stocktwits_follower_sum: number | null
-          stocktwits_simple_score: number | null
-          stocktwits_stat_score: number | null
-          stocktwits_weighted_score: number | null
           symbol: string | null
           total_messages: number | null
           trade_date: string | null
