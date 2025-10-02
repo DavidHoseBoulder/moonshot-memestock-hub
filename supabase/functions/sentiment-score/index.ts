@@ -41,9 +41,6 @@ interface Payload {
 
 interface RedditMentionRow {
   mention_id: string;
-  doc_type: string;
-  doc_id: string;
-  post_id: string;
   symbol: string;
   created_utc: string;
   subreddit: string | null;
@@ -115,15 +112,43 @@ async function fetchRedditMentions(opts: {
   symbol?: string | null;
   batchSize: number;
 }): Promise<RedditMentionRow[]> {
-  const { data, error } = await supabase!.rpc<RedditMentionRow>("reddit_mentions_for_scoring", {
-    model_tag: opts.modelTag,
-    start_ts: opts.d0,
-    end_ts: opts.d3,
-    symbol_filter: opts.symbol ?? null,
-    fetch_limit: opts.batchSize,
+  const limit = Math.max(opts.batchSize * 4, opts.batchSize);
+
+  const { data, error } = await supabase!.rpc("fetch_mentions_batch", {
+    p_model: opts.modelTag,
+    p_limit: limit,
   });
+
   if (error) throw error;
-  return data ?? [];
+
+  const rows = (data ?? []) as Array<{
+    mention_id: number;
+    symbol: string;
+    subreddit: string | null;
+    title: string | null;
+    selftext: string | null;
+    created_utc: string;
+  }>;
+
+  const startTs = Date.parse(opts.d0);
+  const endTs = Date.parse(opts.d3);
+
+  const filtered = rows.filter((row) => {
+    const created = Date.parse(row.created_utc);
+    if (!Number.isFinite(created)) return false;
+    if (created < startTs || created >= endTs) return false;
+    if (opts.symbol && row.symbol.toUpperCase() !== opts.symbol.toUpperCase()) return false;
+    return true;
+  }).slice(0, opts.batchSize);
+
+  return filtered.map((row) => ({
+    mention_id: String(row.mention_id),
+    symbol: row.symbol,
+    created_utc: row.created_utc,
+    subreddit: row.subreddit,
+    title: row.title,
+    body_text: row.selftext ?? "",
+  }));
 }
 
 async function scoreBatch(
