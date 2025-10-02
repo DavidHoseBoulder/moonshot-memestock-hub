@@ -55,6 +55,8 @@ interface SentimentSummary {
   bearish_messages: number;
   neutral_messages: number;
   bullish_ratio: number;
+  bearish_ratio: number;
+  net_sentiment: number;
   sentiment_score: number;
   confidence_score: number;
   follower_sum: number;
@@ -64,6 +66,7 @@ const STOCKTWITS_API_BASE = 'https://api.stocktwits.com/api/2/streams/symbol';
 const MAX_PER_REQUEST = 25;
 const MAX_MESSAGES_PER_SYMBOL = 200;
 const MAX_FOLLOWER_WEIGHT = 10_000;
+const MAX_METADATA_MESSAGES = 50;
 const PAGINATION_DELAY_MS = Number(process.env.ST_BACKFILL_PAGE_DELAY_MS || 800);
 const SYMBOL_DELAY_MS = Number(process.env.ST_BACKFILL_SYMBOL_DELAY_MS || 1200);
 
@@ -116,6 +119,8 @@ function summarise(messages: StockTwitsMessage[]): SentimentSummary {
   const total = messages.length;
   const sentiment_score = weightTotal === 0 ? 0 : Number((weightedScore / weightTotal).toFixed(4));
   const bullish_ratio = total === 0 ? 0 : Number((bullish / total).toFixed(4));
+  const bearish_ratio = total === 0 ? 0 : Number((bearish / total).toFixed(4));
+  const net_sentiment = total === 0 ? 0 : Number(((bullish - bearish) / total).toFixed(4));
   const coverageComponent = Math.min(1, total / 30);
   const followerComponent = Math.min(1, followerSum / (2 * MAX_FOLLOWER_WEIGHT));
   const confidence_score = Number((coverageComponent * 0.7 + followerComponent * 0.3).toFixed(4));
@@ -126,6 +131,8 @@ function summarise(messages: StockTwitsMessage[]): SentimentSummary {
     bearish_messages: bearish,
     neutral_messages: neutral,
     bullish_ratio,
+    bearish_ratio,
+    net_sentiment,
     sentiment_score,
     confidence_score,
     follower_sum: followerSum,
@@ -252,7 +259,23 @@ async function upsertDay(symbol: string, windowStart: number, windowEnd: number,
   if (messages.length === 0) return;
 
   const stats = summarise(messages);
-  const metadata = { messages, stats };
+  const trimmedMessages = messages.slice(0, MAX_METADATA_MESSAGES).map(msg => ({
+    id: msg.id,
+    created_at: msg.created_at,
+    body: msg.body,
+    sentiment: getLabel(msg),
+    followers: msg.user?.followers ?? null,
+  }));
+  const metadata = {
+    stats,
+    sampled_messages: trimmedMessages,
+    messages: trimmedMessages,
+    sample_size: trimmedMessages.length,
+    total_messages: messages.length,
+    follower_cap: MAX_FOLLOWER_WEIGHT,
+    captured_message_ids: messages.map(msg => msg.id),
+    messages_truncated: messages.length > trimmedMessages.length,
+  };
   const collectedAt = new Date(windowEnd - 1).toISOString();
   const startISO = new Date(windowStart).toISOString();
   const endISO = new Date(windowEnd).toISOString();
@@ -274,10 +297,18 @@ async function upsertDay(symbol: string, windowStart: number, windowEnd: number,
       .from('sentiment_history')
       .update({
         sentiment_score: stats.sentiment_score,
+        raw_sentiment: stats.net_sentiment,
         confidence_score: stats.confidence_score,
+        volume_indicator: stats.total_messages,
+        engagement_score: stats.follower_sum,
         metadata,
         collected_at: collectedAt,
         data_timestamp: collectedAt,
+        content_snippet: trimmedMessages
+          .map(msg => msg.body?.slice(0, 140) || '')
+          .filter(Boolean)
+          .join(' | ')
+          .slice(0, 600) || null,
       })
       .eq('id', id);
     if (error) throw error;
@@ -286,15 +317,23 @@ async function upsertDay(symbol: string, windowStart: number, windowEnd: number,
 
   const { error } = await supabase
     .from('sentiment_history')
-    .insert({
-      symbol,
-      source: 'stocktwits',
-      sentiment_score: stats.sentiment_score,
-      confidence_score: stats.confidence_score,
-      metadata,
-      collected_at: collectedAt,
-      data_timestamp: collectedAt,
-    });
+      .insert({
+        symbol,
+        source: 'stocktwits',
+        sentiment_score: stats.sentiment_score,
+        raw_sentiment: stats.net_sentiment,
+        confidence_score: stats.confidence_score,
+        volume_indicator: stats.total_messages,
+        engagement_score: stats.follower_sum,
+        metadata,
+        collected_at: collectedAt,
+        data_timestamp: collectedAt,
+        content_snippet: trimmedMessages
+          .map(msg => msg.body?.slice(0, 140) || '')
+          .filter(Boolean)
+          .join(' | ')
+          .slice(0, 600) || null,
+      });
   if (error) throw error;
 }
 

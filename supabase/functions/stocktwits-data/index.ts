@@ -26,6 +26,7 @@ interface ProcessingReport {
   failures: Array<{ symbol: string; error: string }>;
   chunksProcessed: number;
   processingTimeMs: number;
+  metrics: RunMetrics;
 }
 
 type SentimentLabel = 'Bullish' | 'Bearish' | null;
@@ -60,12 +61,53 @@ interface SentimentSummary {
   bearish_messages: number;
   neutral_messages: number;
   bullish_ratio: number;
+  bearish_ratio: number;
+  net_sentiment: number;
   sentiment_score: number;
   confidence_score: number;
   follower_sum: number;
 }
 
+interface RunMetrics {
+  apiRequests: number;
+  apiRetries: number;
+  rateLimitEvents: number;
+  symbolsRequested: number;
+  symbolWindowsWithMessages: number;
+  totalMessages: number;
+  pagesFetched: number;
+  windowSlicesProcessed: number;
+  startedAtMs: number;
+}
+
 const MAX_FOLLOWER_WEIGHT = 10000;
+const MAX_METADATA_MESSAGES = 50; // prevent oversized metadata payloads
+
+function createRunMetrics(totalSymbols: number): RunMetrics {
+  return {
+    apiRequests: 0,
+    apiRetries: 0,
+    rateLimitEvents: 0,
+    symbolsRequested: totalSymbols,
+    symbolWindowsWithMessages: 0,
+    totalMessages: 0,
+    pagesFetched: 0,
+    windowSlicesProcessed: 0,
+    startedAtMs: Date.now(),
+  };
+}
+
+function summariseMetrics(metrics: RunMetrics): string {
+  return [
+    `symbols=${metrics.symbolsRequested}`,
+    `windows=${metrics.windowSlicesProcessed}`,
+    `messages=${metrics.totalMessages}`,
+    `apiCalls=${metrics.apiRequests}`,
+    `retries=${metrics.apiRetries}`,
+    `rateLimits=${metrics.rateLimitEvents}`,
+    `pages=${metrics.pagesFetched}`,
+  ].join(' ');
+}
 
 // Initialize Supabase client
 const supabaseUrl = Deno.env.get('SUPABASE_URL')!
@@ -183,6 +225,8 @@ function summarizeMessages(messages: StockTwitsMessage[]): SentimentSummary {
   const total = messages.length;
   const sentiment_score = weightTotal === 0 ? 0 : Number((weightedScore / weightTotal).toFixed(4));
   const bullish_ratio = total === 0 ? 0 : Number((bullish / total).toFixed(4));
+  const bearish_ratio = total === 0 ? 0 : Number((bearish / total).toFixed(4));
+  const net_sentiment = total === 0 ? 0 : Number(((bullish - bearish) / total).toFixed(4));
   const coverageComponent = Math.min(1, total / 30);
   const followerComponent = Math.min(1, followerSum / (2 * MAX_FOLLOWER_WEIGHT));
   const confidence_score = Number((coverageComponent * 0.7 + followerComponent * 0.3).toFixed(4));
@@ -193,6 +237,8 @@ function summarizeMessages(messages: StockTwitsMessage[]): SentimentSummary {
     bearish_messages: bearish,
     neutral_messages: neutral,
     bullish_ratio,
+    bearish_ratio,
+    net_sentiment,
     sentiment_score,
     confidence_score,
     follower_sum: followerSum,
@@ -208,7 +254,14 @@ function withinWindow(timestamp: number, windowStart: number, windowEnd: number)
 }
 
 // Fetch messages for a symbol for a specific day window
-async function fetchMessagesForDay(symbol: string, windowStart: number, windowEnd: number, perDayLimit: number, maxRetries: number): Promise<StockTwitsMessage[]> {
+async function fetchMessagesForDay(
+  symbol: string,
+  windowStart: number,
+  windowEnd: number,
+  perDayLimit: number,
+  maxRetries: number,
+  metrics: RunMetrics,
+): Promise<StockTwitsMessage[]> {
   const messages: StockTwitsMessage[] = [];
   let maxId: number | undefined;
   const maxMessages = Math.min(perDayLimit, 200);
@@ -222,10 +275,12 @@ async function fetchMessagesForDay(symbol: string, windowStart: number, windowEn
     let response: Response | null = null;
     for (let attempt = 0; attempt < maxRetries; attempt++) {
       try {
+        metrics.apiRequests += 1;
         response = await fetch(url.toString(), {
           headers: { 'User-Agent': 'Financial-Pipeline/1.0' },
         });
       } catch (error) {
+        metrics.apiRetries += 1;
         if (attempt === maxRetries - 1) throw error;
         const backoff = 800 * (attempt + 1);
         await sleep(backoff);
@@ -234,6 +289,8 @@ async function fetchMessagesForDay(symbol: string, windowStart: number, windowEn
 
       if (response && response.ok) break;
       const status = response?.status ?? 'network-error';
+      if (status === 429) metrics.rateLimitEvents += 1;
+      else if (status === 503 || status === 504) metrics.apiRetries += 1;
       if (attempt === maxRetries - 1) {
         console.warn(`StockTwits request failed for ${symbol} (${status})`);
         return messages;
@@ -260,6 +317,8 @@ async function fetchMessagesForDay(symbol: string, windowStart: number, windowEn
     if (!payload) break;
     const page: StockTwitsMessage[] = Array.isArray(payload?.messages) ? payload.messages : [];
     if (page.length === 0) break;
+
+    metrics.pagesFetched += 1;
 
     for (const msg of page) {
       const ts = new Date(msg.created_at).getTime();
@@ -296,10 +355,36 @@ async function upsertDay(symbol: string, windowStart: number, windowEnd: number,
   if (messages.length === 0) return false;
 
   const stats = summarizeMessages(messages);
-  const metadata = { messages, stats };
+  const trimmedMessages = messages.slice(0, MAX_METADATA_MESSAGES).map(msg => ({
+    id: msg.id,
+    created_at: msg.created_at,
+    body: msg.body,
+    sentiment: getSentimentLabel(msg),
+    followers: msg.user?.followers ?? null,
+    like_count: msg.user?.like_count ?? null,
+  }));
+  const metadata = {
+    stats,
+    window: {
+      start: new Date(windowStart).toISOString(),
+      end: new Date(windowEnd).toISOString(),
+    },
+    sampled_messages: trimmedMessages,
+    messages: trimmedMessages,
+    sample_size: trimmedMessages.length,
+    total_messages: messages.length,
+    follower_cap: MAX_FOLLOWER_WEIGHT,
+    captured_message_ids: messages.map(msg => msg.id),
+    messages_truncated: messages.length > trimmedMessages.length,
+  };
   const collectedAt = new Date(windowEnd - 1).toISOString();
   const startISO = new Date(windowStart).toISOString();
   const endISO = new Date(windowEnd).toISOString();
+  const contentSnippet = trimmedMessages
+    .map(msg => msg.body?.slice(0, 140) || '')
+    .filter(Boolean)
+    .join(' | ')
+    .slice(0, 600);
 
   const { data: existing, error: selectError } = await supabase
     .from('sentiment_history')
@@ -318,10 +403,14 @@ async function upsertDay(symbol: string, windowStart: number, windowEnd: number,
       .from('sentiment_history')
       .update({
         sentiment_score: stats.sentiment_score,
+        raw_sentiment: stats.net_sentiment,
         confidence_score: stats.confidence_score,
+        volume_indicator: stats.total_messages,
+        engagement_score: stats.follower_sum,
         metadata,
         collected_at: collectedAt,
         data_timestamp: collectedAt,
+        content_snippet: contentSnippet || null,
       })
       .eq('id', id);
     if (error) throw error;
@@ -334,17 +423,25 @@ async function upsertDay(symbol: string, windowStart: number, windowEnd: number,
       symbol,
       source: 'stocktwits',
       sentiment_score: stats.sentiment_score,
+      raw_sentiment: stats.net_sentiment,
       confidence_score: stats.confidence_score,
+      volume_indicator: stats.total_messages,
+      engagement_score: stats.follower_sum,
       metadata,
       collected_at: collectedAt,
       data_timestamp: collectedAt,
+      content_snippet: contentSnippet || null,
     });
   if (error) throw error;
   return true; // inserted
 }
 
 // Process a single symbol for all days in the window
-async function processSymbol(symbol: string, config: BatchConfig): Promise<{ inserted: number; updated: number; error?: string }> {
+async function processSymbol(
+  symbol: string,
+  config: BatchConfig,
+  metrics: RunMetrics,
+): Promise<{ inserted: number; updated: number; error?: string }> {
   const todayStart = startOfUTCDay(new Date());
   let inserted = 0;
   let updated = 0;
@@ -353,8 +450,18 @@ async function processSymbol(symbol: string, config: BatchConfig): Promise<{ ins
     for (let dayOffset = 0; dayOffset < config.days; dayOffset++) {
       const windowEnd = todayStart.getTime() + (1 - dayOffset) * 24 * 60 * 60 * 1000;
       const windowStart = windowEnd - 24 * 60 * 60 * 1000;
+      metrics.windowSlicesProcessed += 1;
       
-      const messages = await fetchMessagesForDay(symbol, windowStart, windowEnd, config.limitPerDay, config.fetchRetries);
+      const messages = await fetchMessagesForDay(
+        symbol,
+        windowStart,
+        windowEnd,
+        config.limitPerDay,
+        config.fetchRetries,
+        metrics,
+      );
+      metrics.totalMessages += messages.length;
+      if (messages.length > 0) metrics.symbolWindowsWithMessages += 1;
       const wasInserted = await upsertDay(symbol, windowStart, windowEnd, messages);
       
       if (wasInserted) inserted++;
@@ -370,6 +477,7 @@ async function processSymbol(symbol: string, config: BatchConfig): Promise<{ ins
 // Process symbols in chunks
 async function processSymbolBatch(symbols: string[], config: BatchConfig): Promise<ProcessingReport> {
   const startTime = Date.now();
+  const runMetrics = createRunMetrics(symbols.length);
   const report: ProcessingReport = {
     totalSymbols: symbols.length,
     processedSymbols: 0,
@@ -377,7 +485,8 @@ async function processSymbolBatch(symbols: string[], config: BatchConfig): Promi
     rowsUpdated: 0,
     failures: [],
     chunksProcessed: 0,
-    processingTimeMs: 0
+    processingTimeMs: 0,
+    metrics: runMetrics,
   };
 
   // Create chunks
@@ -393,7 +502,7 @@ async function processSymbolBatch(symbols: string[], config: BatchConfig): Promi
     console.log(`Processing chunk ${i + 1}/${chunks.length}: ${chunk.join(', ')}`);
 
     for (const symbol of chunk) {
-      const result = await processSymbol(symbol, config);
+      const result = await processSymbol(symbol, config, runMetrics);
       
       if (result.error) {
         report.failures.push({ symbol, error: result.error });
@@ -477,25 +586,49 @@ Deno.serve(async (req) => {
     
     // Start background processing - this continues after response is sent
     const backgroundTask = async () => {
+      const runId = `stocktwits-batch-${Date.now()}`;
+      const startedAt = new Date().toISOString();
       try {
-        console.log(`Processing batch of ${batchToProcess.length} symbols: ${batchToProcess.join(', ')}`);
-        const report = await processSymbolBatch(batchToProcess, config);
-        console.log(`Batch processing complete:`, report);
-        
-        // Store batch completion status in database for monitoring
-        const runId = `stocktwits-batch-${Date.now()}`;
-        await supabase
+        const startInsert = await supabase
           .from('import_runs')
           .insert({
             run_id: runId,
-            status: 'completed',
-            file: `Batch: ${batchToProcess.join(',')}`,
-            inserted_total: report.rowsInserted,
-            analyzed_total: report.processedSymbols,
+            status: 'running',
+            file: `Batch start: ${batchToProcess.join(', ')}`,
+            batch_size: config.chunkSize,
             queued_total: batchToProcess.length,
-            scanned_total: batchToProcess.length,
-            finished_at: new Date().toISOString()
+            analyzed_total: 0,
+            scanned_total: 0,
+            inserted_total: 0,
+            started_at: startedAt,
           });
+        if (startInsert.error) {
+          console.warn('import_runs insert failed:', startInsert.error.message);
+        }
+
+        console.log(`Processing batch of ${batchToProcess.length} symbols: ${batchToProcess.join(', ')}`);
+        const report = await processSymbolBatch(batchToProcess, config);
+        const completedAt = new Date().toISOString();
+        console.log(`Batch processing complete. Metrics=${summariseMetrics(report.metrics)} rowsInserted=${report.rowsInserted} rowsUpdated=${report.rowsUpdated}`);
+
+        const updatePayload = {
+          status: 'completed',
+          file: `Batch ${batchToProcess.length} symbols | ${summariseMetrics(report.metrics)}`,
+          batch_size: config.chunkSize,
+          inserted_total: report.rowsInserted,
+          analyzed_total: report.metrics.symbolWindowsWithMessages,
+          scanned_total: report.metrics.windowSlicesProcessed,
+          queued_total: batchToProcess.length,
+          finished_at: completedAt,
+        };
+
+        const updateResult = await supabase
+          .from('import_runs')
+          .update(updatePayload)
+          .eq('run_id', runId);
+        if (updateResult.error) {
+          console.warn('import_runs update failed:', updateResult.error.message, updatePayload);
+        }
           
         // If there are remaining symbols, trigger next batch immediately in background
         if (remainingSymbols.length > 0) {
@@ -557,17 +690,25 @@ Deno.serve(async (req) => {
         }
       } catch (error: any) {
         console.error('Background task failed:', error);
-        
-        // Log failure to database
-        await supabase
+        const failurePayload = {
+          status: 'failed',
+          file: `Failed batch: ${batchToProcess.join(', ')}`,
+          error: error?.message || String(error),
+          finished_at: new Date().toISOString(),
+        };
+        const failureUpdate = await supabase
           .from('import_runs')
-          .insert({
-            run_id: `stocktwits-batch-${Date.now()}`,
-            status: 'failed',
-            file: `Failed batch: ${batchToProcess.join(',')}`,
-            error: error.message || String(error),
-            finished_at: new Date().toISOString()
-          });
+          .update(failurePayload)
+          .eq('run_id', runId);
+        if (failureUpdate.error) {
+          console.warn('import_runs failure update fallback insert:', failureUpdate.error.message);
+          await supabase
+            .from('import_runs')
+            .insert({
+              run_id: `${runId}-fallback`,
+              ...failurePayload,
+            });
+        }
       }
     };
 

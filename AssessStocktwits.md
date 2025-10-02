@@ -67,10 +67,10 @@
 - [ ] Monitor per-symbol message totals during nightly sweeps and reallocate quota toward higher-velocity symbols.
 
 ### Integration Roadmap
-- [ ] Persist StockTwits bullish/bearish labels, inferred polarity scores, and author metadata so sentiment can be normalized alongside Reddit.
-- [ ] Build an hourly aggregation that joins Reddit + StockTwits sentiment/volume per symbol for lead/lag analysis.
-- [ ] Extend the daily overlap view (`v_sentiment_daily_overlap`) with StockTwits volume + sentiment columns.
-- [ ] Add run-level observability (coverage counts, retries, latency) to the StockTwits fetch path.
+- [x] Persist StockTwits bullish/bearish labels, inferred polarity scores, and author metadata so sentiment can be normalized alongside Reddit. *(Edge function/backfill now write follower-weighted stats, net sentiment, volume/engagement and trimmed message metadata per symbol-day.)*
+- [x] Build an hourly aggregation that joins Reddit + StockTwits sentiment/volume per symbol for lead/lag analysis. *(`supabase/migrations/20251001090000_add_stocktwits_hourly_overlap.sql` creates `v_sentiment_hourly_overlap`; export helper in `analysis/stocktwits_hourly_overlap.sql`.)*
+- [x] Extend the daily overlap view (`v_sentiment_daily_overlap`) with StockTwits volume + sentiment columns. *(View now emits net sentiment, bearish ratio, follower sums, sample size + truncation flag.)*
+- [x] Add run-level observability (coverage counts, retries, latency) to the StockTwits fetch path. *(Background batch logging now captures API calls/retries/rate limits and writes summarized metrics to `import_runs`.)*
 - [ ] Evaluate migrating the StockTwits fetcher into `SentimentBatchProcessor` primitives for consistency with Reddit ingestion.
 
 ### Sentiment Quality Prep
@@ -142,4 +142,4 @@
 - Run blended grid backtests (e.g., W_REDDIT≈0.6, W_STOCKTWITS≈0.4) across multi-week spans to gauge incremental uplift vs. Reddit-only baselines.
 
 ---
-**Next Action**: wrap remaining Phase 0 instrumentation tasks and launch the extended descriptive analysis (wider window + normalization prototype).
+**Next Action**: push follower-weighted sentiment prototype through the backtest harness, rerun overlap/correlation notebooks on the expanded (≥1 mo) window, and wire hourly overlap metrics into the trading stack evaluation.
