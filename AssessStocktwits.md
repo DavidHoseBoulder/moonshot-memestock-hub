@@ -57,6 +57,12 @@
 - **Backtest pulse:** Blended sweep (2025-09-11..27) shows meaningful lift: Reddit-only (w=1/0) produced 32 trades (avg +1.26%, Sharpe 0.36) while w=0.7/0.3 delivered 130 trades (avg +1.50%, Sharpe 0.41). Enforcing production guards (min_trades≥10, min_sharpe≥0) still yields 127 trades with avg +1.57% and Sharpe ≈0.43. StockTwits-heavy mixes (0.3/0.7 and 0/1) remain close, suggesting the optimal ratio may lie between 30–70% Reddit weighting pending larger samples.
 - **TA gating sweep:** `reddit-utils/sweep_blended.sh` now iterates stock/volume screens (volume z-score, volume ratio/share, RSI caps) alongside sentiment weights so we can spot whether high-liquidity or momentum regimes change blended-signal quality. Summary CSVs now record the gating knobs per run for quicker inspection.
 
+### Recent Findings (Aug 28–Sep 28 2025)
+- **Source overlap:** 2,484 ticker-days in the blended feature export. 1,075 (43%) contained both Reddit and StockTwits, 1,155 (46%) were StockTwits-only, and 254 (10%) were Reddit-only. Raw files live in `analysis/exports/`.
+- **Polarity mix:** In overlap cases, 54% were “ST Bullish / Reddit non-positive”, 35% “Both Bullish”, 3.7% mixed, 2.6% “ST Bearish / Reddit non-negative”, 2.4% both neutral, and 1.8% both bearish. Follower-weighted vs Reddit average score correlation clocks in at 0.053 (simple average 0.135), with StockTwits weighted sentiment averaging +0.209 vs Reddit +0.034.
+- **Lead/lag:** 1,075 shared ticker-days show Reddit leading slightly more often (558 vs 517 StockTwits leads). Median lead_minutes = +9.7 (Reddit earlier), with IQR –455.6 to +669.6 minutes.
+- **Blended returns:** The 0.6/0.4 Reddit/StockTwits blend delivered an average daily sentiment score of +0.257 and coincident next-day equity return mean ≈+0.37%. Distribution support for backtests is captured in `analysis/exports/stocktwits_reddit_features_20250828_20250928.csv`.
+
 ## 5. Data & Instrumentation Needs
 ### Temporary Backfill Script
 - [x] Document `scripts/stocktwits-backfill.ts` usage, tunables, and throttling behaviour.
@@ -81,9 +87,9 @@
 - Calibration snapshot: 956 ticker-days; mean Reddit mentions 16, median 3. 68% of joined days have ≥1 positive/negative Reddit mention, 32% remain neutral-only.
 - [x] Stage a sample set of StockTwits messages vs Reddit sentiment labels for calibration (`analysis/stocktwits_reddit_calibration.csv`, 9/18–9/26; all StockTwits messages per ticker-day with Reddit sentiment aggregates).
   - Follower-weighted vs Reddit average score correlation ≈0.11 (simple avg ≈0.17) across 200 ticker-days. StockTwits bullish days overlap Reddit bullish ≈44%; Reddit bullish days align with StockTwits bullish ≈98%.
-- [ ] Prototype follower-weighted sentiment aggregation and compare variance vs. Reddit baselines.
+- [x] Prototype follower-weighted sentiment aggregation and compare variance vs. Reddit baselines. *(Hourly overlap export + blended feature grid now compute follower-weighted scores; mean blended sentiment ≈0.26 across 2,484 ticker-days.)*
 - [ ] Identify backtest hooks to ingest provisional StockTwits sentiment scores for offline evaluation.
-- [ ] Run correlation checks (notebook tasks): cross-label agreement, follower-weighted sentiment vs Reddit averages, add next-day price-change join.
+- [x] Run correlation checks (notebook tasks): cross-label agreement, follower-weighted sentiment vs Reddit averages, add next-day price-change join. *(Aug 28–Sep 28 window: corr(st_weighted, Reddit avg) ≈0.05; corr(st_simple, Reddit avg) ≈0.14; next-day return mean ≈0.37%.)*
   - Price correlation now possible (enhanced_market_data/prices_daily updated through 2025-09-26). First pass: corr(ST weighted, next-day returns) ≈ -0.12; corr(Reddit avg, next-day returns) ≈ 0.00 across 40 ticker-days. Need more history before drawing conclusions.
   - Lead/lag snapshot (2025-09-18..26): 289 ticker-days; StockTwits leads on 120 (median lead ≈ -270 min), Reddit leads on 169 (median lead ≈ +56 min), no simultaneous cases.
 
@@ -91,7 +97,7 @@
 - [x] StockTwits backlog caught up through 2025-09-24; catch-up job running for 2025-09-25/26.
 - [x] Daily StockTwits import stable—246 new records processed on 2025-09-27 with latest timestamp 15:04 UTC.
 - [x] Schedule follow-up Reddit 7-day backfill to align baselines before incremental-value tests. (Completed; coverage counts for 2025-09-18..26 now at 33–56 tickers/day per `reddit_mentions`.)
-- [ ] Analyze combined overlap + lead/lag once 2025-09-26 data is fully validated post-backfill.
+- [x] Analyze combined overlap + lead/lag once 2025-09-26 data is fully validated post-backfill. *(Aug 28–Sep 28 window: 1,075 overlap ticker-days, Reddit leads 558 vs StockTwits 517; median lag +9.7 minutes with IQR –455 to +670 minutes.)*
 
 ## 6. Evaluation Plan
 **Phase 0 – Instrumentation (1 week)**

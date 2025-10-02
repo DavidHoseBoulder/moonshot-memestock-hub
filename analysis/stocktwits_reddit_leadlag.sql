@@ -2,7 +2,17 @@
 -- Run with: psql "$PGURI" -f analysis/stocktwits_reddit_leadlag.sql
 -- Produces lead/lag stats for StockTwits vs Reddit per ticker-day.
 
-WITH st_first AS (
+\if :{?start_date} \else \set start_date '' \endif
+\if :{?end_date}   \else \set end_date ''   \endif
+
+WITH params AS (
+  SELECT
+    COALESCE(NULLIF(:'start_date','')::date,
+             (now() AT TIME ZONE 'utc')::date - 7) AS start_date,
+    COALESCE(NULLIF(:'end_date','')::date,
+             (now() AT TIME ZONE 'utc')::date + 1) AS end_date_exclusive
+),
+st_first AS (
   SELECT
     sh.collected_at::date AS day,
     sh.symbol,
@@ -10,7 +20,8 @@ WITH st_first AS (
   FROM sentiment_history sh
   CROSS JOIN LATERAL jsonb_array_elements(sh.metadata->'messages') msg
   WHERE sh.source = 'stocktwits'
-    AND sh.collected_at BETWEEN '2025-09-18'::date AND '2025-09-26'::date
+    AND sh.collected_at >= (SELECT start_date FROM params)
+    AND sh.collected_at <  (SELECT end_date_exclusive FROM params)
   GROUP BY 1,2
 ),
 rd_first AS (
@@ -19,7 +30,8 @@ rd_first AS (
     symbol,
     MIN(created_utc) AS rd_first_ts
   FROM reddit_mentions
-  WHERE created_utc BETWEEN '2025-09-18'::timestamptz AND '2025-09-27'::timestamptz
+  WHERE created_utc >= (SELECT start_date FROM params)
+    AND created_utc <  (SELECT end_date_exclusive FROM params)
   GROUP BY 1,2
 ),
 joined AS (

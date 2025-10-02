@@ -3,10 +3,20 @@
 -- Produces three result sets: polarity agreement, follower-weighted correlation,
 -- and placeholder join against price data (commented until price table confirmed).
 
+\if :{?start_date} \else \set start_date '' \endif
+\if :{?end_date}   \else \set end_date ''   \endif
+
 DROP TABLE IF EXISTS tmp_joined_daily;
 
 CREATE TEMP TABLE tmp_joined_daily AS
-WITH joined_messages AS (
+WITH params AS (
+  SELECT
+    COALESCE(NULLIF(:'start_date','')::date,
+             (now() AT TIME ZONE 'utc')::date - 7) AS start_date,
+    COALESCE(NULLIF(:'end_date','')::date,
+             (now() AT TIME ZONE 'utc')::date + 1) AS end_date_exclusive
+),
+joined_messages AS (
   SELECT
     sh.collected_at::date AS day,
     sh.symbol,
@@ -29,8 +39,8 @@ WITH joined_messages AS (
   FROM sentiment_history sh
   CROSS JOIN LATERAL jsonb_array_elements(sh.metadata->'messages') msg
   WHERE sh.source = 'stocktwits'
-    AND sh.collected_at >= '2025-09-18'::date
-    AND sh.collected_at <  '2025-09-27'::date
+    AND sh.collected_at >= (SELECT start_date FROM params)
+    AND sh.collected_at <  (SELECT end_date_exclusive FROM params)
 ),
 stocktwits_daily AS (
   SELECT
@@ -55,8 +65,8 @@ reddit_daily AS (
     SUM(CASE WHEN s.label = 'neg' THEN 1 ELSE 0 END) AS reddit_neg
   FROM reddit_mentions m
   JOIN reddit_sentiment s ON s.mention_id = m.mention_id
-  WHERE m.created_utc >= '2025-09-18'::timestamptz
-    AND m.created_utc <  '2025-09-27'::timestamptz
+  WHERE m.created_utc >= (SELECT start_date FROM params)
+    AND m.created_utc <  (SELECT end_date_exclusive FROM params)
   GROUP BY 1, 2
 )
 SELECT
