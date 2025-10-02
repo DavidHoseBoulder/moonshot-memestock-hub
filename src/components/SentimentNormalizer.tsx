@@ -7,9 +7,12 @@ export interface RawSentimentData {
     posts_count: number;
   };
   stocktwits?: {
-    bullish_ratio: number; // Usually 0-1
+    bullish_ratio?: number; // Usually 0-1
     total_messages: number;
-    sentiment_score?: number;
+    sentiment_score?: number; // -1 to 1 from sentiment_history
+    stat_score?: number; // -1 to 1 follower-weighted
+    confidence_score?: number; // from sentiment_history
+    follower_sum?: number;
   };
   news?: {
     sentiment: number; // Often -1 to 1
@@ -81,16 +84,28 @@ export class SentimentNormalizer {
       );
     }
 
-    // StockTwits normalization
+    // StockTwits normalization - prioritize follower-weighted stat_score from sentiment_history
     if (rawData.stocktwits && rawData.stocktwits.total_messages >= 5) {
-      // Use bullish ratio if available, otherwise normalize sentiment score
-      const sentimentValue = rawData.stocktwits.sentiment_score !== undefined
-        ? this.normalizeToZeroOne(rawData.stocktwits.sentiment_score, 'bipolar')
-        : rawData.stocktwits.bullish_ratio;
+      // Priority: stat_score (follower-weighted) > sentiment_score > bullish_ratio
+      let sentimentValue: number;
+      
+      if (rawData.stocktwits.stat_score !== undefined && rawData.stocktwits.stat_score !== null) {
+        // stat_score is already -1 to 1, normalize to 0-1
+        sentimentValue = this.normalizeToZeroOne(rawData.stocktwits.stat_score, 'bipolar');
+      } else if (rawData.stocktwits.sentiment_score !== undefined && rawData.stocktwits.sentiment_score !== null) {
+        sentimentValue = this.normalizeToZeroOne(rawData.stocktwits.sentiment_score, 'bipolar');
+      } else if (rawData.stocktwits.bullish_ratio !== undefined && rawData.stocktwits.bullish_ratio !== null) {
+        sentimentValue = rawData.stocktwits.bullish_ratio;
+      } else {
+        return; // Skip if no sentiment data available
+      }
       
       result.stocktwits_sentiment = sentimentValue;
+      
+      // Use confidence_score from sentiment_history, or calculate from message volume
+      const baseConfidence = rawData.stocktwits.confidence_score ?? 0.8;
       result.confidence_weights.stocktwits = this.calculateConfidenceWeight(
-        0.8, // Base confidence for StockTwits
+        baseConfidence,
         rawData.stocktwits.total_messages,
         5
       );

@@ -2,18 +2,20 @@ import DataSourceStatus from "./DataSourceStatus";
 import PerformanceTracker from "./PerformanceTracker";
 import SentimentStackingEngine, { StackingVisualizer, StackingResult, DEFAULT_STACKING_CONFIG } from "./SentimentStackingEngine";
 import { useState } from "react";
-import { Card } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { AlertTriangle, TrendingUp, Activity, Volume2, Target, Scan, Play, RefreshCw, Zap, Layers } from "lucide-react";
+import { AlertTriangle, TrendingUp, Activity, Volume2, Target, Scan, Play, RefreshCw, Zap, Layers, Settings } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { CATEGORIES, getStocksByCategory } from "@/data/stockUniverse";
 import { DEFAULT_CONFIGS } from "@/data/subredditUniverse";
 import { supabase } from "@/integrations/supabase/client";
 import { calculateRSI, estimateRSIFromMomentum } from "@/utils/technicalIndicators";
 import { aggregateSentiment, getSentimentLabel } from "@/utils/sentimentAggregator";
+import { useSentimentBlending, WeightPreset } from "@/hooks/useSentimentBlending";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 interface TradeSignal {
   ticker: string;
@@ -68,6 +70,16 @@ const DailyTradingPipeline = () => {
   const [showDebug, setShowDebug] = useState(false);
   const [stackingEngine] = useState(() => new SentimentStackingEngine(DEFAULT_STACKING_CONFIG));
   const { toast } = useToast();
+  const { weights, preset, applyPreset, blendSentiment, presets } = useSentimentBlending('60-40');
+  
+  // Store sentiment maps for UI display
+  const [sentimentSources, setSentimentSources] = useState<{
+    reddit: Map<string, number>;
+    stocktwits: Map<string, { score: number; confidence: number; stat_score: number }>;
+  }>({
+    reddit: new Map(),
+    stocktwits: new Map(),
+  });
 
   // Helper function to extract stock symbols from text
   const extractSymbolsFromText = (text: string, allTickers: string[]): string[] => {
@@ -515,73 +527,101 @@ const DailyTradingPipeline = () => {
         });
       }
       
-      // Fetch pre-calculated StockTwits sentiment from v_stocktwits_daily_signals
-      const stocktwitsSentimentMap = new Map<string, number>();
-      const stocktwitsConfidenceMap = new Map<string, number>();
+      // Fetch pre-calculated StockTwits sentiment from sentiment_history
+      const stocktwitsSentimentMap = new Map<string, { score: number; confidence: number; stat_score: number }>();
       
       try {
         const today = new Date().toISOString().split('T')[0];
-        const { data: stocktwitsSignals, error: stocktwitsError } = await supabase
-          .from('v_stocktwits_daily_signals')
-          .select('symbol, stocktwits_stat_score, confidence_score, total_messages, follower_sum')
-          .eq('trade_date', today) as { 
-            data: Array<{
-              symbol: string;
-              stocktwits_stat_score: number | null;
-              confidence_score: number | null;
-              total_messages: number | null;
-              follower_sum: number | null;
-            }> | null;
-            error: any;
-          };
         
-        if (stocktwitsError) {
-          console.warn('Failed to fetch StockTwits signals:', stocktwitsError);
-          addDebugInfo("STOCKTWITS_SIGNALS_ERROR", { error: stocktwitsError.message });
-        } else if (stocktwitsSignals && stocktwitsSignals.length > 0) {
-          stocktwitsSignals.forEach((signal: any) => {
-            if (signal.symbol && signal.stocktwits_stat_score !== null) {
-              // stocktwits_stat_score is -1 to 1, normalize to 0-1 for internal use
-              const normalizedScore = (signal.stocktwits_stat_score + 1) / 2;
-              stocktwitsSentimentMap.set(signal.symbol, normalizedScore);
+        // Query sentiment_history for StockTwits data
+        const { data: stocktwitsHistory, error: stocktwitsHistoryError } = await supabase
+          .from('sentiment_history')
+          .select('symbol, sentiment_score, confidence_score, raw_sentiment, metadata')
+          .eq('source', 'stocktwits')
+          .gte('data_timestamp', `${today}T00:00:00Z`)
+          .lt('data_timestamp', `${today}T23:59:59Z`)
+          .order('data_timestamp', { ascending: false });
+        
+        if (stocktwitsHistoryError) {
+          console.warn('Failed to fetch StockTwits from sentiment_history:', stocktwitsHistoryError);
+          addDebugInfo("STOCKTWITS_HISTORY_ERROR", { error: stocktwitsHistoryError.message });
+        } else if (stocktwitsHistory && stocktwitsHistory.length > 0) {
+          // Deduplicate by symbol, keeping most recent
+          const seenSymbols = new Set<string>();
+          
+          stocktwitsHistory.forEach((record: any) => {
+            if (record.symbol && !seenSymbols.has(record.symbol)) {
+              seenSymbols.add(record.symbol);
               
-              // Use confidence_score from view or calculate from message count
-              const confidence = signal.confidence_score || 
-                Math.min(1.0, (signal.total_messages || 0) / 10);
-              stocktwitsConfidenceMap.set(signal.symbol, confidence);
+              const statScore = record.metadata?.stat_score ?? record.raw_sentiment ?? 0;
+              const normalizedScore = record.sentiment_score ?? ((statScore + 1) / 2);
+              const confidence = record.confidence_score ?? 0.8;
               
-              // Store in sentiment history
-              supabase.from('sentiment_history').insert({
-                symbol: signal.symbol,
-                source: 'stocktwits',
-                sentiment_score: normalizedScore,
-                raw_sentiment: signal.stocktwits_stat_score,
-                confidence_score: confidence,
-                data_timestamp: new Date().toISOString(),
-                metadata: {
-                  stat_score: signal.stocktwits_stat_score,
-                  message_count: signal.total_messages,
-                  follower_sum: signal.follower_sum
-                },
-                content_snippet: `StockTwits stat_score: ${signal.stocktwits_stat_score?.toFixed(2)} from ${signal.total_messages} messages`,
-                volume_indicator: signal.total_messages,
-                engagement_score: confidence
-              }).then(({ error }) => {
-                if (error && !error.message?.includes('duplicate key')) {
-                  console.warn('Error storing StockTwits sentiment:', error);
-                }
+              stocktwitsSentimentMap.set(record.symbol, {
+                score: normalizedScore,
+                confidence,
+                stat_score: statScore
               });
             }
           });
           
-          addDebugInfo("STOCKTWITS_SIGNALS_LOADED", {
-            symbolsLoaded: stocktwitsSignals.length,
-            sampleSignal: stocktwitsSignals[0]
+          addDebugInfo("STOCKTWITS_HISTORY_LOADED", {
+            recordsFound: stocktwitsHistory.length,
+            uniqueSymbols: seenSymbols.size,
+            sampleRecord: stocktwitsHistory[0]
           });
+        } else {
+          // Fallback to v_stocktwits_daily_signals if sentiment_history is empty
+          const { data: stocktwitsSignals, error: stocktwitsError } = await supabase
+            .from('v_stocktwits_daily_signals')
+            .select('symbol, stocktwits_stat_score, confidence_score, total_messages, follower_sum')
+            .eq('trade_date', today);
+          
+          if (!stocktwitsError && stocktwitsSignals && stocktwitsSignals.length > 0) {
+            stocktwitsSignals.forEach((signal: any) => {
+              if (signal.symbol && signal.stocktwits_stat_score !== null) {
+                const normalizedScore = (signal.stocktwits_stat_score + 1) / 2;
+                const confidence = signal.confidence_score || Math.min(1.0, (signal.total_messages || 0) / 10);
+                
+                stocktwitsSentimentMap.set(signal.symbol, {
+                  score: normalizedScore,
+                  confidence,
+                  stat_score: signal.stocktwits_stat_score
+                });
+                
+                // Also store in sentiment_history for future queries
+                supabase.from('sentiment_history').insert({
+                  symbol: signal.symbol,
+                  source: 'stocktwits',
+                  sentiment_score: normalizedScore,
+                  raw_sentiment: signal.stocktwits_stat_score,
+                  confidence_score: confidence,
+                  data_timestamp: new Date().toISOString(),
+                  metadata: {
+                    stat_score: signal.stocktwits_stat_score,
+                    message_count: signal.total_messages,
+                    follower_sum: signal.follower_sum
+                  },
+                  content_snippet: `StockTwits stat_score: ${signal.stocktwits_stat_score?.toFixed(2)} from ${signal.total_messages} messages`,
+                  volume_indicator: signal.total_messages,
+                  engagement_score: confidence
+                }).then(({ error }) => {
+                  if (error && !error.message?.includes('duplicate key')) {
+                    console.warn('Error storing StockTwits sentiment:', error);
+                  }
+                });
+              }
+            });
+            
+            addDebugInfo("STOCKTWITS_FALLBACK_LOADED", {
+              symbolsLoaded: stocktwitsSignals.length,
+              sampleSignal: stocktwitsSignals[0]
+            });
+          }
         }
       } catch (error) {
-        console.warn('Error fetching StockTwits signals:', error);
-        addDebugInfo("STOCKTWITS_SIGNALS_EXCEPTION", { error: String(error) });
+        console.warn('Error fetching StockTwits sentiment:', error);
+        addDebugInfo("STOCKTWITS_FETCH_EXCEPTION", { error: String(error) });
       }
       
       // Process News sentiment with better analysis
@@ -917,7 +957,7 @@ const DailyTradingPipeline = () => {
         const stackingResult = stackingEngine.stackSentiment({
           symbol: ticker,
           reddit_sentiment: redditSentimentMap.get(ticker),
-          stocktwits_sentiment: stocktwitsSentimentMap.get(ticker),
+          stocktwits_sentiment: stocktwitsSentimentMap.get(ticker)?.score,
           news_sentiment: newsSentimentMap.get(ticker),
           google_trends: googleTrendsMap.get(ticker),
           youtube_sentiment: youtubeSentimentMap.get(ticker),
@@ -974,7 +1014,7 @@ const DailyTradingPipeline = () => {
             price: marketData?.price || 0,
             sentiment_score: Math.max(
               redditSentimentMap.get(ticker) || 0,
-              stocktwitsSentimentMap.get(ticker) || 0,
+              stocktwitsSentimentMap.get(ticker)?.score || 0,
               newsSentimentMap.get(ticker) || 0
             ),
             sentiment_velocity: sentimentData?.sentiment_velocity?.velocity_1h || 0,
@@ -1008,6 +1048,10 @@ const DailyTradingPipeline = () => {
       setSignals(enhancedSignals);
       setStackingResults(stackingResults);
       setLastRun(new Date());
+      setSentimentSources({
+        reddit: redditSentimentMap,
+        stocktwits: stocktwitsSentimentMap,
+      });
 
       toast({
         title: "Enhanced Trading Pipeline Complete!",
@@ -1076,6 +1120,56 @@ const DailyTradingPipeline = () => {
           </Button>
         </div>
       </div>
+
+      {/* Sentiment Blending Controls */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Settings className="w-5 h-5" />
+            Sentiment Blending Configuration
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="flex items-center gap-6">
+            <div className="flex-1">
+              <label className="text-sm font-medium mb-2 block">Blend Preset</label>
+              <Select value={preset} onValueChange={(value) => applyPreset(value as WeightPreset)}>
+                <SelectTrigger className="w-[200px]">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="reddit-only">Reddit Only (100/0)</SelectItem>
+                  <SelectItem value="60-40">Reddit Favored (60/40)</SelectItem>
+                  <SelectItem value="50-50">Balanced (50/50)</SelectItem>
+                  <SelectItem value="40-60">StockTwits Favored (40/60)</SelectItem>
+                  <SelectItem value="stocktwits-only">StockTwits Only (0/100)</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            
+            <div className="flex-1 space-y-2">
+              <div className="flex justify-between items-center">
+                <span className="text-sm font-medium">Reddit Weight:</span>
+                <Badge variant="secondary">{(weights.reddit * 100).toFixed(0)}%</Badge>
+              </div>
+              <Progress value={weights.reddit * 100} className="h-2" />
+            </div>
+            
+            <div className="flex-1 space-y-2">
+              <div className="flex justify-between items-center">
+                <span className="text-sm font-medium">StockTwits Weight:</span>
+                <Badge variant="secondary">{(weights.stocktwits * 100).toFixed(0)}%</Badge>
+              </div>
+              <Progress value={weights.stocktwits * 100} className="h-2" />
+            </div>
+            
+            <div className="text-sm text-muted-foreground">
+              <p>Current blend: {(weights.reddit * 100).toFixed(0)}% Reddit + {(weights.stocktwits * 100).toFixed(0)}% StockTwits</p>
+              <p className="text-xs mt-1">Blending applies to all sentiment calculations</p>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
 
       {/* Progress Bar */}
       {isRunning && (
@@ -1148,7 +1242,7 @@ const DailyTradingPipeline = () => {
                       <div className="font-semibold">${signal.price.toFixed(2)}</div>
                     </div>
                     <div>
-                      <div className="text-sm text-muted-foreground">Sentiment</div>
+                      <div className="text-sm text-muted-foreground">Blended Sentiment</div>
                       <div className="font-semibold">{signal.sentiment_score.toFixed(3)}</div>
                     </div>
                     <div>
@@ -1158,6 +1252,25 @@ const DailyTradingPipeline = () => {
                     <div>
                       <div className="text-sm text-muted-foreground">RSI</div>
                       <div className="font-semibold">{signal.rsi.toFixed(1)}</div>
+                    </div>
+                  </div>
+                  
+                  {/* Source breakdown */}
+                  <div className="mt-4 pt-4 border-t border-border">
+                    <div className="text-xs font-medium text-muted-foreground mb-2">Sentiment Sources</div>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm">Reddit ({(weights.reddit * 100).toFixed(0)}%):</span>
+                        <Badge variant={sentimentSources.reddit.get(signal.ticker) ? "default" : "outline"}>
+                          {sentimentSources.reddit.get(signal.ticker)?.toFixed(3) ?? 'N/A'}
+                        </Badge>
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm">StockTwits ({(weights.stocktwits * 100).toFixed(0)}%):</span>
+                        <Badge variant={sentimentSources.stocktwits.get(signal.ticker) ? "default" : "outline"}>
+                          {sentimentSources.stocktwits.get(signal.ticker)?.score?.toFixed(3) ?? 'N/A'}
+                        </Badge>
+                      </div>
                     </div>
                   </div>
                 </Card>

@@ -33,7 +33,7 @@ export function processStockData(
   symbol: string,
   marketData: any,
   redditSentiment: Map<string, number>,
-  stocktwitsSentiment: Map<string, number>,
+  stocktwitsSentiment: Map<string, number | { score: number; confidence: number; stat_score?: number }>,
   newsSentiment: Map<string, number>,
   googleTrends: Map<string, number>,
   youtubeSentiment: Map<string, number>
@@ -73,13 +73,24 @@ export function processStockData(
     volumeSpike = volumeRatio > threshold;
   }
   
-  // Enhanced sentiment aggregation
+  // Enhanced sentiment aggregation with StockTwits support
+  const stocktwitsData = stocktwitsSentiment.get(symbol);
+  const stocktwitsScore = typeof stocktwitsData === 'number' 
+    ? stocktwitsData 
+    : stocktwitsData?.score;
+  const stocktwitsConfidence = typeof stocktwitsData === 'object' 
+    ? stocktwitsData.confidence 
+    : 0.8;
+    
   const sentimentAgg = aggregateSentiment(
     redditSentiment.get(symbol),
-    stocktwitsSentiment.get(symbol),
+    stocktwitsScore,
     newsSentiment.get(symbol),
     googleTrends.get(symbol),
-    youtubeSentiment.get(symbol)
+    youtubeSentiment.get(symbol),
+    undefined, // twitter
+    0.7, // reddit confidence
+    stocktwitsConfidence
   );
   
   // Data quality assessment
