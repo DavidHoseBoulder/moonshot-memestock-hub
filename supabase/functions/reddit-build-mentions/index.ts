@@ -46,6 +46,9 @@ const MIN_CHUNK_MINUTES = Number(
 const MAX_ATTEMPTS = Number(
   Deno.env.get("REDDIT_MENTIONS_MAX_ATTEMPTS") ?? "3",
 );
+const MAX_SPLIT_DEPTH = Number(
+  Deno.env.get("REDDIT_MENTIONS_MAX_SPLIT_DEPTH") ?? "4",
+);
 
 function normalizeDate(dateStr: string): string {
   return new Date(`${dateStr}T00:00:00Z`).toISOString().slice(0, 10);
@@ -85,6 +88,7 @@ async function runWindowWithSplit(
   windowEnd: Date,
   minChunkMinutes: number,
   debug: boolean,
+  depth = 0,
 ): Promise<{ stats: MentionStats; windows: WindowResult[] }> {
   const diffMs = windowEnd.getTime() - windowStart.getTime();
   const minMs = minChunkMinutes * 60 * 1000;
@@ -113,16 +117,28 @@ async function runWindowWithSplit(
     };
   } catch (error) {
     const err = error as { code?: string; message?: string };
-    if (err?.code === "57014" && diffMs > minMs) {
+    if (err?.code === "57014" && diffMs > minMs && depth < MAX_SPLIT_DEPTH) {
       const mid = new Date(windowStart.getTime() + diffMs / 2);
       if (debug) {
         console.warn(
           "[reddit-build-mentions] splitting window",
-          { d0, d3 },
+          { d0, d3, depth },
         );
       }
-      const left = await runWindowWithSplit(windowStart, mid, minChunkMinutes, debug);
-      const right = await runWindowWithSplit(mid, windowEnd, minChunkMinutes, debug);
+      const left = await runWindowWithSplit(
+        windowStart,
+        mid,
+        minChunkMinutes,
+        debug,
+        depth + 1,
+      );
+      const right = await runWindowWithSplit(
+        mid,
+        windowEnd,
+        minChunkMinutes,
+        debug,
+        depth + 1,
+      );
       return {
         stats: {
           cashtag_rows: left.stats.cashtag_rows + right.stats.cashtag_rows,
@@ -191,95 +207,82 @@ serve(async (req) => {
   let keywordTotal = 0;
   let overallTotal = 0;
 
-  const queue: Array<{ start: Date; end: Date; attempt: number }> = [];
+  type QueueItem = {
+    start: Date;
+    end: Date;
+    attempt: number;
+    depth: number;
+  };
+
+  const queue: QueueItem[] = [];
   for (let ts = startDateTime.getTime(); ts < endDateTime.getTime(); ts += stepMs) {
     const windowStart = new Date(ts);
     const windowEnd = new Date(Math.min(ts + stepMs, endDateTime.getTime()));
     if (windowEnd <= windowStart) continue;
-    queue.push({ start: windowStart, end: windowEnd, attempt: 1 });
+    queue.push({ start: windowStart, end: windowEnd, attempt: 1, depth: 0 });
   }
 
-  const deferredFailures: Array<{ start: Date; end: Date; attempt: number; error: string }> = [];
-
   while (queue.length > 0) {
-    const { start, end, attempt } = queue.shift()!;
+    const item = queue.shift()!;
+    const { start, end, attempt, depth } = item;
     const d0 = formatIso(start);
     const d3 = formatIso(end);
+    const durationMs = end.getTime() - start.getTime();
+    const durationMinutes = Math.max(1, Math.floor(durationMs / 60000));
+
     try {
       const { stats, windows: subWindows } = await runWindowWithSplit(
         start,
         end,
         Math.max(1, MIN_CHUNK_MINUTES),
         debug,
+        depth,
       );
       cashtagTotal += stats.cashtag_rows;
       keywordTotal += stats.keyword_rows;
       overallTotal += stats.total_rows;
       results.push(...subWindows);
+      continue;
     } catch (error) {
       const err = (error as Error).message ?? String(error);
-      console.error("[reddit-build-mentions] window failed", { d0, d3, attempt, err });
-      if (attempt < maxAttempts) {
-        deferredFailures.push({ start, end, attempt: attempt + 1, error: err });
-      } else {
-        results.push({
-          start: d0,
-          end: d3,
-          cashtag_rows: 0,
-          keyword_rows: 0,
-          total_rows: 0,
-          status: "error",
-          error: err,
-        });
-      }
-    }
-  }
-
-  if (deferredFailures.length > 0) {
-    if (debug) {
-      console.warn(
-        "[reddit-build-mentions] requeueing failed windows",
-        deferredFailures.map(({ start, end, attempt }) => ({
-          d0: formatIso(start),
-          d3: formatIso(end),
-          attempt,
-        })),
+      console.error(
+        "[reddit-build-mentions] window failed",
+        { d0, d3, attempt, depth, err },
       );
-    }
-    for (const failure of deferredFailures) {
-      queue.push(failure);
-    }
-    while (queue.length > 0) {
-      const { start, end, attempt } = queue.shift()!;
-      const d0 = formatIso(start);
-      const d3 = formatIso(end);
-      try {
-        const { stats, windows: subWindows } = await runWindowWithSplit(
-          start,
-          end,
-          Math.max(1, MIN_CHUNK_MINUTES),
-          debug,
-        );
-        cashtagTotal += stats.cashtag_rows;
-        keywordTotal += stats.keyword_rows;
-        overallTotal += stats.total_rows;
-        results.push(...subWindows);
-      } catch (error) {
-        const err = (error as Error).message ?? String(error);
-        console.error(
-          "[reddit-build-mentions] window failed on final retry",
-          { d0, d3, attempt, err },
-        );
-        results.push({
-          start: d0,
-          end: d3,
-          cashtag_rows: 0,
-          keyword_rows: 0,
-          total_rows: 0,
-          status: "error",
-          error: err,
-        });
+
+      if (attempt < maxAttempts) {
+        queue.push({ start, end, attempt: attempt + 1, depth });
+        if (debug) {
+          console.warn(
+            "[reddit-build-mentions] retrying window",
+            { d0, d3, attempt: attempt + 1, depth },
+          );
+        }
+        continue;
       }
+
+      if (durationMinutes > Math.max(1, MIN_CHUNK_MINUTES) && depth < MAX_SPLIT_DEPTH) {
+        const mid = new Date(start.getTime() + durationMs / 2);
+        queue.push({ start, end: mid, attempt: 1, depth: depth + 1 });
+        queue.push({ start: mid, end, attempt: 1, depth: depth + 1 });
+        if (debug) {
+          console.warn(
+            "[reddit-build-mentions] splitting window after retries",
+            { d0, d3, depth },
+          );
+        }
+        continue;
+      }
+
+      results.push({
+        start: d0,
+        end: d3,
+        cashtag_rows: 0,
+        keyword_rows: 0,
+        total_rows: 0,
+        status: "error",
+        error: err,
+      });
     }
   }
 
