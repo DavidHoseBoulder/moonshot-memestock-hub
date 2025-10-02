@@ -31,6 +31,7 @@ import {
 } from 'lucide-react';
 import SourceFilter, { SourceType, getSourceIcon, getSourceColor, getSourceBadgeColor } from '@/components/SourceFilter';
 import { aggregateSentiment, getSentimentLabel } from '@/utils/sentimentAggregator';
+import { useSentimentBlending, WeightPreset } from '@/hooks/useSentimentBlending';
 
 // Types
 interface SentimentData {
@@ -101,6 +102,9 @@ const TodaysSentiment = () => {
 
   const { toast } = useToast();
   const navigate = useNavigate();
+  
+  // Blending weights hook
+  const { weights, preset, applyPreset, setCustomWeights, blendSentiment, presets, isLoading: isLoadingWeights } = useSentimentBlending();
 
   // Helper functions
   const formatDate = (date: Date) => 
@@ -358,7 +362,7 @@ const TodaysSentiment = () => {
         });
       });
 
-      // Process StockTwits data and merge
+      // Process StockTwits data and merge - USE BLENDING
       stocktwitsData.forEach((item: any) => {
         const score = item.sentiment_score || 0;
         // Extract actual message count from metadata if available
@@ -373,14 +377,10 @@ const TodaysSentiment = () => {
         const existing = symbolMap.get(item.symbol);
 
         if (existing) {
-          // Merge with Reddit data
-          const aggregated = aggregateSentiment(
-            existing.reddit_score,
+          // Merge with Reddit data using the blending hook
+          const blended = blendSentiment(
+            existing.reddit_score || null,
             score,
-            undefined,
-            undefined,
-            undefined,
-            undefined,
             0.75,
             item.confidence_score || 0.8
           );
@@ -394,10 +394,10 @@ const TodaysSentiment = () => {
             ...existing,
             stocktwits_score: score,
             stocktwits_mentions: volume,
-            avg_score: aggregated.overall,
-            combined_score: aggregated.overall,
-            avg_confidence: aggregated.confidence,
-            sentiment: aggregated.overall > 0.1 ? 'Bullish' : aggregated.overall < -0.1 ? 'Bearish' : 'Neutral',
+            avg_score: blended.blended_score || existing.reddit_score || score,
+            combined_score: blended.blended_score,
+            avg_confidence: blended.blended_confidence,
+            sentiment: (blended.blended_score || 0) > 0.1 ? 'Bullish' : (blended.blended_score || 0) < -0.1 ? 'Bearish' : 'Neutral',
             sources: ['reddit', 'stocktwits'],
             consensus,
             mentions: existing.mentions + volume,
@@ -774,6 +774,70 @@ const TodaysSentiment = () => {
               />
             </div>
           </div>
+          
+          {/* Blending Weights Section */}
+          {filters.sourceFilter === 'all' && (
+            <div className="mt-4 pt-4 border-t">
+              <div className="flex items-center justify-between mb-3">
+                <Label className="text-sm font-medium">Source Blending Weights</Label>
+                {isLoadingWeights && (
+                  <span className="text-xs text-muted-foreground">Loading from config...</span>
+                )}
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                {/* Preset Selector */}
+                <div className="space-y-2">
+                  <Label className="text-xs text-muted-foreground">Preset</Label>
+                  <Select value={preset} onValueChange={(v) => applyPreset(v as WeightPreset)}>
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {presets.map((p) => (
+                        <SelectItem key={p} value={p}>
+                          {p}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                
+                {/* Reddit Weight */}
+                <div className="space-y-2">
+                  <Label className="text-xs text-muted-foreground">
+                    Reddit: {(weights.reddit * 100).toFixed(0)}%
+                  </Label>
+                  <Slider
+                    value={[weights.reddit * 100]}
+                    onValueChange={([value]) => 
+                      setCustomWeights({ reddit: value / 100, stocktwits: (100 - value) / 100 })
+                    }
+                    max={100}
+                    min={0}
+                    step={5}
+                    className="w-full"
+                  />
+                </div>
+                
+                {/* StockTwits Weight */}
+                <div className="space-y-2">
+                  <Label className="text-xs text-muted-foreground">
+                    StockTwits: {(weights.stocktwits * 100).toFixed(0)}%
+                  </Label>
+                  <Slider
+                    value={[weights.stocktwits * 100]}
+                    onValueChange={([value]) => 
+                      setCustomWeights({ reddit: (100 - value) / 100, stocktwits: value / 100 })
+                    }
+                    max={100}
+                    min={0}
+                    step={5}
+                    className="w-full"
+                  />
+                </div>
+              </div>
+            </div>
+          )}
         </CardContent>
       </Card>
 
