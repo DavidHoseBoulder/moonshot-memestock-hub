@@ -331,9 +331,13 @@ const TodaysSentiment = () => {
       // Process Reddit data
       redditData.forEach((item: any) => {
         const score = item.avg_score || 0;
-        if (Math.abs(score) < filters.minScore) return;
-
         const mentions = item.n_mentions || 0;
+        
+        // Debug: log scores being filtered
+        if (Math.abs(score) < filters.minScore) {
+          console.log(`📊 Filtered out ${item.symbol}: score ${score.toFixed(3)} < threshold ${filters.minScore}`);
+          return;
+        }
         symbolMap.set(item.symbol, {
           symbol: item.symbol,
           mentions: mentions,
@@ -354,9 +358,13 @@ const TodaysSentiment = () => {
       // Process StockTwits data and merge
       stocktwitsData.forEach((item: any) => {
         const score = item.sentiment_score || 0;
-        if (Math.abs(score) < filters.minScore) return;
-
         const volume = item.volume_indicator || 0;
+        
+        // Debug: log scores being filtered
+        if (Math.abs(score) < filters.minScore) {
+          console.log(`📊 Filtered out ${item.symbol} (StockTwits): score ${score.toFixed(3)} < threshold ${filters.minScore}`);
+          return;
+        }
         const existing = symbolMap.get(item.symbol);
 
         if (existing) {
@@ -411,6 +419,11 @@ const TodaysSentiment = () => {
 
       const processed = Array.from(symbolMap.values());
       console.log('📊 Merged data:', processed.length, 'unique symbols');
+      
+      if (processed.length === 0 && (redditData.length > 0 || stocktwitsData.length > 0)) {
+        console.warn(`⚠️ All ${redditData.length + stocktwitsData.length} items filtered out! Check minScore threshold: ${filters.minScore}`);
+      }
+      
       setSentimentData(processed);
       
       if (processed.length === 0) {
