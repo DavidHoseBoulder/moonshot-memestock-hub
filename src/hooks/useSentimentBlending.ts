@@ -19,12 +19,13 @@ const PRESET_WEIGHTS = {
   '60-40': { reddit: 0.6, stocktwits: 0.4 },
   '50-50': { reddit: 0.5, stocktwits: 0.5 },
   '40-60': { reddit: 0.4, stocktwits: 0.6 },
+  '30-70': { reddit: 0.3, stocktwits: 0.7 },
   'stocktwits-only': { reddit: 0.0, stocktwits: 1.0 },
 } as const;
 
 export type WeightPreset = keyof typeof PRESET_WEIGHTS;
 
-export const useSentimentBlending = (initialPreset: WeightPreset = '60-40') => {
+export const useSentimentBlending = (initialPreset: WeightPreset = '30-70') => {
   const [weights, setWeights] = useState<BlendingWeights>(PRESET_WEIGHTS[initialPreset]);
   const [preset, setPreset] = useState<WeightPreset>(initialPreset);
 

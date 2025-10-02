@@ -70,7 +70,7 @@ const DailyTradingPipeline = () => {
   const [showDebug, setShowDebug] = useState(false);
   const [stackingEngine] = useState(() => new SentimentStackingEngine(DEFAULT_STACKING_CONFIG));
   const { toast } = useToast();
-  const { weights, preset, applyPreset, blendSentiment, presets } = useSentimentBlending('60-40');
+  const { weights, preset, applyPreset, blendSentiment, presets } = useSentimentBlending();
   
   // Store sentiment maps for UI display
   const [sentimentSources, setSentimentSources] = useState<{
@@ -963,11 +963,23 @@ const DailyTradingPipeline = () => {
           marketDataErrors.volume = 'Invalid or missing volume data';
         }
         
+        // Blend Reddit and StockTwits sentiment using the configured weights
+        const redditScore = redditSentimentMap.get(ticker);
+        const stocktwitsData = stocktwitsSentimentMap.get(ticker);
+        const stocktwitsScore = stocktwitsData?.score;
+        
+        const blendedResult = blendSentiment(
+          redditScore ?? null,
+          stocktwitsScore ?? null,
+          0.7, // Reddit confidence
+          stocktwitsData?.confidence ?? 0.8 // StockTwits confidence
+        );
+        
         // Apply sentiment stacking engine with enhanced data sources and error tracking
         const stackingResult = stackingEngine.stackSentiment({
           symbol: ticker,
-          reddit_sentiment: redditSentimentMap.get(ticker),
-          stocktwits_sentiment: stocktwitsSentimentMap.get(ticker)?.score,
+          reddit_sentiment: blendedResult.reddit_score ?? undefined,
+          stocktwits_sentiment: blendedResult.stocktwits_score ?? undefined,
           news_sentiment: newsSentimentMap.get(ticker),
           google_trends: googleTrendsMap.get(ticker),
           youtube_sentiment: youtubeSentimentMap.get(ticker),
@@ -1016,13 +1028,21 @@ const DailyTradingPipeline = () => {
             }
           }
 
+          // Use blended sentiment score for the signal
+          const blendedSentiment = blendSentiment(
+            redditSentimentMap.get(ticker) ?? null,
+            stocktwitsSentimentMap.get(ticker)?.score ?? null,
+            0.7,
+            stocktwitsSentimentMap.get(ticker)?.confidence ?? 0.8
+          );
+          
           const signal: TradeSignal = {
             ticker: ticker,
             category: category,
             signal_type: 'BUY',
             confidence: stackingResult.confidenceScore,
             price: marketData?.price || 0,
-            sentiment_score: Math.max(
+            sentiment_score: blendedSentiment.blended_score ?? Math.max(
               redditSentimentMap.get(ticker) || 0,
               stocktwitsSentimentMap.get(ticker)?.score || 0,
               newsSentimentMap.get(ticker) || 0
