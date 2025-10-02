@@ -306,16 +306,15 @@ const TodaysSentiment = () => {
         }
       }
 
-      // Fetch StockTwits data
+      // Fetch StockTwits data (volume_indicator is always 1, so don't filter by it)
       let stocktwitsData: any[] = [];
       if (filters.sourceFilter === 'all' || filters.sourceFilter === 'stocktwits') {
         const { data, error } = await supabase
           .from('sentiment_history')
-          .select('symbol, sentiment_score, confidence_score, volume_indicator')
+          .select('symbol, sentiment_score, confidence_score, volume_indicator, metadata')
           .eq('source', 'stocktwits')
           .eq('collected_date', dateStr)
-          .gte('volume_indicator', filters.minPosts)
-          .order('volume_indicator', { ascending: false });
+          .order('sentiment_score', { ascending: false });
 
         if (error) {
           console.error('❌ StockTwits data query error:', error);
@@ -333,7 +332,11 @@ const TodaysSentiment = () => {
         const score = item.avg_score || 0;
         const mentions = item.n_mentions || 0;
         
-        // Debug: log scores being filtered
+        // Skip if score is exactly 0 (no sentiment data) OR below threshold
+        if (score === 0) {
+          console.log(`📊 Skipping ${item.symbol}: no sentiment scores (0.000)`);
+          return;
+        }
         if (Math.abs(score) < filters.minScore) {
           console.log(`📊 Filtered out ${item.symbol}: score ${score.toFixed(3)} < threshold ${filters.minScore}`);
           return;
@@ -358,9 +361,11 @@ const TodaysSentiment = () => {
       // Process StockTwits data and merge
       stocktwitsData.forEach((item: any) => {
         const score = item.sentiment_score || 0;
-        const volume = item.volume_indicator || 0;
+        // Extract actual message count from metadata if available
+        const messageCount = item.metadata?.total_messages || item.metadata?.message_count || 1;
+        const volume = Math.max(messageCount, item.volume_indicator || 1);
         
-        // Debug: log scores being filtered
+        // Skip very low scores or apply threshold
         if (Math.abs(score) < filters.minScore) {
           console.log(`📊 Filtered out ${item.symbol} (StockTwits): score ${score.toFixed(3)} < threshold ${filters.minScore}`);
           return;
