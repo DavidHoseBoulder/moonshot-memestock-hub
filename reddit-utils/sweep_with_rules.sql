@@ -563,5 +563,7 @@ SELECT
     current_user                               AS opened_by
 FROM tmp_calc_tp c
 CROSS JOIN tmp_params p
-WHERE (CASE WHEN :TP_PCT::numeric > 0 THEN c.sim_ret ELSE c.ret END) IS NOT NULL;
+WHERE (CASE WHEN :TP_PCT::numeric > 0 THEN c.sim_ret ELSE c.ret END) IS NOT NULL
+ON CONFLICT (mode, symbol, horizon, side, trade_date)
+WHERE mode = 'paper'::text DO NOTHING;
 \endif
