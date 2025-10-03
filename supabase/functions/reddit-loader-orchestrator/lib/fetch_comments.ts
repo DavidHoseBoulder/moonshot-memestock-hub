@@ -9,7 +9,7 @@ export interface FetchCommentsParams {
   supabaseClient: SupabaseClient;
   persistRaw: boolean;
   postsBySubreddit: PostsBySubreddit;
-  activeTickers: string[];
+  activeTickers?: string[];
   debug: boolean;
 }
 
@@ -132,6 +132,28 @@ async function fallbackPostsFromDatabase(
     map[subreddit][day] = Array.from(set);
   }
   return map;
+}
+
+async function resolveActiveTickers(
+  client: SupabaseClient,
+): Promise<string[]> {
+  const { data, error } = await client
+    .from("ticker_universe")
+    .select("symbol, priority")
+    .eq("active", true)
+    .order("priority", { ascending: true })
+    .limit(1000);
+
+  if (error) {
+    throw new Error(`Failed to load active tickers: ${error.message}`);
+  }
+
+  return Array.from(new Set(
+    (data ?? [])
+      .map((row: { symbol?: string | null }) => row.symbol?.trim())
+      .filter((symbol): symbol is string => !!symbol)
+      .map((symbol) => symbol.toUpperCase()),
+  ));
 }
 
 async function getAccessToken(): Promise<string> {
@@ -373,16 +395,16 @@ export async function fetchCommentsForWindow(
     persistRaw: persistRawEnabled,
     postsBySubreddit,
     subreddits: provided,
-    activeTickers,
     debug,
   } = params;
 
   const dates = daysBetween(startDate, endDate);
   const summary: CommentBatchSummary[] = [];
 
-  const activeTickerSet = new Set(
-    activeTickers.map((sym) => sym.toUpperCase()),
-  );
+  const resolvedTickers = params.activeTickers?.length
+    ? params.activeTickers
+    : await resolveActiveTickers(supabaseClient);
+  const activeTickerSet = new Set(resolvedTickers.map((sym) => sym.toUpperCase()));
   const cashtagRegex = /\$([A-Za-z]{1,5})(?![A-Za-z])/g;
 
   let effectiveMap: PostsBySubreddit = postsBySubreddit;

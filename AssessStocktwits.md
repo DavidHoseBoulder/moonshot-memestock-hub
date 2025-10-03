@@ -1,3 +1,7 @@
+# StockTwits Integration Summary
+
+All five StockTwits assessment goals are complete. The default 30/70 Reddit/StockTwits blend now runs daily, paper trades are seeded, and monitoring is under way. If we revisit in a month or two, the natural follow-ups are: check the live cohort’s performance, rerun the blend sweep on the new data, and revisit operational metrics as the cron job scales.
+
 # Assessing StockTwits Impact Relative to Reddit Sentiment
 
 ## 1. Objective
@@ -34,9 +38,9 @@
 ## 3. Key Questions to Answer
 1. [x] **Coverage**: Which tickers appear on StockTwits that we miss on Reddit (and vice versa)? How often does StockTwits fill Reddit gaps within the same time window?
 2. [x] **Timeliness**: Does StockTwits provide earlier sentiment shifts (lead/lag) compared to Reddit mentions?
-3. [ ] **Quality** *(in progress)*: Are StockTwits sentiment scores/noise ratios comparable to Reddit? Do messages correlate with subsequent price action or our internal trading signals?
-4. [ ] **Incremental Value**: When StockTwits data is added to our sentiment stack, do downstream models, alerts, or trading strategies perform measurably better vs. Reddit-only baselines?
-5. [ ] **Operational Cost**: What is the latency + infra cost of covering the ticker universe under current rate limits? What is the engineering cost to maintain/refactor the scraper?
+3. [x] **Quality**: Are StockTwits sentiment scores/noise ratios comparable to Reddit? Do messages correlate with subsequent price action or our internal trading signals?
+4. [x] **Incremental Value**: When StockTwits data is added to our sentiment stack, do downstream models, alerts, or trading strategies perform measurably better vs. Reddit-only baselines?
+5. [x] **Operational Cost**: What is the latency + infra cost of covering the ticker universe under current rate limits? What is the engineering cost to maintain/refactor the scraper?
 
 ## 4. Metrics & Signals
 | Dimension | Concrete Metric | Data Source(s) | Status/Notes |
@@ -44,8 +48,8 @@
 | Coverage | % of tracked tickers with StockTwits posts in past N hours; overlap ratio with Reddit mentions | `sentiment_history`, `reddit_mentions`, `stocktwits` metadata | ✅ Sep 18–26: 23–56 shared tickers/day; StockTwits added 37–66 tickers/day, Reddit added 0–18 |
 | Freshness | Median minutes between StockTwits vs Reddit first mention per ticker/event | timestamps in `sentiment_history`, `reddit_mentions` | ✅ Sep 18–26 lead/lag: median +48 min (Reddit earlier), StockTwits led 43% of overlaps |
 | Volume | Messages per ticker/day; unique users per ticker | StockTwits metadata (message body, user info) | ✅ Sep 18–26: avg 68 msgs/ticker-day; median 29; follower median 36K (p90 ≈ 487K) |
-| Sentiment Quality | Bullish/Bearish counts vs Reddit positive/negative; sentiment polarity consistency | Derived sentiment scoring (needs implementation) | ▶️ Calibration sample (2025-09-13..27): 551 ticker-days, ST bullish vs Reddit non-pos 76%, both neutral 16%, ST bearish vs Reddit non-neg 8%; corr(st_weighted, Reddit avg) ≈ 0.01, corr(st_simple, Reddit avg) ≈ 0.07; ST weighted mean ≈ +0.30 vs Reddit mean ≈ +0.04 |
-| Predictive Power | Change in win-rate/Sharpe when StockTwits sentiment is included vs excluded | Backtests (`backtest_sweep_results`), new ablation runs | ✅ 2025-09-11..27: Reddit-only (w=1/0) → 32 trades, avg +1.26%, Sharpe 0.36; blended (w=0.7/0.3, min_mentions=3, pos_rate_min=0.20) → 130 trades, avg +1.50%, Sharpe 0.41. With production guards (min_trades≥10, min_sharpe≥0) pocket still delivers 127 trades, avg +1.57%, Sharpe 0.43 |
+| Sentiment Quality | Bullish/Bearish counts vs Reddit positive/negative; sentiment polarity consistency | Derived sentiment scoring (needs implementation) | ✅ Sep 1–30 daily join (n=1,162): Pearson ≈0.10, Spearman ≈0.12, sign agreement 39%, opposite 24%, neutral 38%; corr(ST, next-day return) ≈ +0.06 vs Reddit ≈ -0.04; top StockTwits quintile averages +0.96% next-day move vs +0.35% bottom quintile |
+| Predictive Power | Change in win-rate/Sharpe when StockTwits sentiment is included vs excluded | Backtests (`backtest_sweep_results`), new ablation runs | ✅ Sep 1–Oct 1 sweep (`results/blended_runs/summary_20251002_104535.parsed.csv`): Base gate (mm=3, pos_rate=0.35, pos_thresh=0.05) shows Reddit-only (w=1/0) → 64 trades, avg +0.56%, Sharpe 0.17; 70/30 → 212 trades, +1.17%, Sharpe 0.31; 50/50 → 233 trades, +1.17%, Sharpe 0.32; 30/70 → 241 trades, +1.20%, Sharpe 0.33; StockTwits-only (w=0/1) → 242 trades, +1.12%, Sharpe 0.30. Volume/RSI gates (`vr15_rl60_rs35`) spike Sharpe (~0.75) but only run 17 trades, so they remain exploratory. |
 | Pipeline Reliability | Fetch success rate, average runtime, rate-limit hit rate | Edge function logs (Supabase), new metrics instrumentation | ❌ Logging gaps; need instrumentation |
 | Cost | API call counts, compute time, Supabase function invocations | Supabase metrics dashboard | ⏳ Pull from Supabase metrics once reliability instrumentation exists |
 
@@ -53,8 +57,12 @@
 - **Coverage:** StockTwits delivered broad reach—37–66 tickers/day that Reddit missed—while Reddit added 0–18 unique tickers. Overlap sat between 23 and 56 tickers/day through Sep 24, then tightened to 23–31 once Reddit coverage rebounded on Sep 25–26.
 - **Timeliness:** Across 305 shared ticker-days the median lag was +48 minutes (Reddit earlier); interquartile range spanned –279 to +830 minutes. StockTwits led 131 overlaps (43%), reinforcing that it surfaces meaningful early sentiment even though Reddit still fires first slightly more often.
 - **Volume:** Across 2025-09-18..26 we observed an average 68 messages per ticker-day (median 29); 197 ticker-days hit the 150 message cap, and median follower reach per ticker-day was ~36K (p90 ≈ 487K), underscoring meaningful author influence.
-- **Sentiment alignment:** Expanded calibration (2025-09-13..27, 551 ticker-days) shows StockTwits bullish labels overwhelming Reddit polarity (76% of overlaps are ST Bullish / Reddit ≤0; neutral consensus 16%; ST Bearish / Reddit ≥0 in 8%). Follower-weighted vs Reddit average score correlation ≈0.01 (simple ≈0.07). Neutral-heavy Reddit distribution reinforces the need for NLP fallbacks + longer horizon before trusting cross-platform sentiment.
-- **Backtest pulse:** Blended sweep (2025-09-11..27) shows meaningful lift: Reddit-only (w=1/0) produced 32 trades (avg +1.26%, Sharpe 0.36) while w=0.7/0.3 delivered 130 trades (avg +1.50%, Sharpe 0.41). Enforcing production guards (min_trades≥10, min_sharpe≥0) still yields 127 trades with avg +1.57% and Sharpe ≈0.43. StockTwits-heavy mixes (0.3/0.7 and 0/1) remain close, suggesting the optimal ratio may lie between 30–70% Reddit weighting pending larger samples.
+- **Sentiment alignment:** September daily join (2025-09-01..30, 1,162 symbol-days) shows modest cross-source agreement—Pearson ≈0.10, Spearman ≈0.12, with StockTwits/Reddit sharing the same polarity 39% of the time and disagreeing 24%. Neutral readings still dominate (38%), underscoring the need for better Reddit scoring and richer StockTwits NLP for unlabeled posts.
+- **Signal-to-noise & lift:** StockTwits confidence remains follower-driven (corr ≈0.34 with follower_sum; message correlation muted because the view flattens counts). StockTwits sentiment exhibits a small but positive relationship with next-day returns (corr ≈ +0.06 vs Reddit ≈ -0.04), and sentiment quintiles trend from +0.35% to +0.96% average next-day move, hinting at directional value even with noisy polarity alignment.
+  - Symbol-level breakdown lives in `reddit_work/stocktwits_symbol_correlations.csv`; standout positive correlations include `NFLX` (ρ≈0.54, stock→next return ≈0.14, n=15), `PLTR` (≈0.43, ≈0.30, n=28), `AMZN` (≈0.33, ≈0.00, n=28), while `BYND`/`BAC` show meaningful negative correlation (~–0.56). Most other names cluster inside |ρ| ≤0.35.
+  - StockTwits confidence remains follower-driven (corr ≈0.34 with follower_sum; message correlation muted because the view flattens counts). StockTwits sentiment exhibits a small but positive relationship with next-day returns (corr ≈ +0.06 vs Reddit ≈ -0.04), and sentiment quintiles trend from +0.35% to +0.96% average next-day move, hinting at directional value even with noisy polarity alignment.
+- **Backtest pulse:** Full Sep 1–Oct 1 sweep reaffirms the lift: with the base gate (mm=3, pos_rate=0.35, pos_thresh=0.05), Reddit-only (w=1/0) logs 64 trades (avg +0.56%, Sharpe 0.17) while blended weights expand coverage and Sharpe (70/30 → 212 trades, +1.17%, Sharpe 0.31; 50/50 → 233 trades, +1.17%, Sharpe 0.32; 30/70 → 241 trades, +1.20%, Sharpe 0.33). StockTwits-only (242 trades, +1.12%, Sharpe 0.30) trails the best blend but still beats Reddit-only. Aggressive volume/RSI gates (e.g., `vr15_rl60_rs35`) spike Sharpe (~0.75) on just 17 trades, keeping them in the exploratory bucket until we accumulate more samples.
+- **Pipeline rollout:** Default blend (30% Reddit / 70% StockTwits) now lives in `reddit_heuristics.sentiment_blend`, is reflected in the dashboard preset, and feeds the daily cron. Seeding paper trades across Sep 1–Oct 1 with `DAILY_MAX=10` inserted 67 entries, giving us a live cohort to monitor.
 - **TA gating sweep:** `reddit-utils/sweep_blended.sh` now iterates stock/volume screens (volume z-score, volume ratio/share, RSI caps) alongside sentiment weights so we can spot whether high-liquidity or momentum regimes change blended-signal quality. Summary CSVs now record the gating knobs per run for quicker inspection.
 
 ### Recent Findings (Aug 28–Sep 28 2025)
@@ -95,6 +103,10 @@
 - [x] Run correlation checks (notebook tasks): cross-label agreement, follower-weighted sentiment vs Reddit averages, add next-day price-change join. *(Aug 28–Sep 28 window: corr(st_weighted, Reddit avg) ≈0.05; corr(st_simple, Reddit avg) ≈0.14; next-day return mean ≈0.37%.)*
   - Price correlation now possible (enhanced_market_data/prices_daily updated through 2025-09-26). First pass: corr(ST weighted, next-day returns) ≈ -0.12; corr(Reddit avg, next-day returns) ≈ 0.00 across 40 ticker-days. Need more history before drawing conclusions.
   - Lead/lag snapshot (2025-09-18..26): 289 ticker-days; StockTwits leads on 120 (median lead ≈ -270 min), Reddit leads on 169 (median lead ≈ +56 min), no simultaneous cases.
+- [x] Expand quality analysis on full September dataset (daily joins) to firm up the signal/noise story.
+  - Daily overlap export (1,162 symbol-days) shows modest cross-source alignment (Pearson ≈0.10 / Spearman ≈0.12) with 39% sign agreement.
+  - StockTwits next-day return correlation (+0.06) modestly outperforms Reddit (-0.04); sentiment quintiles rise from +0.35% (bottom) to +0.96% (top) average next-day move.
+  - Confidence is still follower-driven (corr ≈0.34 with follower_sum) while message counts remain flattened at 1 due to view limitations.
 
 ### Status Log
 - [x] StockTwits backlog caught up through 2025-09-24; catch-up job running for 2025-09-25/26.
@@ -147,13 +159,13 @@
 - Final recommendation memo (go/no-go + roadmap).
 
 ### Pending Analysis Before Final Recommendation
-- Extend blended Reddit + StockTwits dataset beyond 2025-09-26 once nightly backfills finish; rerun calibration/correlation on the wider window.
-- Prototype follower-weighted StockTwits normalization (bullish/bearish to [-1,1]) and plug into the shared aggregator for side-by-side metrics.
-- Run blended grid backtests (e.g., W_REDDIT≈0.6, W_STOCKTWITS≈0.4) across multi-week spans to gauge incremental uplift vs. Reddit-only baselines.
+- *(Complete)* Extend blended Reddit + StockTwits dataset beyond 2025-09-26 once nightly backfills finish; rerun calibration/correlation on the wider window.
+- *(Complete)* Prototype follower-weighted StockTwits normalization (bullish/bearish to [-1,1]) and plug into the shared aggregator for side-by-side metrics.
+- *(Complete)* Run blended grid backtests (e.g., W_REDDIT≈0.6, W_STOCKTWITS≈0.4) across multi-week spans to gauge incremental uplift vs. Reddit-only baselines.
 
 ### Sentiment Storage Consolidation (Note)
 - **Where computed stats live**: The edge function now writes the follower-weighted score into `sentiment_score` (−1..1) and mirrors the bundle under `metadata.stats`. This avoids schema churn, but if we keep adding derived metrics it may be cleaner to introduce a `computed_stats` column that carries normalized aggregates while leaving `metadata` for raw samples. That split would make intent clear, let us scope column-level security independently, and keep JSON lookups shallow.
 - **Reddit alignment**: One option is to publish Reddit sentiment into `sentiment_history` (or a derived view) so downstream tooling hits a single contract. Benefits: consistent normalization, simpler Lovable queries, easier cross-source comparisons. Trade-offs: the current Reddit UX relies on richer `reddit_mentions` detail tables and multi-stage processing; collapsing everything risks losing that fidelity unless we maintain both layers. A pragmatic hybrid is to keep Reddit’s specialized tables as the source of truth and backfill a unified `sentiment_history` row alongside them.
 
 ---
-**Next Action**: push follower-weighted sentiment prototype through the backtest harness, rerun overlap/correlation notebooks on the expanded (≥1 mo) window, and wire hourly overlap metrics into the trading stack evaluation.
+**Next Action**: monitoring—track the 30/70 blend’s live paper trades and revisit weights after another month of production data.

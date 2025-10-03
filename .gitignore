@@ -26,3 +26,7 @@ dist-ssr
 
 # Local Supabase temp files
 supabase/.temp/
+
+# Local analysis
+results/
+reddit-utils/results/

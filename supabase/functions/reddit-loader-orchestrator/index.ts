@@ -34,7 +34,11 @@ if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
 }
 
 const supabase = SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY
-  ? createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
+  ? createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
+    global: {
+      fetch,
+    },
+  })
   : null;
 
 const MAX_SUBREDDITS_PER_BATCH = Number(
@@ -88,7 +92,16 @@ async function triggerNextInvocation(payload: LoaderPayload) {
       await new Promise((resolve) => setTimeout(resolve, BATCH_CHAIN_DELAY_MS));
     }
 
-    const { error } = await supabase.functions.invoke(
+    console.log(
+      "[reddit-loader-orchestrator] triggering chained invocation",
+      {
+        phase: payload.phase ?? "posts",
+        batchSize: payload.current_batch?.length ?? payload.remaining_subreddits?.length ?? 0,
+        batchId: payload.batch_id,
+      },
+    );
+
+    const { error, data } = await supabase.functions.invoke(
       "reddit-loader-orchestrator",
       { body: payload },
     );
@@ -96,7 +109,20 @@ async function triggerNextInvocation(payload: LoaderPayload) {
     if (error) {
       console.error(
         "[reddit-loader-orchestrator] chained invocation failed",
-        error.message ?? error,
+        {
+          message: error.message,
+          status: (error as { status?: number }).status,
+          context: (error as { context?: unknown }).context,
+        },
+      );
+    } else {
+      console.log(
+        "[reddit-loader-orchestrator] chained invocation response",
+        {
+          phase: payload.phase ?? "posts",
+          batchId: payload.batch_id,
+          hasData: data !== null && data !== undefined,
+        },
       );
     }
   } catch (err) {
@@ -265,6 +291,18 @@ serve(async (req) => {
         debug: payload.debug ?? false,
       });
 
+      console.log(
+        "[reddit-loader-orchestrator] posts phase complete",
+        {
+          batchId,
+          startDate,
+          endDate,
+          subreddits: currentBatch,
+          batches: postResult.batches.length,
+          postsTotal: postResult.batches.reduce((sum, item) => sum + item.count, 0),
+        },
+      );
+
       if (!payload.skip_comments) {
         const chainPayload: LoaderPayload = {
           start_date: startDate,
@@ -277,8 +315,20 @@ serve(async (req) => {
           remaining_subreddits: remainingSubreddits,
           batch_id: batchId,
           active_tickers: postResult.activeTickers,
-          posts_map: postResult.postsBySubreddit,
         };
+
+        const postMapKeys = Object.keys(postResult.postsBySubreddit ?? {});
+        if (postMapKeys.length > 0) {
+          const serializedLength = JSON.stringify(postResult.postsBySubreddit).length;
+          if (serializedLength < 750_000) {
+            chainPayload.posts_map = postResult.postsBySubreddit;
+          } else {
+            console.warn(
+              "[reddit-loader-orchestrator] posts_map omitted from chain payload (size)",
+              { batchId, bytes: serializedLength, subreddits: postMapKeys.length },
+            );
+          }
+        }
 
         try {
           // @ts-ignore Edge runtime types not available locally
@@ -334,6 +384,18 @@ serve(async (req) => {
         activeTickers: payload.active_tickers ?? [],
         debug: payload.debug ?? false,
       });
+
+      console.log(
+        "[reddit-loader-orchestrator] comments phase complete",
+        {
+          batchId,
+          startDate,
+          endDate,
+          subreddits: currentBatch,
+          batches: commentResult.length,
+          commentsTotal: commentResult.reduce((sum, item) => sum + item.commentCount, 0),
+        },
+      );
 
       if (remainingSubreddits.length > 0) {
         const nextPayload: LoaderPayload = {
