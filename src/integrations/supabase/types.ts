@@ -1210,6 +1210,7 @@ export type Database = {
           recency_score_ok: number
           recency_score_stale: number
           sample_cap_trades: number
+          sentiment_blend: Json | null
           ta_config: Json | null
           weight_recency: number
           weight_sample: number
@@ -1230,6 +1231,7 @@ export type Database = {
           recency_score_ok?: number
           recency_score_stale?: number
           sample_cap_trades?: number
+          sentiment_blend?: Json | null
           ta_config?: Json | null
           weight_recency?: number
           weight_sample?: number
@@ -1250,6 +1252,7 @@ export type Database = {
           recency_score_ok?: number
           recency_score_stale?: number
           sample_cap_trades?: number
+          sentiment_blend?: Json | null
           ta_config?: Json | null
           weight_recency?: number
           weight_sample?: number
