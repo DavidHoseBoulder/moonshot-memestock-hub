@@ -197,6 +197,14 @@ const RedditSentimentHomescreen = () => {
         return;
       }
 
+      const mapConfidenceToGrade = (confidenceLabel: string | null): 'Strong' | 'Moderate' | 'Weak' => {
+        if (!confidenceLabel) return 'Weak';
+        const label = confidenceLabel.toLowerCase();
+        if (label === 'high') return 'Strong';
+        if (label === 'medium') return 'Moderate';
+        return 'Weak';
+      };
+
       const processed = data.map((item: any) => {
         // Determine open position status based on trading mode
         let hasOpenPosition = false;
@@ -208,25 +216,28 @@ const RedditSentimentHomescreen = () => {
           hasOpenPosition = item.has_open_real || false;
         }
 
+        const derivedGrade = item.grade || mapConfidenceToGrade(item.confidence_label);
+        const tradesCount = item.trades || 0;
+
         return {
           symbol: item.symbol,
           horizon: item.horizon || '',
           side: item.side || 'LONG',
-          grade: item.grade || 'Weak',
+          grade: derivedGrade,
           confidence_label: item.confidence_label || 'Low',
           confidence_score: item.confidence_score || 0,
           mentions: item.mentions || 0,
           sharpe: item.sharpe || 0,
           avg_ret: item.avg_ret || 0,
           win_rate: item.win_rate || 0,
-          trades: item.trades || 0,
+          trades: tradesCount,
           start_date: item.start_date || '',
           end_date: item.end_date || '',
           notes: item.notes,
           status: 'TRIGGERED' as 'TRIGGERED' | 'Active' | 'Closed',
           isNew: true,
           hasOpenPosition: hasOpenPosition,
-          gradeExplain: item.grade_explain || `${item.grade} confidence based on ${item.trades} trades`
+          gradeExplain: item.grade_explain || `${derivedGrade} confidence based on ${tradesCount} trades`
         };
       });
 
