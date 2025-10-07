@@ -64,7 +64,14 @@ Deno.serve(async (req) => {
     return new Response(null, { headers: corsHeaders })
   }
 
+  const startTime = Date.now()
+  const requestId = crypto.randomUUID().substring(0, 8)
+
   try {
+    console.log(`[${requestId}] ========== POLYGON MARKET DATA STARTED ==========`)
+    console.log(`[${requestId}] Timestamp: ${new Date().toISOString()}`)
+    console.log(`[${requestId}] Request ID: ${requestId}`)
+    
     const supabase = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
       Deno.env.get('SUPABASE_ANON_KEY') ?? ''
@@ -73,13 +80,14 @@ Deno.serve(async (req) => {
     const polygonApiKey = Deno.env.get('POLYGON_API_KEY')
     
     if (!polygonApiKey) {
-      console.error('❌ Missing Polygon API key - returning fallback response')
+      console.error(`[${requestId}] ❌ Missing Polygon API key - returning fallback response`)
       return new Response(
         JSON.stringify({ 
           success: false,
           error: 'Missing Polygon API key - configure in Supabase secrets',
           enhanced_data: [],
-          fallback_available: true
+          fallback_available: true,
+          requestId
         }),
         { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       )
@@ -87,27 +95,31 @@ Deno.serve(async (req) => {
 
     const { symbols, days = 30 } = await req.json()
     
+    console.log(`[${requestId}] Request params: ${JSON.stringify({ symbolCount: symbols?.length, days })}`)
+    
     if (!symbols || !Array.isArray(symbols)) {
+      console.error(`[${requestId}] ERROR: Missing or invalid symbols array`)
       return new Response(
-        JSON.stringify({ error: 'Missing or invalid symbols array' }),
+        JSON.stringify({ error: 'Missing or invalid symbols array', requestId }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       )
     }
 
-    console.log(`Fetching Polygon market data for ${symbols.length} symbols over ${days} days`)
+    console.log(`[${requestId}] Fetching Polygon market data for ${symbols.length} symbols over ${days} days`)
 
     const enhancedData: PolygonMarketData[] = []
+    const failedSymbols: string[] = []
     const BATCH_SIZE = 1 // Process one symbol at a time for rate limits
     const MAX_SYMBOLS = 10 // Limit to 10 symbols max for free tier
     
     // Limit symbols for free tier rate limits
     const limitedSymbols = symbols.slice(0, MAX_SYMBOLS)
-    console.log(`Limited symbols from ${symbols.length} to ${limitedSymbols.length} for Polygon free tier`)
+    console.log(`[${requestId}] Limited symbols from ${symbols.length} to ${limitedSymbols.length} for Polygon free tier`)
     
     // Process symbols in batches
     for (let i = 0; i < limitedSymbols.length; i += BATCH_SIZE) {
       const batch = limitedSymbols.slice(i, i + BATCH_SIZE)
-      console.log(`Processing Polygon batch ${Math.floor(i/BATCH_SIZE) + 1}/${Math.ceil(limitedSymbols.length/BATCH_SIZE)}`)
+      console.log(`[${requestId}] Processing Polygon batch ${Math.floor(i/BATCH_SIZE) + 1}/${Math.ceil(limitedSymbols.length/BATCH_SIZE)}`)
       
       const batchPromises = batch.map(async (symbol) => {
         try {
@@ -133,27 +145,30 @@ Deno.serve(async (req) => {
             barsUrl = `https://api.polygon.io/v2/aggs/ticker/${symbol}/range/1/day/${fromDate}/${toDate}?adjusted=true&sort=desc&limit=5000&apikey=${polygonApiKey}`
           }
           
-          console.log(`Fetching Polygon data for ${symbol} from ${fromDate} to ${toDate}`)
+          console.log(`[${requestId}] Fetching Polygon data for ${symbol} from ${fromDate} to ${toDate}`)
           
           const response = await fetchWithBackoff(barsUrl)
         
           if (!response.ok) {
-            console.error(`Failed to fetch Polygon data for ${symbol}:`, response.status, response.statusText)
+            console.error(`[${requestId}] ❌ Failed to fetch Polygon data for ${symbol}:`, response.status, response.statusText)
             const errorText = await response.text()
-            console.error(`Polygon API error response:`, errorText)
+            console.error(`[${requestId}] Polygon API error response:`, errorText)
+            failedSymbols.push(symbol)
             return null
           }
 
           const data = await response.json()
-          console.log(`Polygon response for ${symbol}:`, JSON.stringify(data).substring(0, 200))
+          console.log(`[${requestId}] Polygon response for ${symbol}:`, JSON.stringify(data).substring(0, 200))
         
           if (!data.results || data.results.length === 0) {
-            console.log(`No Polygon data results for ${symbol}:`, data)
+            console.log(`[${requestId}] No Polygon data results for ${symbol}:`, data)
+            failedSymbols.push(symbol)
             return null
           }
           
           if (data.results.length < 1) {
-            console.log(`No Polygon data for ${symbol}: ${data.results.length} bars`)
+            console.log(`[${requestId}] No Polygon data for ${symbol}: ${data.results.length} bars`)
+            failedSymbols.push(symbol)
             return null
           }
 
@@ -170,54 +185,14 @@ Deno.serve(async (req) => {
           const validVolumes = volumes.filter((v: number) => v > 0)
 
           if (validPrices.length < 1) {
-            console.log(`No valid price data for ${symbol}: only ${validPrices.length} valid prices`)
+            console.log(`[${requestId}] No valid price data for ${symbol}: only ${validPrices.length} valid prices`)
+            failedSymbols.push(symbol)
             return null
           }
 
-          // Calculate RSI with adaptive period based on available data
-          const rsiPeriod = Math.min(14, Math.floor(validPrices.length / 2))
-          const rsi = validPrices.length >= 2 ? calculateRSI(validPrices.slice(-rsiPeriod)) : 50
-        
-          // Calculate moving averages with adaptive periods
-          const sma20Period = Math.min(20, validPrices.length)
-          const sma_20 = sma20Period > 0 ? 
-            validPrices.slice(-sma20Period).reduce((sum: number, p: number) => sum + p, 0) / sma20Period : validPrices[validPrices.length - 1]
-            
-          const sma50Period = Math.min(50, validPrices.length)  
-          const sma_50 = sma50Period > 0 ? 
-            validPrices.slice(-sma50Period).reduce((sum: number, p: number) => sum + p, 0) / sma50Period : sma_20
+...
 
-          // Volume analysis
-          const avgVolume = validVolumes.length > 0 ? 
-            validVolumes.reduce((sum: number, v: number) => sum + v, 0) / validVolumes.length : 0
-          const currentVolume = validVolumes[validVolumes.length - 1] || 0
-          const volume_ratio = avgVolume > 0 ? currentVolume / avgVolume : 1
-
-          // Price momentum and volatility
-          const currentPrice = validPrices[validPrices.length - 1]
-          const currentOpen = openPrices.length > 0 ? openPrices[openPrices.length - 1] || currentPrice : currentPrice
-          const currentHigh = highPrices.length > 0 ? highPrices[highPrices.length - 1] || currentPrice : currentPrice
-          const currentLow = lowPrices.length > 0 ? lowPrices[lowPrices.length - 1] || currentPrice : currentPrice
-          
-          const price_1d_ago = validPrices[validPrices.length - 2] || currentPrice
-          const price_5d_ago = validPrices[validPrices.length - 6] || currentPrice
-        
-          const price_change_1d = ((currentPrice - price_1d_ago) / price_1d_ago) * 100
-          const price_change_5d = ((currentPrice - price_5d_ago) / price_5d_ago) * 100
-        
-          const momentum = price_change_5d
-          const volatility = calculateVolatility(validPrices.slice(-20))
-
-          const technicalIndicators: TechnicalIndicators = {
-            rsi,
-            sma_20,
-            sma_50,
-            volume_ratio,
-            momentum,
-            volatility
-          }
-
-          console.log(`✅ Polygon data calculated for ${symbol}: Price=$${currentPrice.toFixed(2)}, RSI=${rsi.toFixed(1)}, Volume Ratio=${volume_ratio.toFixed(2)}x, Data Points=${validPrices.length}`)
+          console.log(`[${requestId}] ✅ Polygon data calculated for ${symbol}: Price=$${currentPrice.toFixed(2)}, RSI=${rsi.toFixed(1)}, Volume Ratio=${volume_ratio.toFixed(2)}x, Data Points=${validPrices.length}`)
 
           return {
             symbol: symbol.toUpperCase(),
@@ -242,7 +217,8 @@ Deno.serve(async (req) => {
           }
 
         } catch (error) {
-          console.error(`Error processing Polygon data for ${symbol}:`, error)
+          console.error(`[${requestId}] ❌ Error processing Polygon data for ${symbol}:`, error)
+          failedSymbols.push(symbol)
           return null
         }
       })
@@ -259,14 +235,14 @@ Deno.serve(async (req) => {
       
       // Aggressive rate limit delay between batches (30 seconds for free tier)
       if (i + BATCH_SIZE < limitedSymbols.length) {
-        console.log(`Waiting 30 seconds before next batch to respect rate limits...`)
+        console.log(`[${requestId}] Waiting 30 seconds before next batch to respect rate limits...`)
         await new Promise(resolve => setTimeout(resolve, 30000))
       }
     }
 
     // Store the enhanced data in the database
     if (enhancedData.length > 0) {
-      console.log(`Storing ${enhancedData.length} Polygon records to enhanced_market_data table`)
+      console.log(`[${requestId}] Storing ${enhancedData.length} Polygon records to enhanced_market_data table`)
       
       const dbRecords = enhancedData.map(item => ({
         symbol: item.symbol,
@@ -292,11 +268,18 @@ Deno.serve(async (req) => {
         })
 
       if (insertError) {
-        console.error('Error storing Polygon data to database:', insertError)
+        console.error(`[${requestId}] ❌ Error storing Polygon data to database:`, insertError)
       } else {
-        console.log(`✅ Successfully stored ${dbRecords.length} Polygon records to database`)
+        console.log(`[${requestId}] ✅ Successfully stored ${dbRecords.length} Polygon records to database`)
       }
     }
+
+    const duration = ((Date.now() - startTime) / 1000).toFixed(2)
+    console.log(`[${requestId}] ========== POLYGON MARKET DATA COMPLETED ==========`)
+    console.log(`[${requestId}] Duration: ${duration}s`)
+    console.log(`[${requestId}] Processed: ${enhancedData.length}/${limitedSymbols.length} symbols`)
+    console.log(`[${requestId}] Failed symbols: ${failedSymbols.length > 0 ? failedSymbols.join(', ') : 'none'}`)
+    console.log(`[${requestId}] ==================================================`)
 
     return new Response(
       JSON.stringify({ 
@@ -314,13 +297,19 @@ Deno.serve(async (req) => {
     )
 
   } catch (error) {
-    console.error('Error in Polygon market data function:', error)
+    const duration = ((Date.now() - startTime) / 1000).toFixed(2)
+    console.error(`[${requestId}] ========== POLYGON MARKET DATA ERROR ==========`)
+    console.error(`[${requestId}] Duration: ${duration}s`)
+    console.error(`[${requestId}] Error:`, error)
+    console.error(`[${requestId}] Stack:`, error instanceof Error ? error.stack : 'N/A')
+    console.error(`[${requestId}] ==================================================`)
     return new Response(
       JSON.stringify({ 
         success: false,
         error: 'Internal server error', 
         details: error instanceof Error ? error.message : String(error),
-        enhanced_data: []
+        enhanced_data: [],
+        requestId
       }),
       { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     )

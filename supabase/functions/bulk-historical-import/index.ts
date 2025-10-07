@@ -29,7 +29,14 @@ Deno.serve(async (req) => {
     return new Response(null, { headers: corsHeaders })
   }
 
+  const startTime = Date.now()
+  const requestId = crypto.randomUUID().substring(0, 8)
+  
   try {
+    console.log(`[${requestId}] ========== BULK HISTORICAL IMPORT STARTED ==========`)
+    console.log(`[${requestId}] Timestamp: ${new Date().toISOString()}`)
+    console.log(`[${requestId}] Request ID: ${requestId}`)
+    
     const supabase = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
       Deno.env.get('SUPABASE_ANON_KEY') ?? ''
@@ -42,32 +49,39 @@ Deno.serve(async (req) => {
       delay_ms = 3000 
     } = await req.json()
     
+    console.log(`[${requestId}] Request params: ${JSON.stringify({ symbolCount: symbols.length, days, batch_size, delay_ms })}`)
+    
     if (!symbols || !Array.isArray(symbols) || symbols.length === 0) {
+      console.error(`[${requestId}] ERROR: Missing or invalid symbols array`)
       return new Response(
-        JSON.stringify({ error: 'Missing or invalid symbols array' }),
+        JSON.stringify({ error: 'Missing or invalid symbols array', requestId }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       )
     }
 
-    console.log(`Starting bulk historical import for ${symbols.length} symbols, ${days} days`)
+    console.log(`[${requestId}] Starting bulk historical import for ${symbols.length} symbols, ${days} days`)
 
     // Start background task without blocking response
     const backgroundImport = async () => {
       let processed = 0
-      // Use more calendar days to ensure we get enough trading days
-      const startDate = new Date()
-      startDate.setDate(startDate.getDate() - (days * 1.5)) // Go back days * 1.5 to account for weekends/holidays
-      const endDate = new Date()
+      let totalDataPoints = 0
+      let failedSymbols: string[] = []
       
-      console.log(`Date range: ${startDate.toISOString()} to ${endDate.toISOString()}`)
-      console.log(`Requesting ${days} trading days with ${Math.floor((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24))} calendar days buffer`)
-
-      for (let i = 0; i < symbols.length; i += batch_size) {
-        const batch = symbols.slice(i, i + batch_size)
-        const batchNum = Math.floor(i / batch_size) + 1
-        const totalBatches = Math.ceil(symbols.length / batch_size)
+      try {
+        // Use more calendar days to ensure we get enough trading days
+        const startDate = new Date()
+        startDate.setDate(startDate.getDate() - (days * 1.5)) // Go back days * 1.5 to account for weekends/holidays
+        const endDate = new Date()
         
-        console.log(`Processing batch ${batchNum}/${totalBatches}: ${batch.join(', ')}`)
+        console.log(`[${requestId}] Date range: ${startDate.toISOString()} to ${endDate.toISOString()}`)
+        console.log(`[${requestId}] Requesting ${days} trading days with ${Math.floor((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24))} calendar days buffer`)
+
+        for (let i = 0; i < symbols.length; i += batch_size) {
+          const batch = symbols.slice(i, i + batch_size)
+          const batchNum = Math.floor(i / batch_size) + 1
+          const totalBatches = Math.ceil(symbols.length / batch_size)
+          
+          console.log(`[${requestId}] Processing batch ${batchNum}/${totalBatches}: ${batch.join(', ')}`)
 
         // Process batch in parallel
         const batchPromises = batch.map(async (symbol) => {
@@ -209,9 +223,12 @@ Deno.serve(async (req) => {
                 })
 
               if (dbError) {
-                console.error(`Database error for ${symbol}:`, dbError)
+                console.error(`[${requestId}] ❌ Database error for ${symbol}:`, dbError)
+                failedSymbols.push(symbol)
+                return null
               } else {
-                console.log(`Stored ${historicalData.length} historical data points for ${symbol}`)
+                console.log(`[${requestId}] ✅ Stored ${historicalData.length} historical data points for ${symbol}`)
+                totalDataPoints += historicalData.length
               }
             }
 
@@ -219,29 +236,49 @@ Deno.serve(async (req) => {
             return symbol
 
           } catch (error) {
-            console.error(`Error processing ${symbol}:`, error)
+            console.error(`[${requestId}] ❌ Error processing ${symbol}:`, error)
+            failedSymbols.push(symbol)
             return null
           }
         })
 
-        // Wait for batch to complete
-        const batchResults = await Promise.allSettled(batchPromises)
-        const successCount = batchResults.filter(r => r.status === 'fulfilled' && r.value).length
-        
-        console.log(`Batch ${batchNum}/${totalBatches} completed: ${successCount}/${batch.length} successful`)
+          // Wait for batch to complete
+          const batchResults = await Promise.allSettled(batchPromises)
+          const successCount = batchResults.filter(r => r.status === 'fulfilled' && r.value).length
+          
+          console.log(`[${requestId}] Batch ${batchNum}/${totalBatches} completed: ${successCount}/${batch.length} successful`)
 
-        // Delay between batches to avoid rate limiting
-        if (i + batch_size < symbols.length) {
-          console.log(`Waiting ${delay_ms}ms before next batch...`)
-          await new Promise(resolve => setTimeout(resolve, delay_ms))
+          // Delay between batches to avoid rate limiting
+          if (i + batch_size < symbols.length) {
+            console.log(`[${requestId}] Waiting ${delay_ms}ms before next batch...`)
+            await new Promise(resolve => setTimeout(resolve, delay_ms))
+          }
         }
-      }
 
-      console.log(`Bulk historical import completed. Processed ${processed}/${symbols.length} symbols`)
+        const duration = ((Date.now() - startTime) / 1000).toFixed(2)
+        console.log(`[${requestId}] ========== BULK HISTORICAL IMPORT COMPLETED ==========`)
+        console.log(`[${requestId}] Duration: ${duration}s`)
+        console.log(`[${requestId}] Processed: ${processed}/${symbols.length} symbols`)
+        console.log(`[${requestId}] Total data points: ${totalDataPoints}`)
+        console.log(`[${requestId}] Failed symbols: ${failedSymbols.length > 0 ? failedSymbols.join(', ') : 'none'}`)
+        console.log(`[${requestId}] ==================================================`)
+        
+      } catch (bgError) {
+        const duration = ((Date.now() - startTime) / 1000).toFixed(2)
+        console.error(`[${requestId}] ========== BULK HISTORICAL IMPORT FAILED ==========`)
+        console.error(`[${requestId}] Duration: ${duration}s`)
+        console.error(`[${requestId}] Error:`, bgError)
+        console.error(`[${requestId}] Processed before error: ${processed}/${symbols.length}`)
+        console.error(`[${requestId}] Failed symbols: ${failedSymbols.join(', ')}`)
+        console.error(`[${requestId}] ==================================================`)
+        throw bgError
+      }
     }
 
     // Start background task (removed EdgeRuntime as it's not available in all environments)
-    backgroundImport().catch(console.error)
+    backgroundImport().catch((error) => {
+      console.error(`[${requestId}] Fatal error in background import:`, error)
+    })
 
     // Return immediate response
     return new Response(
@@ -259,11 +296,17 @@ Deno.serve(async (req) => {
     )
 
   } catch (error) {
-    console.error('Error in bulk historical import function:', error)
+    const duration = ((Date.now() - startTime) / 1000).toFixed(2)
+    console.error(`[${requestId}] ========== BULK HISTORICAL IMPORT ERROR ==========`)
+    console.error(`[${requestId}] Duration: ${duration}s`)
+    console.error(`[${requestId}] Error:`, error)
+    console.error(`[${requestId}] Stack:`, error instanceof Error ? error.stack : 'N/A')
+    console.error(`[${requestId}] ==================================================`)
     return new Response(
       JSON.stringify({ 
         error: 'Internal server error', 
-        details: error instanceof Error ? error.message : String(error) 
+        details: error instanceof Error ? error.message : String(error),
+        requestId 
       }),
       { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     )
