@@ -661,6 +661,34 @@ const TradesOverview = ({ onSymbolSelect, onOpenChat }: TradesOverviewProps) => 
     fetchTrades();
   }, []);
 
+  // Auto-fill entry price when symbol is entered
+  useEffect(() => {
+    const subscription = form.watch(async (value, { name }) => {
+      if (name === 'symbol' && value.symbol && value.symbol.length > 0) {
+        const symbol = value.symbol.toUpperCase();
+        
+        // Fetch latest market data for the symbol
+        const { data: marketRow } = await supabase
+          .from('enhanced_market_data')
+          .select('price_open, price, data_date')
+          .eq('symbol', symbol)
+          .order('data_date', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        
+        if (marketRow) {
+          // Use price_open if available, otherwise use price
+          const currentPrice = marketRow.price_open || marketRow.price;
+          if (currentPrice) {
+            form.setValue('entry_price', currentPrice.toFixed(2));
+          }
+        }
+      }
+    });
+    
+    return () => subscription.unsubscribe();
+  }, [form]);
+
   // Filter trades based on current filters
   const filteredTrades = trades.filter(trade => {
     // Filter by mode (paper/real/all)
