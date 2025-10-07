@@ -116,3 +116,35 @@ Inside Lovable:
 ---
 
 That’s the current end-to-end rationale. If we decide to add default rules or model-specific daily views later, we should update both this doc and the SQL to keep Lovable, backtests, and automation aligned.
+
+## 2025-10-07 – Confidence Fixes & "Extra Strong" Exploration
+
+**What we learned**
+- `v_entry_candidates` was returning `NULL` confidence even with fully scored mentions; patching `v_reddit_daily_signals` to average confidence and bubbling it through the candidate view resolved the UX “null confidence” issue.
+- Lovable’s fallback text was pulling `grade` directly (often `NULL`); switching to the existing `confidence_label` keeps cards aligned with the data we surface.
+- Many high-confidence candidates lack a `backtest_sweep_results` shard or fail Sharpe / win-rate thresholds, so an "extra strong" tier should stay tied to backtested edges.
+
+**Next actions**
+- [ ] Run targeted grid backtests (`run_grid.sh`) for symbols currently missing shards (e.g. `HOOD`, `GOOGL`, `SOFI`) so active rules carry Sharpe / win-rate diagnostics.
+- [ ] Add an "extra strong" flag in `fn_recommended_trades_conf` once shards exist (current proposal: confidence ≥ 0.80, margin ≥ 0.12, Sharpe ≥ 0.60, win-rate ≥ 0.65, trades ≥ 12 — revisit after fresh backtests).
+- [ ] Schedule nightly grid runs (cron/GitHub Action/Supabase job) so new or adjusted rules immediately gain supporting shards.
+- [ ] Update Lovable copy to surface the new tier explicitly (“Extra Strong – highest conviction, backtested”).
+
+Keep this section in sync as we iterate on the thresholds or automation.
+
+## 2025-10-07 – Extra Strong Threshold Review (Evening)
+
+**Status update**
+- Targeted grid runs now exist for GOOG, HOOD, SOFI, ASTS, AMD, TSLA, NVDA, PLTR, RUN, COIN, COST, NET, and PATH (SQL filters in `backtest_grid.sql` now honor `SYMBOLS`).
+- 120-day base vs. extra-strong comparison still shows the "extra strong" cohort too small (3 closed 1d trades, 1 closed 5d trade) and underperforming base.
+- Weekly cumulative returns highlight base-strong trades compounding steadily (~27% over four months on the 1d horizon) while extra-strong entries remain negative due to tiny sample size.
+
+**Decisions**
+- Keep the tighter gate (confidence ≥ 0.80, margin ≥ 0.12, Sharpe ≥ 0.60, win ≥ 0.65, trades ≥ 12). We’ll revisit once extra-strong trades exceed ~15 closed positions per horizon.
+- Hold off on adding an “Extra Strong” label in Lovable until we see a meaningful sample and demonstrable uplift.
+- Continue nightly/targeted grid backtests so shards keep pace with new rule thresholds; rerun the cohort analysis after more trades close.
+
+**To monitor**
+- Logged SQL snippets for cumulative-return checks (see conversation 2025-10-07). Consider standing up a lightweight reporting notebook or Supabase chart so we don’t rely on ad-hoc psql dumps.
+- Revisit the extra-strong concept once data volume or newer rules supply enough closed trades to evaluate the uplift meaningfully.
+- TODO (Lovable backtesting): rebuild a front-end flow that runs the new grid/shard backtests. The old “Sentiment Backtesting” manual runner will be removed, so we need a replacement before re-exposing backtesting controls.

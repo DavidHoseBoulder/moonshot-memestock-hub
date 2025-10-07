@@ -33,6 +33,7 @@ const SYMBOLS_ARR = SYMBOLS
   : null;
 const MICRO_BATCH = Number(Deno.env.get("MICRO_BATCH") ?? 12); // how many mentions per API call
 const PAUSE_ON_429_MS = Number(Deno.env.get("PAUSE_ON_429_MS") ?? 120000); // 2m
+const PAUSE_ON_5XX_MS = Number(Deno.env.get("PAUSE_ON_5XX_MS") ?? 15000); // default 15s when Cloudflare / OpenAI hiccups
 
 if (!PGURI) { console.error("❌ PGURI is required."); Deno.exit(1); }
 if (!OPENAI_API_KEY || !OPENAI_API_KEY.startsWith("sk-")) {
@@ -160,6 +161,15 @@ Rules:
       if (!response.ok) {
         const text = await response.text().catch(() => "");
         console.error(`DEBUG_API_ERROR: status=${response.status} body=${text.slice(0, 300)}`);
+        if (response.status >= 500 && attempt < maxRetries) {
+          const waitMs = Math.max(
+            PAUSE_ON_5XX_MS,
+            Math.round((baseDelay * Math.pow(2, attempt)) + Math.random() * 300),
+          );
+          console.warn(`Retrying single-score call after ${waitMs}ms due to ${response.status}`);
+          await new Promise(res => setTimeout(res, waitMs));
+          continue;
+        }
         throw new Error(`OpenAI ${response.status}: ${text.slice(0, 200)}`);
       }
 
@@ -399,7 +409,11 @@ No prose. No code fences. No extra keys.`;
           const text = await response.text().catch(() => "");
           console.error("DEBUG_API_ERROR:", response.status, text.slice(0, 400));
           if (attempt < maxRetries) {
-            const waitMs = Math.round((baseDelay * Math.pow(2, attempt)) + Math.random() * 300);
+            const waitMs = Math.max(
+              PAUSE_ON_5XX_MS,
+              Math.round((baseDelay * Math.pow(2, attempt)) + Math.random() * 300),
+            );
+            console.warn(`Retrying batch call after ${waitMs}ms due to ${response.status}`);
             await new Promise(res => setTimeout(res, waitMs));
             continue;
           }
@@ -612,6 +626,3 @@ else {
 
 console.log(`Done. Total processed: ${total}`);
 await pool.end();
-function replace(arg0: RegExp, arg1: string) {
-  throw new Error("Function not implemented.");
-}

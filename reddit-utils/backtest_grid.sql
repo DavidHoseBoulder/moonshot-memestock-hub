@@ -135,7 +135,11 @@ WHERE s.model_version = :'MODEL_VERSION'
   AND m.created_utc::date <  (:'END_DATE')::date
   AND COALESCE(s.confidence, 0) >= (:'MIN_CONF')::numeric
   AND m.doc_type IN ('post', 'comment')
-  AND m.symbol IS NOT NULL AND m.symbol <> '';
+  AND m.symbol IS NOT NULL AND m.symbol <> ''
+  AND (
+        NULLIF(:'SYMBOLS','NULL') IS NULL
+        OR upper(m.symbol) = ANY (string_to_array(upper(NULLIF(:'SYMBOLS','NULL')), ',')::text[])
+      );
 
 \if :DEBUG
   SELECT 'tmp_scored_n' AS label, COUNT(*) AS n FROM tmp_scored;
@@ -177,7 +181,11 @@ SELECT
   COALESCE(sentiment_score, 0)::numeric  AS st_sentiment_score
 FROM public.v_stocktwits_daily_signals
 WHERE trade_date >= (:'START_DATE')::date
-  AND trade_date <  (:'END_DATE')::date;
+  AND trade_date <  (:'END_DATE')::date
+  AND (
+        NULLIF(:'SYMBOLS','NULL') IS NULL
+        OR upper(symbol) = ANY (string_to_array(upper(NULLIF(:'SYMBOLS','NULL')), ',')::text[])
+      );
 
 CREATE TEMP TABLE tmp_daily AS
 WITH merged AS (

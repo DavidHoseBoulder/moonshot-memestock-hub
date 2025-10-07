@@ -140,14 +140,46 @@ const tlsConfig: { enabled: boolean; enforce: boolean; hostname: string; caCerti
 };
 if (caText) tlsConfig.caCertificates = [caText];
 
-const client = new Client({
+const pgConfig = {
   hostname: host,
   port,
   user,
   password,
   database,
   tls: tlsConfig,
-});
+};
+
+function isTransientPgError(err: unknown): boolean {
+  if (err instanceof Deno.errors.ConnectionReset) return true;
+  if (err instanceof Deno.errors.ConnectionAborted) return true;
+  if (err instanceof Deno.errors.BrokenPipe) return true;
+  const msg = err instanceof Error ? err.message : String(err ?? "");
+  return /connection\s?reset|connection\s?aborted|broken\s?pipe|server\s?closed/i.test(msg);
+}
+
+// Supabase's pooler aggressively closes idle TLS connections, so we create a
+// short-lived client for each query and retry on transient network failures.
+async function withPgClient<T>(fn: (client: Client) => Promise<T>, attempt = 1): Promise<T> {
+  const client = new Client(pgConfig);
+  try {
+    await client.connect();
+    return await fn(client);
+  } catch (err) {
+    if (attempt < 4 && isTransientPgError(err)) {
+      const waitMs = 500 * attempt;
+      console.warn(`WARN postgres query attempt ${attempt} failed (${err instanceof Error ? err.message : err}); retrying in ${waitMs}ms`);
+      await sleep(waitMs);
+      return await withPgClient(fn, attempt + 1);
+    }
+    throw err;
+  } finally {
+    try {
+      await client.end();
+    } catch (_) {
+      // Ignore errors when closing the client; likely already disconnected.
+    }
+  }
+}
 
 // Normalize a row (id/permalink) into a base36 post id (lowercased)
 function normalizePostId(id: string | null | undefined, permalink: string | null | undefined): string | null {
@@ -169,22 +201,24 @@ function normalizePostId(id: string | null | undefined, permalink: string | null
 }
 
 // Fetch post ids for a day by subreddit, computing post_id client-side
-async function getPostIdsForDay(client: Client, subreddit: string, dayYmd: string): Promise<string[]> {
+async function getPostIdsForDay(subreddit: string, dayYmd: string): Promise<string[]> {
   const start = new Date(`${dayYmd}T00:00:00.000Z`);
   const end   = new Date(start.getTime() + 24 * 3600 * 1000);
 
   // Pull only the minimal columns we need, with a tight WHERE
-  const { rows } = await client.queryObject<{
-    id: string | null;
-    permalink: string | null;
-  }>`
-    SELECT id, permalink
-    FROM public.reddit_posts
-    WHERE lower(subreddit) = ${subreddit.toLowerCase()}
-      AND created_utc >= ${start.toISOString()}
-      AND created_utc <  ${end.toISOString()}
-      AND (id IS NOT NULL OR permalink IS NOT NULL)
-  `;
+  const { rows } = await withPgClient(async (client) => {
+    return await client.queryObject<{
+      id: string | null;
+      permalink: string | null;
+    }>`
+      SELECT id, permalink
+      FROM public.reddit_posts
+      WHERE lower(subreddit) = ${subreddit.toLowerCase()}
+        AND created_utc >= ${start.toISOString()}
+        AND created_utc <  ${end.toISOString()}
+        AND (id IS NOT NULL OR permalink IS NOT NULL)
+    `;
+  });
 
   const postIds = rows
     .map(r => normalizePostId(r.id, r.permalink))
@@ -324,13 +358,11 @@ function commentsEnabledFor(sub: string) {
 const start = new Date(`${START_DATE}T00:00:00.000Z`);
 const end = new Date(`${END_DATE}T00:00:00.000Z`);
 
-await client.connect();
-
 try {
   for (const sub of SUBREDDITS) {
     for (let d = new Date(start); d < end; d = addDays(d, 1)) {
       const day = ymd(d);
-      const posts = await getPostIdsForDay(client, sub, day);
+      const posts = await getPostIdsForDay(sub, day);
       if (!commentsEnabledFor(sub)) {
 		console.log(`${new Date().toISOString()} ${sub} ${day}: comments disabled (posts=${posts.length})`);
         continue;
@@ -394,6 +426,7 @@ for (const postId of posts) {
     }
   }
   console.log(`${new Date().toISOString()} Done.`);
-} finally {
-  await client.end();
+} catch (err) {
+  console.error(`ERROR pipeline: ${(err as Error)?.message ?? err}`);
+  throw err;
 }
