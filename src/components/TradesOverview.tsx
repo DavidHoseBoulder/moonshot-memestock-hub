@@ -13,6 +13,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import { Drawer, DrawerContent, DrawerHeader, DrawerTitle, DrawerClose } from "@/components/ui/drawer";
 import { Separator } from "@/components/ui/separator";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
@@ -137,6 +138,8 @@ const TradesOverview = ({ onSymbolSelect, onOpenChat }: TradesOverviewProps) => 
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [tradeDetailData, setTradeDetailData] = useState<TradeDetailData | null>(null);
   const [isLoadingDetails, setIsLoadingDetails] = useState(false);
+  const [closeTradeDialogOpen, setCloseTradeDialogOpen] = useState(false);
+  const [selectedExitPrice, setSelectedExitPrice] = useState<number | null>(null);
   const [newTradeDialogOpen, setNewTradeDialogOpen] = useState(false);
   const [isSubmittingTrade, setIsSubmittingTrade] = useState(false);
   const [selectedDate, setSelectedDate] = useState(() => todayInDenverDateString());
@@ -1370,11 +1373,22 @@ const TradesOverview = ({ onSymbolSelect, onOpenChat }: TradesOverviewProps) => 
                   </>
                 )}
               </DrawerTitle>
-              <DrawerClose asChild>
-                <Button variant="ghost" size="sm">
-                  <X className="w-4 h-4" />
-                </Button>
-              </DrawerClose>
+              <div className="flex items-center gap-2">
+                {selectedTrade?.status.toLowerCase() === 'open' && (
+                  <Button 
+                    variant="destructive" 
+                    size="sm"
+                    onClick={() => setCloseTradeDialogOpen(true)}
+                  >
+                    Close Trade
+                  </Button>
+                )}
+                <DrawerClose asChild>
+                  <Button variant="ghost" size="sm">
+                    <X className="w-4 h-4" />
+                  </Button>
+                </DrawerClose>
+              </div>
             </div>
           </DrawerHeader>
           
@@ -1603,98 +1617,101 @@ const TradesOverview = ({ onSymbolSelect, onOpenChat }: TradesOverviewProps) => 
                   )}
                 </div>
 
-                {/* Close Trade Section - Only show for open trades */}
-                {selectedTrade.status.toLowerCase() === 'open' && tradeDetailData?.priceHistory && (
-                  <>
-                    <Separator />
-                    <div>
-                      <h3 className="text-lg font-semibold mb-3">Close Trade</h3>
-                      <p className="text-sm text-muted-foreground mb-4">
-                        Select an exit price based on the horizon ({selectedTrade.horizon})
-                      </p>
-                      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                        {/* 1-day exit price */}
-                        {tradeDetailData.priceHistory.length >= 1 && (
-                          <Button
-                            variant="outline"
-                            className="flex flex-col items-start h-auto py-3"
-                            onClick={() => {
-                              const price1d = tradeDetailData.priceHistory[Math.min(0, tradeDetailData.priceHistory.length - 1)]?.price;
-                              if (price1d && confirm(`Close trade at 1-day price: $${price1d.toFixed(2)}?`)) {
-                                closePaperTrade(selectedTrade.trade_id, selectedTrade.symbol, price1d);
-                              }
-                            }}
-                          >
-                            <span className="text-xs text-muted-foreground">1-Day Exit</span>
-                            <span className="text-lg font-semibold">
-                              ${tradeDetailData.priceHistory[Math.min(0, tradeDetailData.priceHistory.length - 1)]?.price.toFixed(2)}
-                            </span>
-                          </Button>
-                        )}
-                        
-                        {/* 3-day exit price */}
-                        {tradeDetailData.priceHistory.length >= 3 && (
-                          <Button
-                            variant="outline"
-                            className="flex flex-col items-start h-auto py-3"
-                            onClick={() => {
-                              const price3d = tradeDetailData.priceHistory[Math.min(2, tradeDetailData.priceHistory.length - 1)]?.price;
-                              if (price3d && confirm(`Close trade at 3-day price: $${price3d.toFixed(2)}?`)) {
-                                closePaperTrade(selectedTrade.trade_id, selectedTrade.symbol, price3d);
-                              }
-                            }}
-                          >
-                            <span className="text-xs text-muted-foreground">3-Day Exit</span>
-                            <span className="text-lg font-semibold">
-                              ${tradeDetailData.priceHistory[Math.min(2, tradeDetailData.priceHistory.length - 1)]?.price.toFixed(2)}
-                            </span>
-                          </Button>
-                        )}
-                        
-                        {/* 5-day exit price */}
-                        {tradeDetailData.priceHistory.length >= 5 && (
-                          <Button
-                            variant="outline"
-                            className="flex flex-col items-start h-auto py-3"
-                            onClick={() => {
-                              const price5d = tradeDetailData.priceHistory[Math.min(4, tradeDetailData.priceHistory.length - 1)]?.price;
-                              if (price5d && confirm(`Close trade at 5-day price: $${price5d.toFixed(2)}?`)) {
-                                closePaperTrade(selectedTrade.trade_id, selectedTrade.symbol, price5d);
-                              }
-                            }}
-                          >
-                            <span className="text-xs text-muted-foreground">5-Day Exit</span>
-                            <span className="text-lg font-semibold">
-                              ${tradeDetailData.priceHistory[Math.min(4, tradeDetailData.priceHistory.length - 1)]?.price.toFixed(2)}
-                            </span>
-                          </Button>
-                        )}
-                        
-                        {/* Current/Latest price */}
-                        <Button
-                          variant="outline"
-                          className="flex flex-col items-start h-auto py-3"
-                          onClick={() => {
-                            const currentPrice = tradeDetailData.priceHistory[tradeDetailData.priceHistory.length - 1]?.price;
-                            if (currentPrice && confirm(`Close trade at current price: $${currentPrice.toFixed(2)}?`)) {
-                              closePaperTrade(selectedTrade.trade_id, selectedTrade.symbol, currentPrice);
-                            }
-                          }}
-                        >
-                          <span className="text-xs text-muted-foreground">Current Price</span>
-                          <span className="text-lg font-semibold">
-                            ${tradeDetailData.priceHistory[tradeDetailData.priceHistory.length - 1]?.price.toFixed(2)}
-                          </span>
-                        </Button>
-                      </div>
-                    </div>
-                  </>
-                )}
               </>
             )}
           </div>
         </DrawerContent>
       </Drawer>
+
+      {/* Close Trade Dialog */}
+      <AlertDialog open={closeTradeDialogOpen} onOpenChange={setCloseTradeDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Close Trade: {selectedTrade?.symbol}</AlertDialogTitle>
+            <AlertDialogDescription>
+              Select an exit price based on the trade horizon ({selectedTrade?.horizon})
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          
+          {tradeDetailData?.priceHistory && tradeDetailData.priceHistory.length > 0 ? (
+            <div className="grid grid-cols-2 gap-3 py-4">
+              {/* 1-day exit price */}
+              {tradeDetailData.priceHistory.length >= 1 && (
+                <Button
+                  variant={selectedExitPrice === tradeDetailData.priceHistory[0]?.price ? "default" : "outline"}
+                  className="flex flex-col items-start h-auto py-3"
+                  onClick={() => setSelectedExitPrice(tradeDetailData.priceHistory[0]?.price)}
+                >
+                  <span className="text-xs text-muted-foreground">1-Day Exit</span>
+                  <span className="text-lg font-semibold">
+                    ${tradeDetailData.priceHistory[0]?.price.toFixed(2)}
+                  </span>
+                </Button>
+              )}
+              
+              {/* 3-day exit price */}
+              {tradeDetailData.priceHistory.length >= 3 && (
+                <Button
+                  variant={selectedExitPrice === tradeDetailData.priceHistory[2]?.price ? "default" : "outline"}
+                  className="flex flex-col items-start h-auto py-3"
+                  onClick={() => setSelectedExitPrice(tradeDetailData.priceHistory[2]?.price)}
+                >
+                  <span className="text-xs text-muted-foreground">3-Day Exit</span>
+                  <span className="text-lg font-semibold">
+                    ${tradeDetailData.priceHistory[2]?.price.toFixed(2)}
+                  </span>
+                </Button>
+              )}
+              
+              {/* 5-day exit price */}
+              {tradeDetailData.priceHistory.length >= 5 && (
+                <Button
+                  variant={selectedExitPrice === tradeDetailData.priceHistory[4]?.price ? "default" : "outline"}
+                  className="flex flex-col items-start h-auto py-3"
+                  onClick={() => setSelectedExitPrice(tradeDetailData.priceHistory[4]?.price)}
+                >
+                  <span className="text-xs text-muted-foreground">5-Day Exit</span>
+                  <span className="text-lg font-semibold">
+                    ${tradeDetailData.priceHistory[4]?.price.toFixed(2)}
+                  </span>
+                </Button>
+              )}
+              
+              {/* Current/Latest price */}
+              <Button
+                variant={selectedExitPrice === tradeDetailData.priceHistory[tradeDetailData.priceHistory.length - 1]?.price ? "default" : "outline"}
+                className="flex flex-col items-start h-auto py-3"
+                onClick={() => setSelectedExitPrice(tradeDetailData.priceHistory[tradeDetailData.priceHistory.length - 1]?.price)}
+              >
+                <span className="text-xs text-muted-foreground">Current Price</span>
+                <span className="text-lg font-semibold">
+                  ${tradeDetailData.priceHistory[tradeDetailData.priceHistory.length - 1]?.price.toFixed(2)}
+                </span>
+              </Button>
+            </div>
+          ) : (
+            <div className="py-4 text-center text-muted-foreground">
+              No price data available. Loading...
+            </div>
+          )}
+
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => setSelectedExitPrice(null)}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              disabled={!selectedExitPrice}
+              onClick={() => {
+                if (selectedTrade && selectedExitPrice) {
+                  closePaperTrade(selectedTrade.trade_id, selectedTrade.symbol, selectedExitPrice);
+                  setCloseTradeDialogOpen(false);
+                  setSelectedExitPrice(null);
+                }
+              }}
+            >
+              Close Trade at ${selectedExitPrice?.toFixed(2) || '0.00'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 };
