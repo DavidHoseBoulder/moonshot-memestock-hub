@@ -394,19 +394,25 @@ const TradesOverview = ({ onSymbolSelect, onOpenChat }: TradesOverviewProps) => 
     }
   };
 
-  const closePaperTrade = async (tradeId: number, symbol: string) => {
+  const closePaperTrade = async (tradeId: number, symbol: string, exitPrice?: number) => {
     try {
+      const body: any = { trade_id: tradeId };
+      if (exitPrice) {
+        body.exit_price = exitPrice;
+      }
+      
       const { data, error } = await supabase.functions.invoke('close-paper-trade', {
-        body: { trade_id: tradeId },
+        body,
       });
 
       if (error) throw error as any;
 
       toast({
         title: 'Trade Closed',
-        description: `Paper trade for ${symbol} closed successfully`,
+        description: `Paper trade for ${symbol} closed successfully${exitPrice ? ` at $${exitPrice.toFixed(2)}` : ''}`,
       });
 
+      setDrawerOpen(false);
       fetchTrades();
     } catch (error: any) {
       console.error('Error closing trade:', error);
@@ -473,7 +479,7 @@ const TradesOverview = ({ onSymbolSelect, onOpenChat }: TradesOverviewProps) => 
       // 1. Fetch signal data from backtest signals for the trade date
       let signalData: SignalData | null = null;
       
-      // Look for signal data from the actual trade date
+      // First try backtest_signals_daily for historical data
       const { data: historicalSignals } = await supabase
         .from('backtest_signals_daily')
         .select('*')
@@ -490,22 +496,41 @@ const TradesOverview = ({ onSymbolSelect, onOpenChat }: TradesOverviewProps) => 
           use_weighted: (historicalSignals as any).use_weighted,
         };
       } else {
-        // Fallback to today's signals if no historical data
-        const { data: todaySignals } = await supabase
-          .from('v_reddit_candidates_today')
+        // Try v_entry_candidates which shows all candidates
+        const { data: entryCandidates } = await supabase
+          .from('v_entry_candidates')
           .select('*')
           .eq('symbol', trade.symbol)
           .eq('horizon', trade.horizon)
+          .eq('trade_date', tradeDate)
           .maybeSingle();
         
-        if (todaySignals) {
+        if (entryCandidates) {
           signalData = {
-            n_mentions: toNumber((todaySignals as any).n_mentions),
-            min_mentions: toNumber((todaySignals as any).min_mentions),
-            used_score: toNumber((todaySignals as any).used_score),
-            pos_thresh: toNumber((todaySignals as any).pos_thresh),
-            use_weighted: (todaySignals as any).use_weighted,
+            n_mentions: toNumber((entryCandidates as any).n_mentions),
+            min_mentions: toNumber((entryCandidates as any).min_mentions),
+            used_score: toNumber((entryCandidates as any).used_score),
+            pos_thresh: toNumber((entryCandidates as any).pos_thresh),
+            use_weighted: (entryCandidates as any).use_weighted,
           };
+        } else {
+          // Last fallback to today's signals
+          const { data: todaySignals } = await supabase
+            .from('v_reddit_candidates_today')
+            .select('*')
+            .eq('symbol', trade.symbol)
+            .eq('horizon', trade.horizon)
+            .maybeSingle();
+          
+          if (todaySignals) {
+            signalData = {
+              n_mentions: toNumber((todaySignals as any).n_mentions),
+              min_mentions: toNumber((todaySignals as any).min_mentions),
+              used_score: toNumber((todaySignals as any).used_score),
+              pos_thresh: toNumber((todaySignals as any).pos_thresh),
+              use_weighted: (todaySignals as any).use_weighted,
+            };
+          }
         }
       }
 
@@ -1577,6 +1602,94 @@ const TradesOverview = ({ onSymbolSelect, onOpenChat }: TradesOverviewProps) => 
                     <p className="text-muted-foreground">No price history available since entry</p>
                   )}
                 </div>
+
+                {/* Close Trade Section - Only show for open trades */}
+                {selectedTrade.status.toLowerCase() === 'open' && tradeDetailData?.priceHistory && (
+                  <>
+                    <Separator />
+                    <div>
+                      <h3 className="text-lg font-semibold mb-3">Close Trade</h3>
+                      <p className="text-sm text-muted-foreground mb-4">
+                        Select an exit price based on the horizon ({selectedTrade.horizon})
+                      </p>
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                        {/* 1-day exit price */}
+                        {tradeDetailData.priceHistory.length >= 1 && (
+                          <Button
+                            variant="outline"
+                            className="flex flex-col items-start h-auto py-3"
+                            onClick={() => {
+                              const price1d = tradeDetailData.priceHistory[Math.min(0, tradeDetailData.priceHistory.length - 1)]?.price;
+                              if (price1d && confirm(`Close trade at 1-day price: $${price1d.toFixed(2)}?`)) {
+                                closePaperTrade(selectedTrade.trade_id, selectedTrade.symbol, price1d);
+                              }
+                            }}
+                          >
+                            <span className="text-xs text-muted-foreground">1-Day Exit</span>
+                            <span className="text-lg font-semibold">
+                              ${tradeDetailData.priceHistory[Math.min(0, tradeDetailData.priceHistory.length - 1)]?.price.toFixed(2)}
+                            </span>
+                          </Button>
+                        )}
+                        
+                        {/* 3-day exit price */}
+                        {tradeDetailData.priceHistory.length >= 3 && (
+                          <Button
+                            variant="outline"
+                            className="flex flex-col items-start h-auto py-3"
+                            onClick={() => {
+                              const price3d = tradeDetailData.priceHistory[Math.min(2, tradeDetailData.priceHistory.length - 1)]?.price;
+                              if (price3d && confirm(`Close trade at 3-day price: $${price3d.toFixed(2)}?`)) {
+                                closePaperTrade(selectedTrade.trade_id, selectedTrade.symbol, price3d);
+                              }
+                            }}
+                          >
+                            <span className="text-xs text-muted-foreground">3-Day Exit</span>
+                            <span className="text-lg font-semibold">
+                              ${tradeDetailData.priceHistory[Math.min(2, tradeDetailData.priceHistory.length - 1)]?.price.toFixed(2)}
+                            </span>
+                          </Button>
+                        )}
+                        
+                        {/* 5-day exit price */}
+                        {tradeDetailData.priceHistory.length >= 5 && (
+                          <Button
+                            variant="outline"
+                            className="flex flex-col items-start h-auto py-3"
+                            onClick={() => {
+                              const price5d = tradeDetailData.priceHistory[Math.min(4, tradeDetailData.priceHistory.length - 1)]?.price;
+                              if (price5d && confirm(`Close trade at 5-day price: $${price5d.toFixed(2)}?`)) {
+                                closePaperTrade(selectedTrade.trade_id, selectedTrade.symbol, price5d);
+                              }
+                            }}
+                          >
+                            <span className="text-xs text-muted-foreground">5-Day Exit</span>
+                            <span className="text-lg font-semibold">
+                              ${tradeDetailData.priceHistory[Math.min(4, tradeDetailData.priceHistory.length - 1)]?.price.toFixed(2)}
+                            </span>
+                          </Button>
+                        )}
+                        
+                        {/* Current/Latest price */}
+                        <Button
+                          variant="outline"
+                          className="flex flex-col items-start h-auto py-3"
+                          onClick={() => {
+                            const currentPrice = tradeDetailData.priceHistory[tradeDetailData.priceHistory.length - 1]?.price;
+                            if (currentPrice && confirm(`Close trade at current price: $${currentPrice.toFixed(2)}?`)) {
+                              closePaperTrade(selectedTrade.trade_id, selectedTrade.symbol, currentPrice);
+                            }
+                          }}
+                        >
+                          <span className="text-xs text-muted-foreground">Current Price</span>
+                          <span className="text-lg font-semibold">
+                            ${tradeDetailData.priceHistory[tradeDetailData.priceHistory.length - 1]?.price.toFixed(2)}
+                          </span>
+                        </Button>
+                      </div>
+                    </div>
+                  </>
+                )}
               </>
             )}
           </div>
