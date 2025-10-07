@@ -9,7 +9,7 @@ import BulkImport from "./pages/BulkImport";
 import NotFound from "./pages/NotFound";
 import Auth from "./pages/Auth";
 import ExtractionTester from "./pages/ExtractionTester";
-import Backtesting from "./pages/Backtesting";
+import SentimentCohorts from "./pages/SentimentCohorts";
 import Reports from "./pages/Reports";
 import Trades from "./pages/Trades";
 import RecommendedTrades from "./pages/RecommendedTrades";
@@ -48,7 +48,7 @@ const App: React.FC = () => {
         <Route path="/candidates" element={<ProtectedRoute><RecommendedTrades /></ProtectedRoute>} />
         <Route path="/sentiment" element={<ProtectedRoute><SentimentDashboardPage /></ProtectedRoute>} />
         <Route path="/portfolio" element={<ProtectedRoute><Trades /></ProtectedRoute>} />
-        <Route path="/backtesting" element={<ProtectedRoute><Backtesting /></ProtectedRoute>} />
+        <Route path="/backtesting" element={<ProtectedRoute><SentimentCohorts /></ProtectedRoute>} />
         <Route path="/configuration" element={<ProtectedRoute><Configuration /></ProtectedRoute>} />
         <Route path="/bulk-import" element={<ProtectedRoute><BulkImport /></ProtectedRoute>} />
         <Route path="/dev/extraction-tester" element={<ProtectedRoute><ExtractionTester /></ProtectedRoute>} />

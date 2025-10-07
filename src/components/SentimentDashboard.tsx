@@ -22,6 +22,7 @@ interface RedditDailySignal {
   symbol: string;
   n_mentions: number;
   avg_score: number;
+  avg_confidence?: number;
   used_score: number;
 }
 
@@ -393,7 +394,7 @@ const SentimentDashboard = () => {
         if (fallbackError) {
           console.error('❌ Fallback reddit signals error:', fallbackError);
         } else if (fallbackSignals && fallbackSignals.length > 0) {
-          signalsData = fallbackSignals;
+          signalsData = fallbackSignals as any;
           usedFallback = true;
           console.log('✅ Fallback reddit signals worked:', fallbackSignals.length, 'items');
         }

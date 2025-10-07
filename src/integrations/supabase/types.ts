@@ -2347,6 +2347,27 @@ export type Database = {
         }
         Relationships: []
       }
+      user_roles: {
+        Row: {
+          created_at: string | null
+          id: string
+          role: Database["public"]["Enums"]["app_role"]
+          user_id: string
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          role: Database["public"]["Enums"]["app_role"]
+          user_id: string
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          role?: Database["public"]["Enums"]["app_role"]
+          user_id?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       prices_daily: {
@@ -2836,6 +2857,7 @@ export type Database = {
       }
       v_reddit_daily_signals: {
         Row: {
+          avg_confidence: number | null
           avg_score: number | null
           n_mentions: number | null
           symbol: string | null
@@ -2936,6 +2958,17 @@ export type Database = {
           selftext: string | null
           subreddit: string | null
           title: string | null
+        }
+        Relationships: []
+      }
+      v_sentiment_cohort_weekly: {
+        Row: {
+          bucket: string | null
+          cum_return: number | null
+          cum_trades: number | null
+          horizon: string | null
+          week_start: string | null
+          weekly_trades: number | null
         }
         Relationships: []
       }
@@ -3206,6 +3239,13 @@ export type Database = {
           def_min_score: number
         }[]
       }
+      has_role: {
+        Args: {
+          _role: Database["public"]["Enums"]["app_role"]
+          _user_id: string
+        }
+        Returns: boolean
+      }
       is_market_data_fresh: {
         Args: { hours_threshold?: number; symbol_param: string }
         Returns: boolean
@@ -3255,7 +3295,7 @@ export type Database = {
       }
     }
     Enums: {
-      [_ in never]: never
+      app_role: "admin" | "moderator" | "user"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -3382,6 +3422,8 @@ export type CompositeTypes<
 
 export const Constants = {
   public: {
-    Enums: {},
+    Enums: {
+      app_role: ["admin", "moderator", "user"],
+    },
   },
 } as const
