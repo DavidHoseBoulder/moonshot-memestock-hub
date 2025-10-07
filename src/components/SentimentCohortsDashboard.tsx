@@ -72,9 +72,18 @@ const SentimentCohortsDashboard: React.FC = () => {
     return Object.values(grouped);
   }, [filteredData, selectedHorizon]);
 
-  // Get unique buckets and horizons for legend
+  // Get unique buckets and horizons that actually have data
   const uniqueBuckets = Array.from(new Set(filteredData.map(d => d.bucket)));
   const uniqueHorizons = Array.from(new Set(data.map(d => d.horizon))).sort();
+  
+  // Get combinations that actually have data
+  const availableCombinations = React.useMemo(() => {
+    const combos = new Set<string>();
+    filteredData.forEach(row => {
+      combos.add(`${row.bucket}_${row.horizon}`);
+    });
+    return combos;
+  }, [filteredData]);
 
   const colors = {
     base_strong: '#8b5cf6',
@@ -143,20 +152,22 @@ const SentimentCohortsDashboard: React.FC = () => {
                     />
                     <Legend />
                     {selectedHorizon === 'all' ? (
-                      // Show all bucket+horizon combinations
+                      // Show only bucket+horizon combinations that have data
                       uniqueBuckets.flatMap(bucket =>
-                        uniqueHorizons.map(horizon => (
-                          <Line
-                            key={`${bucket}_${horizon}`}
-                            type="monotone"
-                            dataKey={`${bucket}_${horizon}`}
-                            name={`${bucket} (${horizon})`}
-                            stroke={getLineColor(bucket)}
-                            strokeWidth={2}
-                            dot={{ r: 3 }}
-                            connectNulls
-                          />
-                        ))
+                        uniqueHorizons
+                          .filter(horizon => availableCombinations.has(`${bucket}_${horizon}`))
+                          .map(horizon => (
+                            <Line
+                              key={`${bucket}_${horizon}`}
+                              type="monotone"
+                              dataKey={`${bucket}_${horizon}`}
+                              name={`${bucket} (${horizon})`}
+                              stroke={getLineColor(bucket)}
+                              strokeWidth={2}
+                              dot={{ r: 3 }}
+                              connectNulls
+                            />
+                          ))
                       )
                     ) : (
                       // Show just buckets for selected horizon
