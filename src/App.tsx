@@ -10,6 +10,7 @@ import NotFound from "./pages/NotFound";
 import Auth from "./pages/Auth";
 import ExtractionTester from "./pages/ExtractionTester";
 import SentimentCohorts from "./pages/SentimentCohorts";
+import AdminSetup from "./pages/AdminSetup";
 import Reports from "./pages/Reports";
 import Trades from "./pages/Trades";
 import RecommendedTrades from "./pages/RecommendedTrades";
@@ -49,6 +50,7 @@ const App: React.FC = () => {
         <Route path="/sentiment" element={<ProtectedRoute><SentimentDashboardPage /></ProtectedRoute>} />
         <Route path="/portfolio" element={<ProtectedRoute><Trades /></ProtectedRoute>} />
         <Route path="/backtesting" element={<ProtectedRoute><SentimentCohorts /></ProtectedRoute>} />
+        <Route path="/admin-setup" element={<ProtectedRoute><AdminSetup /></ProtectedRoute>} />
         <Route path="/configuration" element={<ProtectedRoute><Configuration /></ProtectedRoute>} />
         <Route path="/bulk-import" element={<ProtectedRoute><BulkImport /></ProtectedRoute>} />
         <Route path="/dev/extraction-tester" element={<ProtectedRoute><ExtractionTester /></ProtectedRoute>} />
