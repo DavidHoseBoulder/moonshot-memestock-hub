@@ -246,18 +246,23 @@ const TriggeredCandidatesDashboard = () => {
       quantity = "20"; // Reasonable default for paper trades
     }
 
-    // Fetch today's opening price
+    // Fetch latest available opening price (not filtered by today's date)
     let openPrice = "";
     try {
       const { data, error } = await supabase
         .from('enhanced_market_data' as any)
-        .select('price_open')
+        .select('price_open, price')
         .eq('symbol', candidate.symbol)
-        .eq('data_date', todayInDenverDateString())
+        .order('data_date', { ascending: false })
+        .limit(1)
         .maybeSingle();
       
-      if (data && !error && (data as any).price_open) {
-        openPrice = (data as any).price_open.toString();
+      if (data && !error) {
+        // Use price_open if available, otherwise use price
+        const currentPrice = (data as any).price_open || (data as any).price;
+        if (currentPrice) {
+          openPrice = currentPrice.toString();
+        }
       }
     } catch (error) {
       console.error('Error fetching opening price:', error);

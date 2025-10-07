@@ -667,7 +667,7 @@ const TradesOverview = ({ onSymbolSelect, onOpenChat }: TradesOverviewProps) => 
       if (name === 'symbol' && value.symbol && value.symbol.length > 0) {
         const symbol = value.symbol.toUpperCase();
         
-        // Fetch latest market data for the symbol
+        // Fetch latest available market data for the symbol (not filtered by date)
         const { data: marketRow } = await supabase
           .from('enhanced_market_data')
           .select('price_open, price, data_date')
