@@ -208,7 +208,12 @@ if [[ -n "$ONLY" && -n "$FROM_STAGE" ]]; then
 fi
 
   if [[ -n "$ONLY" ]]; then
-    IFS=',' read -r -a requested <<<"$(printf '%s' "$ONLY" | normalize_csv)"
+    normalized_only="$(printf '%s' "$ONLY" | normalize_csv)"
+    requested=()
+    for r in ${normalized_only//,/ }; do
+      [[ -z "$r" ]] && continue
+      requested+=("$r")
+    done
     # Validate
     STAGES_TO_RUN=()
     matched=0
