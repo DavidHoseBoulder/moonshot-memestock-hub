@@ -236,7 +236,7 @@ const TriggeredCandidatesDashboard = () => {
     return { qty, value: actualValue, mode: 'real' };
   };
 
-  const handleNewTrade = (candidate: TriggeredCandidate) => {
+  const handleNewTrade = async (candidate: TriggeredCandidate) => {
     const grade = candidate.grade || mapConfidenceToGrade(candidate.confidence_label);
     const size = getDefaultTradeSize(grade);
     
@@ -246,6 +246,23 @@ const TriggeredCandidatesDashboard = () => {
       quantity = "20"; // Reasonable default for paper trades
     }
 
+    // Fetch today's opening price
+    let openPrice = "";
+    try {
+      const { data, error } = await supabase
+        .from('enhanced_market_data' as any)
+        .select('price_open')
+        .eq('symbol', candidate.symbol)
+        .eq('data_date', todayInDenverDateString())
+        .maybeSingle();
+      
+      if (data && !error && (data as any).price_open) {
+        openPrice = (data as any).price_open.toString();
+      }
+    } catch (error) {
+      console.error('Error fetching opening price:', error);
+    }
+
     setSelectedCandidate(candidate);
     form.reset({
       symbol: candidate.symbol,
@@ -253,7 +270,7 @@ const TriggeredCandidatesDashboard = () => {
       horizon: candidate.horizon,
       mode: size.mode,
       trade_date: todayInDenverDateString(),
-      entry_price: "",
+      entry_price: openPrice,
       qty: quantity,
       fees_bps: "0",
       slippage_bps: "0",
