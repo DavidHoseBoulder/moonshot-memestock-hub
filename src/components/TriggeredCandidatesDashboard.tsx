@@ -80,6 +80,7 @@ const TriggeredCandidatesDashboard = () => {
   const [tradingDate] = useState<string>(todayInDenverDateString());
   const [showConfig, setShowConfig] = useState(false);
   const [selectedSymbol, setSelectedSymbol] = useState<string | null>(null);
+  const [existingTrades, setExistingTrades] = useState<Set<string>>(new Set());
   
   // Configuration state - loaded from database
   const [recoDate, setRecoDate] = useState(format(new Date(), 'yyyy-MM-dd'));
@@ -365,6 +366,9 @@ const TriggeredCandidatesDashboard = () => {
       form.reset();
       setNewTradeDialogOpen(false);
       setSelectedCandidate(null);
+      
+      // Refresh existing trades to update the UI
+      await fetchExistingTrades();
     } catch (error: any) {
       console.error('Error creating trade:', error);
       toast({
@@ -375,6 +379,38 @@ const TriggeredCandidatesDashboard = () => {
     } finally {
       setIsSubmittingTrade(false);
     }
+  };
+
+  // Fetch existing trades
+  const fetchExistingTrades = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('trades' as any)
+        .select('symbol, horizon, side, status')
+        .in('status', ['OPEN', 'PENDING']);
+
+      if (error) {
+        console.error('❌ Error fetching existing trades:', error);
+        return;
+      }
+
+      if (data) {
+        // Create a Set of trade keys: "SYMBOL-HORIZON-SIDE"
+        const tradeKeys = new Set(
+          data.map((trade: any) => `${trade.symbol}-${trade.horizon}-${trade.side}`)
+        );
+        setExistingTrades(tradeKeys);
+        console.log('📊 Found', tradeKeys.size, 'existing open trades');
+      }
+    } catch (error) {
+      console.error('❌ Error fetching existing trades:', error);
+    }
+  };
+
+  // Check if a candidate has an existing trade
+  const hasExistingTrade = (candidate: TriggeredCandidate) => {
+    const tradeKey = `${candidate.symbol}-${candidate.horizon}-${candidate.side}`;
+    return existingTrades.has(tradeKey);
   };
 
   // Data fetching
@@ -451,7 +487,7 @@ const TriggeredCandidatesDashboard = () => {
 
   const handleRefresh = async () => {
     setIsRefreshing(true);
-    await fetchTriggeredCandidates();
+    await Promise.all([fetchTriggeredCandidates(), fetchExistingTrades()]);
     setIsRefreshing(false);
     toast({
       title: 'Data Refreshed',
@@ -461,7 +497,8 @@ const TriggeredCandidatesDashboard = () => {
 
   useEffect(() => {
     setIsLoading(true);
-    fetchTriggeredCandidates().finally(() => setIsLoading(false));
+    Promise.all([fetchTriggeredCandidates(), fetchExistingTrades()])
+      .finally(() => setIsLoading(false));
   }, [recoDate, minConfidence, minTrades]);
 
   // Filter data
@@ -707,6 +744,7 @@ const TriggeredCandidatesDashboard = () => {
                 const isTopPick = globalRank < 2 && activeGradeFilter !== 'moderate' && activeGradeFilter !== 'weak';
                 const needsBacktest = !hasDiagnostics(candidate);
                 const noteKey = `${candidate.symbol}-${candidate.horizon}`;
+                const tradeExists = hasExistingTrade(candidate);
 
                 return (
                   <div 
@@ -735,6 +773,21 @@ const TriggeredCandidatesDashboard = () => {
                             <Trophy className="w-3 h-3" />
                             Top Pick
                           </Badge>
+                        )}
+                        
+                        {tradeExists && (
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <div>
+                                <Badge variant="default" className="bg-green-600 hover:bg-green-700 gap-1">
+                                  ✓ Trade Created
+                                </Badge>
+                              </div>
+                            </TooltipTrigger>
+                            <TooltipContent>
+                              An open trade already exists for this symbol/horizon/side
+                            </TooltipContent>
+                          </Tooltip>
                         )}
                         
                         {needsBacktest && (
