@@ -60,6 +60,9 @@ echo "Working dir: $WORKING_DIR"
 # Translate empty SYMBOLS to NULL literal for the SQL script’s check
 SYMBOLS_ARG=${SYMBOLS:-NULL}
 
+# Force stdout pagination off so runs don’t block on a pager (psql defaults to less)
+export PAGER="${PAGER:-cat}"
+
 psql "$PGURI" \
   -v START_DATE="$START_DATE" \
   -v END_DATE="$END_DATE" \
