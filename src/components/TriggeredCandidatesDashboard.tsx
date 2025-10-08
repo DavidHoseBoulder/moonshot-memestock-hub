@@ -436,9 +436,9 @@ const TriggeredCandidatesDashboard = () => {
 
       // Debug: log candidate details to help troubleshoot backtest matching
       if (data && data.length > 0) {
-        console.log('📊 Sample candidates for backtest matching:');
-        data.slice(0, 3).forEach((item: any) => {
-          console.log(`  ${item.symbol} ${item.horizon}: min_mentions=${item.min_mentions}, pos_thresh=${item.rule_threshold}, sharpe=${item.sharpe}, trades=${item.trades}`);
+        console.log('📊 All candidates with backtest lookup params:');
+        data.forEach((item: any) => {
+          console.log(`  ${item.symbol} ${item.side} ${item.horizon}: min_mentions=${item.min_mentions}, rule_threshold=${item.rule_threshold}, sharpe=${item.sharpe}, trades=${item.trades}, has_backtest=${item.sharpe !== null}`);
         });
       }
 
