@@ -774,9 +774,11 @@ const TriggeredCandidatesDashboard = () => {
                         <div className="flex flex-col items-start gap-1">
                           <Tooltip>
                             <TooltipTrigger asChild>
-                              <Badge variant={getGradeVariant(selectedCandidate.grade || mapConfidenceToGrade(selectedCandidate.confidence_label))}>
-                                {selectedCandidate.grade || mapConfidenceToGrade(selectedCandidate.confidence_label)}
-                              </Badge>
+                              <div>
+                                <Badge variant={getGradeVariant(selectedCandidate.grade || mapConfidenceToGrade(selectedCandidate.confidence_label))}>
+                                  {selectedCandidate.grade || mapConfidenceToGrade(selectedCandidate.confidence_label)}
+                                </Badge>
+                              </div>
                             </TooltipTrigger>
                             <TooltipContent>
                               {getGradeTooltip()}
