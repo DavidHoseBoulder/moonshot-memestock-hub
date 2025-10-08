@@ -429,6 +429,14 @@ const TriggeredCandidatesDashboard = () => {
 
       console.log('🎯 Triggered candidates received:', data?.length || 0, 'items');
 
+      // Debug: log candidate details to help troubleshoot backtest matching
+      if (data && data.length > 0) {
+        console.log('📊 Sample candidates for backtest matching:');
+        data.slice(0, 3).forEach((item: any) => {
+          console.log(`  ${item.symbol} ${item.horizon}: min_mentions=${item.min_mentions}, pos_thresh=${item.rule_threshold}, sharpe=${item.sharpe}, trades=${item.trades}`);
+        });
+      }
+
       if (data) {
         const processed = data.map((item: any) => ({
           symbol: item.symbol,
