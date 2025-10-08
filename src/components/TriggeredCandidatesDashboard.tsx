@@ -90,8 +90,6 @@ const TriggeredCandidatesDashboard = () => {
   const [newTradeDialogOpen, setNewTradeDialogOpen] = useState(false);
   const [selectedCandidate, setSelectedCandidate] = useState<TriggeredCandidate | null>(null);
   const [isSubmittingTrade, setIsSubmittingTrade] = useState(false);
-  const [backtestCommandDialogOpen, setBacktestCommandDialogOpen] = useState(false);
-  const [selectedHorizonsBySymbol, setSelectedHorizonsBySymbol] = useState<Record<string, string>>({});
 
   // Form schema
   const tradeFormSchema = z.object({
@@ -246,16 +244,19 @@ const TriggeredCandidatesDashboard = () => {
     return candidate.sharpe !== null || candidate.trades !== null;
   };
 
-  const copyToClipboard = (text: string) => {
+  const copyToClipboard = (text: string, message: string) => {
     navigator.clipboard.writeText(text);
     toast({
       title: "Copied!",
-      description: "Backtest command copied to clipboard",
+      description: message,
     });
   };
 
-  const getBacktestCommand = (symbol: string, horizon: string) => {
-    return `./run_backtest.sh ${symbol} ${horizon}`;
+  const getBacktestCommand = (symbol: string) => {
+    // Get all horizons for this symbol
+    const symbolCandidates = candidates.filter(c => c.symbol === symbol);
+    const horizons = [...new Set(symbolCandidates.map(c => c.horizon))].join(',');
+    return `bash moonshot-memestock-hub/reddit-utils/run_grid.sh --symbols ${symbol} --horizons ${horizons}`;
   };
 
   // Helper function to calculate default trade size based on grade
@@ -463,7 +464,7 @@ const TriggeredCandidatesDashboard = () => {
     fetchTriggeredCandidates().finally(() => setIsLoading(false));
   }, [recoDate, minConfidence, minTrades]);
 
-  // Filter and group data
+  // Filter data
   const filteredCandidates = candidates.filter(candidate => {
     const gradeMatch = activeGradeFilter === 'all' || 
                      candidate.grade.toLowerCase() === activeGradeFilter;
@@ -472,30 +473,8 @@ const TriggeredCandidatesDashboard = () => {
     return gradeMatch && symbolMatch;
   });
 
-  // Group by symbol
-  const groupedCandidates = filteredCandidates.reduce((acc, candidate) => {
-    if (!acc[candidate.symbol]) {
-      acc[candidate.symbol] = [];
-    }
-    acc[candidate.symbol].push(candidate);
-    return acc;
-  }, {} as Record<string, TriggeredCandidate[]>);
-
-  // Sort symbols by best grade and sharpe
-  const sortedSymbols = Object.keys(groupedCandidates).sort((a, b) => {
-    const aGrades = groupedCandidates[a].map(c => getGradeOrder(c.grade));
-    const bGrades = groupedCandidates[b].map(c => getGradeOrder(c.grade));
-    const aBestGrade = Math.min(...aGrades);
-    const bBestGrade = Math.min(...bGrades);
-    
-    if (aBestGrade !== bBestGrade) {
-      return aBestGrade - bBestGrade;
-    }
-    
-    const aBestSharpe = Math.max(...groupedCandidates[a].map(c => c.sharpe));
-    const bBestSharpe = Math.max(...groupedCandidates[b].map(c => c.sharpe));
-    return bBestSharpe - aBestSharpe;
-  });
+  // Rank all candidates globally
+  const rankedCandidates = rankCandidates(filteredCandidates);
 
   const toggleNoteExpansion = (key: string) => {
     const newExpanded = new Set(expandedNotes);
@@ -717,25 +696,21 @@ const TriggeredCandidatesDashboard = () => {
                 </div>
               ))}
             </div>
-          ) : sortedSymbols.length === 0 ? (
+          ) : rankedCandidates.length === 0 ? (
             <div className="text-center py-8 text-muted-foreground">
               <Target className="w-12 h-12 mx-auto mb-4 opacity-50" />
               <p>No triggered candidates found matching your filters</p>
             </div>
           ) : (
             <div className="space-y-4">
-              {sortedSymbols.map(symbol => {
-                const symbolCandidates = groupedCandidates[symbol];
-                const rankedCandidates = rankCandidates(symbolCandidates);
-                const selectedHorizon = selectedHorizonsBySymbol[symbol] || rankedCandidates[0].horizon;
-                const selectedCandidate = rankedCandidates.find(c => c.horizon === selectedHorizon) || rankedCandidates[0];
-                const rank = rankedCandidates.indexOf(selectedCandidate);
-                const isTopPick = rank < 2 && activeGradeFilter !== 'moderate' && activeGradeFilter !== 'weak';
-                const needsBacktest = !hasDiagnostics(selectedCandidate);
+              {rankedCandidates.map((candidate, globalRank) => {
+                const isTopPick = globalRank < 2 && activeGradeFilter !== 'moderate' && activeGradeFilter !== 'weak';
+                const needsBacktest = !hasDiagnostics(candidate);
+                const noteKey = `${candidate.symbol}-${candidate.horizon}`;
 
                 return (
                   <div 
-                    key={symbol} 
+                    key={noteKey}
                     className={cn(
                       "border rounded-lg p-4 transition-all",
                       isTopPick && "ring-2 ring-primary shadow-md",
@@ -748,11 +723,11 @@ const TriggeredCandidatesDashboard = () => {
                         <h3 
                           className="text-xl font-bold cursor-pointer hover:text-primary"
                           onClick={() => {
-                            setSelectedSymbol(symbol);
-                            navigate(`/sentiment?symbol=${symbol}`);
+                            setSelectedSymbol(candidate.symbol);
+                            navigate(`/sentiment?symbol=${candidate.symbol}`);
                           }}
                         >
-                          {symbol}
+                          {candidate.symbol}
                         </h3>
                         
                         {isTopPick && (
@@ -763,20 +738,26 @@ const TriggeredCandidatesDashboard = () => {
                         )}
                         
                         {needsBacktest && (
-                          <Badge variant="outline" className="border-yellow-500 text-yellow-600 gap-1">
+                          <Badge 
+                            variant="outline" 
+                            className="border-yellow-500 text-yellow-600 gap-1 cursor-pointer hover:bg-yellow-50"
+                            onClick={() => copyToClipboard(getBacktestCommand(candidate.symbol), "Copied backtest refresh command to clipboard")}
+                          >
                             <AlertCircle className="w-3 h-3" />
                             Needs backtest refresh
+                            <Copy className="w-3 h-3 ml-1" />
                           </Badge>
                         )}
                         
-                        <Badge variant="outline">{selectedCandidate.side}</Badge>
+                        <Badge variant="outline">{candidate.horizon}</Badge>
+                        <Badge variant="outline">{candidate.side}</Badge>
                         
                         <div className="flex flex-col items-start gap-1">
                           <Tooltip>
                             <TooltipTrigger asChild>
                               <div>
-                                <Badge variant={getGradeVariant(selectedCandidate.grade || mapConfidenceToGrade(selectedCandidate.confidence_label))}>
-                                  {selectedCandidate.grade || mapConfidenceToGrade(selectedCandidate.confidence_label)}
+                                <Badge variant={getGradeVariant(candidate.grade || mapConfidenceToGrade(candidate.confidence_label))}>
+                                  {candidate.grade || mapConfidenceToGrade(candidate.confidence_label)}
                                 </Badge>
                               </div>
                             </TooltipTrigger>
@@ -785,131 +766,98 @@ const TriggeredCandidatesDashboard = () => {
                             </TooltipContent>
                           </Tooltip>
                           <span className="text-xs text-muted-foreground max-w-[200px]">
-                            {getGradeHelperText(selectedCandidate.grade || mapConfidenceToGrade(selectedCandidate.confidence_label))}
+                            {getGradeHelperText(candidate.grade || mapConfidenceToGrade(candidate.confidence_label))}
                           </span>
                         </div>
                       </div>
-                      
-                      <div className="flex items-center gap-2">
-                        {/* Horizon Selector */}
-                        {rankedCandidates.length > 1 && (
-                          <Select 
-                            value={selectedHorizon}
-                            onValueChange={(value) => setSelectedHorizonsBySymbol({...selectedHorizonsBySymbol, [symbol]: value})}
-                          >
-                            <SelectTrigger className="w-[140px] h-8">
-                              <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent className="bg-background">
-                              {rankedCandidates.map((c, idx) => (
-                                <SelectItem key={c.horizon} value={c.horizon}>
-                                  {c.horizon} {idx < 2 ? '⭐' : ''}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                        )}
-                      </div>
                     </div>
 
-                    {rankedCandidates.length > 1 && (
-                      <div className="text-xs text-amber-600 mb-3 flex items-center gap-1">
-                        <Info className="w-3 h-3" />
-                        Pick one horizon per symbol to avoid overlapping positions
-                      </div>
-                    )}
-
-                    {/* Selected Candidate Data */}
+                    {/* Candidate Data */}
                     <div className="bg-muted/30 rounded-lg p-3">
                       <div className="grid grid-cols-2 md:grid-cols-7 gap-3 items-center mb-2">
                         <div className="text-sm">
-                          <span className="text-muted-foreground">Mentions:</span> {selectedCandidate.mentions}/{selectedCandidate.min_mentions}
+                          <span className="text-muted-foreground">Mentions:</span> {candidate.mentions}/{candidate.min_mentions}
                         </div>
                         <div className="text-sm">
-                          <span className="text-muted-foreground">Threshold:</span> {selectedCandidate.pos_thresh.toFixed(3)}
+                          <span className="text-muted-foreground">Threshold:</span> {candidate.pos_thresh.toFixed(3)}
                         </div>
                         <div className="text-sm">
-                          <span className="text-muted-foreground">Sharpe:</span> {formatNumber(selectedCandidate.sharpe)}
+                          <span className="text-muted-foreground">Sharpe:</span> {formatNumber(candidate.sharpe)}
                         </div>
                         <div className="text-sm">
-                          <span className="text-muted-foreground">Avg Ret:</span> {formatPercent(selectedCandidate.avg_ret)}
+                          <span className="text-muted-foreground">Avg Ret:</span> {formatPercent(candidate.avg_ret)}
                         </div>
                         <div className="text-sm">
-                          <span className="text-muted-foreground">Win:</span> {formatPercent(selectedCandidate.win_rate)}
+                          <span className="text-muted-foreground">Win:</span> {formatPercent(candidate.win_rate)}
                         </div>
                         <div className="flex gap-2">
                           <Badge variant="secondary" className="text-xs">
-                            {getBacktestBadgeText(selectedCandidate.trades)}
+                            {getBacktestBadgeText(candidate.trades)}
                           </Badge>
                         </div>
                         <div className="flex gap-1 flex-wrap">
                           <Button
                             size="sm"
-                            onClick={() => handleNewTrade(selectedCandidate)}
+                            onClick={() => handleNewTrade(candidate)}
                             className="h-6 px-2 text-xs"
                           >
                             <Plus className="w-3 h-3 mr-1" />
                             {(() => {
-                              const grade = selectedCandidate.grade || mapConfidenceToGrade(selectedCandidate.confidence_label);
+                              const grade = candidate.grade || mapConfidenceToGrade(candidate.confidence_label);
                               const size = getDefaultTradeSize(grade);
                               if (grade === 'Weak') return 'Paper';
                               return `$${Math.round(size.value)}`;
                             })()}
                           </Button>
-                          
-                          {needsBacktest && (
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              onClick={() => {
-                                setSelectedCandidate(selectedCandidate);
-                                setBacktestCommandDialogOpen(true);
-                              }}
-                              className="h-6 px-2 text-xs"
-                            >
-                              Get backtest command
-                            </Button>
-                          )}
                         </div>
                       </div>
 
                       {/* Backtest Context */}
                       <div className="text-xs text-muted-foreground mb-2">
-                        [{selectedCandidate.grade || mapConfidenceToGrade(selectedCandidate.confidence_label)}] {getBacktestBadgeText(selectedCandidate.trades)} • 
-                        Avg {formatPercent(selectedCandidate.avg_ret)} • Win {formatPercent(selectedCandidate.win_rate)} • 
-                        Sharpe {formatNumber(selectedCandidate.sharpe, 1)} ({formatDateRange(selectedCandidate.start_date, selectedCandidate.end_date)})
+                        [{candidate.grade || mapConfidenceToGrade(candidate.confidence_label)}] {getBacktestBadgeText(candidate.trades)} • 
+                        Avg {formatPercent(candidate.avg_ret)} • Win {formatPercent(candidate.win_rate)} • 
+                        Sharpe {formatNumber(candidate.sharpe, 1)} ({formatDateRange(candidate.start_date, candidate.end_date)})
                         <Button 
                           variant="link" 
                           className="h-auto p-0 ml-2 text-xs"
-                          onClick={() => navigate(`/backtesting?symbol=${symbol}&horizon=${selectedCandidate.horizon}`)}
+                          onClick={() => navigate(`/backtesting?symbol=${candidate.symbol}&horizon=${candidate.horizon}`)}
                         >
                           View Backtest
                         </Button>
                       </div>
 
                       {/* Notes */}
-                      {selectedCandidate.notes && selectedCandidate.notes.trim().length > 0 && (
-                        <div className="mt-2">
-                          <div className={cn(
-                            "text-sm text-muted-foreground",
-                            !expandedNotes.has(`${symbol}-${selectedCandidate.horizon}`) && "line-clamp-2"
-                          )}>
-                            {selectedCandidate.notes}
+                      {candidate.notes && (
+                        <div className="border-t pt-2 mt-2">
+                          <div className="flex items-center justify-between">
+                            <span className="text-xs font-medium text-muted-foreground">Notes:</span>
+                            {candidate.notes.length > 200 && (
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => toggleNoteExpansion(noteKey)}
+                                className="h-auto py-0 px-2 text-xs"
+                              >
+                                {expandedNotes.has(noteKey) ? (
+                                  <>
+                                    <ChevronUp className="w-3 h-3 mr-1" />
+                                    Show less
+                                  </>
+                                ) : (
+                                  <>
+                                    <ChevronDown className="w-3 h-3 mr-1" />
+                                    Show more
+                                  </>
+                                )}
+                              </Button>
+                            )}
                           </div>
-                          {selectedCandidate.notes.length > 100 && (
-                            <Button
-                              variant="link"
-                              size="sm"
-                              className="h-auto p-0 text-xs"
-                              onClick={() => toggleNoteExpansion(`${symbol}-${selectedCandidate.horizon}`)}
-                            >
-                              {expandedNotes.has(`${symbol}-${selectedCandidate.horizon}`) ? (
-                                <>Show Less <ChevronUp className="w-3 h-3 ml-1" /></>
-                              ) : (
-                                <>Show More <ChevronDown className="w-3 h-3 ml-1" /></>
-                              )}
-                            </Button>
-                          )}
+                          <p className={cn(
+                            "text-xs text-muted-foreground mt-1",
+                            !expandedNotes.has(noteKey) && candidate.notes.length > 200 && "line-clamp-3"
+                          )}>
+                            {candidate.notes}
+                          </p>
                         </div>
                       )}
                     </div>
@@ -1198,46 +1146,6 @@ const TriggeredCandidatesDashboard = () => {
               </div>
             </form>
           </Form>
-        </DialogContent>
-      </Dialog>
-
-      {/* Backtest Command Dialog */}
-      <Dialog open={backtestCommandDialogOpen} onOpenChange={setBacktestCommandDialogOpen}>
-        <DialogContent className="sm:max-w-[500px]">
-          <DialogHeader>
-            <DialogTitle>Get Backtest Command</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4">
-            <div className="bg-muted/50 p-4 rounded-lg">
-              <p className="text-sm mb-3">
-                Run this command in your terminal to generate backtest diagnostics:
-              </p>
-              <div className="bg-background p-3 rounded font-mono text-sm flex items-center justify-between gap-2">
-                <code className="flex-1">
-                  {selectedCandidate && getBacktestCommand(selectedCandidate.symbol, selectedCandidate.horizon)}
-                </code>
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  onClick={() => selectedCandidate && copyToClipboard(getBacktestCommand(selectedCandidate.symbol, selectedCandidate.horizon))}
-                >
-                  <Copy className="w-4 h-4" />
-                </Button>
-              </div>
-            </div>
-            
-            <div className="text-xs text-muted-foreground space-y-1">
-              <p>• This generates Sharpe, win rate, and trade count for the symbol-horizon combination</p>
-              <p>• Once complete, refresh this page to see updated diagnostics</p>
-              <p>• Diagnostics help validate the trading edge before committing capital</p>
-            </div>
-
-            <div className="flex justify-end">
-              <Button onClick={() => setBacktestCommandDialogOpen(false)}>
-                Close
-              </Button>
-            </div>
-          </div>
         </DialogContent>
       </Dialog>
     </TooltipProvider>
