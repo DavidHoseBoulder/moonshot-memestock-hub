@@ -254,15 +254,15 @@ const TriggeredCandidatesDashboard = () => {
   };
 
   const getBacktestCommand = (symbol: string) => {
-    // Get all horizons and parameters for this symbol
+    // Get all horizons and parameters for this symbol from the candidates
     const symbolCandidates = candidates.filter(c => c.symbol === symbol);
     const horizons = [...new Set(symbolCandidates.map(c => c.horizon))].join(',');
     
-    // Get all unique min_mentions and pos_thresh values
+    // Get all unique min_mentions and pos_thresh values from the live rules (what the backtest needs to match)
     const minMentionsList = [...new Set(symbolCandidates.map(c => c.min_mentions))].sort((a, b) => a - b).join(',');
     const posThreshList = [...new Set(symbolCandidates.map(c => c.pos_thresh))].sort((a, b) => a - b).map(v => v.toFixed(2)).join(',');
     
-    return `SYMBOLS=${symbol} HORIZONS=${horizons} MIN_MENTIONS_LIST=${minMentionsList} POS_THRESH_LIST=${posThreshList} bash moonshot-memestock-hub/reddit-utils/run_grid.sh`;
+    return `SYMBOLS=${symbol} HORIZONS=${horizons} MIN_MENTIONS_LIST=${minMentionsList} POS_THRESH_LIST=${posThreshList} DO_PERSIST=1 bash moonshot-memestock-hub/reddit-utils/run_grid.sh`;
   };
 
   // Helper function to calculate default trade size based on grade
