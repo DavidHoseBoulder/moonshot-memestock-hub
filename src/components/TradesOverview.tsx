@@ -661,7 +661,7 @@ const TradesOverview = ({ onSymbolSelect, onOpenChat }: TradesOverviewProps) => 
     fetchTrades();
   }, []);
 
-  // Auto-fill entry price when symbol is entered
+  // Auto-fill entry price and calculate default quantity
   useEffect(() => {
     const subscription = form.watch(async (value, { name }) => {
       if (name === 'symbol' && value.symbol && value.symbol.length > 0) {
@@ -681,7 +681,23 @@ const TradesOverview = ({ onSymbolSelect, onOpenChat }: TradesOverviewProps) => 
           const currentPrice = marketRow.price_open || marketRow.price;
           if (currentPrice) {
             form.setValue('entry_price', currentPrice.toFixed(2));
+            // Calculate default shares targeting $1000
+            const targetAmount = 1000;
+            const exactShares = targetAmount / currentPrice;
+            const roundedShares = Math.round(exactShares);
+            form.setValue('qty', roundedShares.toString());
           }
+        }
+      }
+      
+      // Also recalculate quantity if entry_price is manually changed
+      if (name === 'entry_price' && value.entry_price) {
+        const price = parseFloat(value.entry_price);
+        if (!isNaN(price) && price > 0) {
+          const targetAmount = 1000;
+          const exactShares = targetAmount / price;
+          const roundedShares = Math.round(exactShares);
+          form.setValue('qty', roundedShares.toString());
         }
       }
     });
