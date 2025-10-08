@@ -26,8 +26,15 @@ if [ ! -f "$SQL_PATH" ]; then
 fi
 
 # Core filters / defaults (override via env)
+# Default window: keep the historical start, but always roll the end forward to today
 START_DATE=${START_DATE:-"2025-06-01"}
-END_DATE=${END_DATE:-"2025-09-12"}
+if [ -z "${END_DATE:-}" ]; then
+  if command -v gdate >/dev/null 2>&1; then
+    END_DATE="$(gdate -u +"%Y-%m-%d")"
+  else
+    END_DATE="$(date -u +"%Y-%m-%d")"
+  fi
+fi
 MODEL_VERSION=${MODEL_VERSION:-"gpt-sent-v1"}
 MIN_CONF=${MIN_CONF:-"0.70"}
 MIN_MENTIONS_REQ=${MIN_MENTIONS_REQ:-"3"}
