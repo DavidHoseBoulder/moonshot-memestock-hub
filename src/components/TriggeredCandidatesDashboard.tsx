@@ -809,17 +809,18 @@ const TriggeredCandidatesDashboard = () => {
                               <Badge 
                                 variant="outline" 
                                 className="border-yellow-500 text-yellow-600 gap-1 cursor-pointer hover:bg-yellow-50"
-                                onClick={() => copyToClipboard(getBacktestCommand(candidate.symbol), "Copied backtest refresh command to clipboard")}
+                                onClick={() => copyToClipboard(getBacktestCommand(candidate.symbol), "Copied backtest command to clipboard")}
                               >
                                 <AlertCircle className="w-3 h-3" />
-                                Needs backtest (m={candidate.min_mentions}, t={candidate.pos_thresh})
+                                No backtest data
                                 <Copy className="w-3 h-3 ml-1" />
                               </Badge>
                             </TooltipTrigger>
                             <TooltipContent>
-                              <p>No backtest found for these exact parameters:</p>
+                              <p>No backtest results found for:</p>
                               <p className="font-mono text-xs">min_mentions={candidate.min_mentions}, pos_thresh={candidate.pos_thresh.toFixed(2)}</p>
-                              <p className="text-xs mt-1">Click to copy refresh command</p>
+                              <p className="text-xs mt-1 text-muted-foreground">Could be: not run yet, or insufficient qualifying trades</p>
+                              <p className="text-xs font-semibold mt-1">Click to copy backtest command</p>
                             </TooltipContent>
                           </Tooltip>
                         )}
