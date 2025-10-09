@@ -59,7 +59,7 @@
 SET statement_timeout = :'STATEMENT_TIMEOUT_MS';
 
 \if :{?WORK_MEM} \else \set WORK_MEM 'NULL' \endif
-\if :WORK_MEM = 'NULL'
+\if :'WORK_MEM' = 'NULL'
 \else
   SET work_mem = :'WORK_MEM';
 \endif
@@ -1411,8 +1411,29 @@ COPY (
     r.trades, r.avg_ret, r.median_ret, r.win_rate, r.stdev_ret, r.sharpe,
     d.train_trades, d.valid_trades, d.train_sharpe, d.valid_sharpe,
     d.r_train_rank, d.r_valid_rank,
-    r.lb
-  FROM tmp_results r
+    r.lb,
+    r.baseline_naive_trades,
+    r.baseline_naive_avg_ret,
+    r.baseline_random_trades,
+    r.baseline_random_avg_ret,
+    r.uplift,
+    r.uplift_random,
+    r.avg_volume_zscore_20,
+    r.avg_volume_ratio_avg_20,
+    r.avg_volume_share_20,
+    r.avg_rsi_14,
+    r.avg_daily_dollar_volume_30d,
+    r.avg_atr_14d,
+    r.avg_true_range_pct,
+    r.avg_beta_vs_spy,
+    r.avg_shares_float,
+    r.avg_short_interest_pct_float,
+    r.avg_borrow_cost_bps,
+    r.hard_to_borrow_flag,
+    r.avg_reddit_msgs_30d,
+    r.avg_stocktwits_msgs_30d,
+    r.avg_sentiment_health_score
+  FROM tmp_results_final r
   LEFT JOIN tmp_fold_diag d
     ON d.symbol=r.symbol AND d.horizon=r.horizon AND d.side=r.side
    AND d.min_mentions=r.min_mentions AND d.pos_thresh=r.pos_thresh

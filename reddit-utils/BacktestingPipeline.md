@@ -90,6 +90,7 @@ flowchart TD
       ```
   - Database hygiene: keep `reddit_mentions`, `reddit_sentiment`, `v_stocktwits_daily_signals`, and `enhanced_market_data` analyzed; index `(created_utc, symbol)` on mentions and `(model_version, mention_id)` on sentiment to avoid timeouts when scanning the full universe.
   - Optional: Client-side CSV export via `COPY ... TO STDOUT` + `\g :CSV_PATH`.
+  - Offline summaries: use `analysis/grid_hygiene_summary.py --input /tmp/grid_full.csv --output results/grid_full_summary.md` to snapshot horizon/band/promoted hygiene metrics after each sweep; script will also emit PNG plots into `results/` when `--plots` is supplied.
 
 - Promotion from Grid
   - Script: `moonshot-memestock-hub/reddit-utils/promote_rules_from_grid.sql`

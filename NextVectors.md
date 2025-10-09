@@ -32,6 +32,12 @@ This backlog captures expansion ideas we want to explore while the paper-trade c
 - **Next Step:** Backtest flags that align high short-interest percentile (>85th) with sentiment inflections.
 - **Gate:** Win rate ≥ 55% with R/R ≥ 1.8 on paper trades.
 
+## 6. Mid/Late Cycle Micro-Cap Sentiment Probe
+- **Thesis:** Relax liquidity gates (ADV $100–500M) to capture sharper sentiment-led moves in thinly traded names, using tighter risk controls instead of excluding them outright.
+- **Lift:** Spin up a parallel sweep configuration with lower ADV thresholds and a curated symbol list (e.g., top Reddit/Twitter chatter under $5B market cap). Mirror hygiene metrics so we can compare Sharpe vs. liquidity directly.
+- **Next Step:** Run an exploratory backtest (shorter window) and feed output through `grid_hygiene_summary.py` to benchmark Sharpe/volatility against the core cohort. Evaluate whether the extra edge offsets execution risk.
+- **Gate:** Demonstrated Sharpe ≥ 0.4 with ADV-adjusted position sizing (e.g., deploy ≤10% of daily dollar volume) and sentiment coverage health ≥ 0.9; if churn is high or fills look unreliable, scrap.
+
 ---
 
 ### Watchlist Hygiene & Foundations (Ongoing)
