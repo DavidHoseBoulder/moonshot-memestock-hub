@@ -94,8 +94,7 @@ const GridHygieneSummary = () => {
     try {
       const { data, error } = await supabase
         .from('backtest_sweep_grid')
-        .select('model_version, start_date, end_date, side')
-        .order('start_date', { ascending: false });
+        .select('model_version, start_date, end_date, side');
 
       if (error) throw error;
 
@@ -116,7 +115,16 @@ const GridHygieneSummary = () => {
         existing.count++;
       });
 
-      setAvailableRuns(Array.from(runsMap.values()).sort((a, b) => b.start_date.localeCompare(a.start_date)));
+      const runs = Array.from(runsMap.values()).sort((a, b) => {
+        // Sort by start_date desc, then end_date desc
+        if (a.start_date !== b.start_date) {
+          return b.start_date.localeCompare(a.start_date);
+        }
+        return b.end_date.localeCompare(a.end_date);
+      });
+      
+      console.log('Available runs found:', runs.length, runs);
+      setAvailableRuns(runs);
     } catch (error) {
       console.error('Error fetching available runs:', error);
     }
@@ -318,42 +326,7 @@ Points cluster between ~$0.5B and ~$10B ADV30, where Sharpe spans 0 to ≈${Math
   };
 
   useEffect(() => {
-    const initializeData = async () => {
-      await fetchAvailableRuns();
-      
-      // After fetching available runs, check if current selection exists, otherwise use most recent
-      const currentKey = `${modelVersion}|${startDate}|${endDate}|${side}`;
-      const { data } = await supabase
-        .from('backtest_sweep_grid')
-        .select('model_version, start_date, end_date, side')
-        .eq('model_version', modelVersion)
-        .eq('start_date', startDate)
-        .eq('end_date', endDate)
-        .eq('side', side)
-        .limit(1);
-      
-      if (!data || data.length === 0) {
-        // Current selection doesn't exist, use most recent available
-        const mostRecent = await supabase
-          .from('backtest_sweep_grid')
-          .select('model_version, start_date, end_date, side')
-          .order('start_date', { ascending: false })
-          .limit(1)
-          .single();
-        
-        if (mostRecent.data) {
-          setModelVersion(mostRecent.data.model_version);
-          setStartDate(mostRecent.data.start_date);
-          setEndDate(mostRecent.data.end_date);
-          setSide(mostRecent.data.side);
-        }
-      }
-      
-      // Load initial data
-      await fetchGridData();
-    };
-    
-    initializeData();
+    fetchAvailableRuns();
   }, []);
 
   return (
