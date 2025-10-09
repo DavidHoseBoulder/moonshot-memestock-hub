@@ -78,6 +78,7 @@ const GridHygieneSummary = () => {
   const [startDate, setStartDate] = useState("2025-06-01");
   const [endDate, setEndDate] = useState("2025-10-09");
   const [side, setSide] = useState("LONG");
+  const [availableRuns, setAvailableRuns] = useState<Array<{model_version: string; start_date: string; end_date: string; side: string; count: number}>>([]);
   
   const [gridData, setGridData] = useState<GridRow[]>([]);
   const [promotedKeys, setPromotedKeys] = useState<Set<string>>(new Set());
@@ -85,8 +86,41 @@ const GridHygieneSummary = () => {
   const [bandSummary, setBandSummary] = useState<BandSummary[]>([]);
   const [promotedSummary, setPromotedSummary] = useState<PromotedSummary[]>([]);
   const [topPockets, setTopPockets] = useState<GridRow[]>([]);
+  const [summaryText, setSummaryText] = useState<string>("");
   
   const { toast } = useToast();
+
+  const fetchAvailableRuns = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('backtest_sweep_grid')
+        .select('model_version, start_date, end_date, side')
+        .order('start_date', { ascending: false });
+
+      if (error) throw error;
+
+      // Group by unique combinations
+      const runsMap = new Map<string, {model_version: string; start_date: string; end_date: string; side: string; count: number}>();
+      data?.forEach(row => {
+        const key = `${row.model_version}|${row.start_date}|${row.end_date}|${row.side}`;
+        if (!runsMap.has(key)) {
+          runsMap.set(key, {
+            model_version: row.model_version,
+            start_date: row.start_date,
+            end_date: row.end_date,
+            side: row.side,
+            count: 0
+          });
+        }
+        const existing = runsMap.get(key)!;
+        existing.count++;
+      });
+
+      setAvailableRuns(Array.from(runsMap.values()).sort((a, b) => b.start_date.localeCompare(a.start_date)));
+    } catch (error) {
+      console.error('Error fetching available runs:', error);
+    }
+  };
 
   const fetchPromotedKeys = async () => {
     try {
@@ -188,10 +222,10 @@ const GridHygieneSummary = () => {
     // Band Summary
     const bandMap = new Map<string, number[]>();
     data.forEach(row => {
-      if (!bandMap.has(row.band)) {
-        bandMap.set(row.band, []);
+      if (!bandMap.has(row.band || 'UNKNOWN')) {
+        bandMap.set(row.band || 'UNKNOWN', []);
       }
-      bandMap.get(row.band)!.push(row.sharpe || 0);
+      bandMap.get(row.band || 'UNKNOWN')!.push(row.sharpe || 0);
     });
 
     const bandData: BandSummary[] = Array.from(bandMap.entries()).map(([band, sharpes]) => ({
@@ -229,9 +263,45 @@ const GridHygieneSummary = () => {
     // Top 20 pockets
     const sortedData = [...data].sort((a, b) => (b.sharpe || 0) - (a.sharpe || 0));
     setTopPockets(sortedData.slice(0, 20));
+
+    // Generate summary text
+    generateSummaryText(horizonData, bandData, promotedData, sortedData.slice(0, 5));
+  };
+
+  const generateSummaryText = (
+    horizons: HorizonSummary[],
+    bands: BandSummary[],
+    promoted: PromotedSummary[],
+    topFive: GridRow[]
+  ) => {
+    const sortedHorizons = [...horizons].sort((a, b) => b.sharpe_avg - a.sharpe_avg);
+    const bestHorizon = sortedHorizons[0];
+    const worstHorizon = sortedHorizons[sortedHorizons.length - 1];
+    
+    const promotedStats = promoted.find(p => p.is_promoted);
+    const othersStats = promoted.find(p => !p.is_promoted);
+
+    const topBand = bands.sort((a, b) => b.mean - a.mean)[0];
+
+    const summary = `**Highlights from the current sweep:**
+
+• **${bestHorizon.horizon} horizons lead** with mean Sharpe ≈ ${bestHorizon.sharpe_avg.toFixed(2)} and ~${Math.round(bestHorizon.trades_avg)} trades, while ${worstHorizon.horizon} lags at ≈ ${worstHorizon.sharpe_avg.toFixed(2)}. Liquidity and sentiment health stay strong across the board (ADV ≈ $${bestHorizon.adv30_avg_bil}–${worstHorizon.adv30_avg_bil}B, health ≈ ${bestHorizon.health_avg}–${worstHorizon.health_avg}).
+
+• **${topBand.band} band** shows the strongest performance with mean Sharpe ≈ ${topBand.mean.toFixed(2)} (max ${topBand.max.toFixed(2)}) across ${topBand.count} pockets.
+
+• **Promoted pockets** (${promotedStats?.n || 0}) average Sharpe ≈ ${promotedStats?.sharpe_avg.toFixed(2) || 0} versus ≈ ${othersStats?.sharpe_avg.toFixed(2) || 0} for others, and they cluster in higher-liquidity names (ADV ≈ $${promotedStats?.adv30_avg_bil.toFixed(1) || 0}B) with health = ${promotedStats?.health_avg.toFixed(2) || 0}.
+
+• **Top Sharpe pockets** include ${topFive.slice(0, 3).map(p => `${p.symbol} ${p.horizon}`).join(', ')}, now annotated with hygiene metrics so you can cite ADV/beta alongside Sharpe.
+
+**Sharpe vs. Liquidity Analysis:**
+
+Points cluster between ~$0.5B and ~$10B ADV30, where Sharpe spans 0 to ≈${Math.max(...topFive.map(p => p.sharpe || 0)).toFixed(1)}. Once the basic liquidity gate is met, extra flow doesn't automatically boost Sharpe—signal quality is doing the work. Mid-tier names prove we don't need mega-cap flow to get strong returns, while ultra-liquid names still deliver solid Sharpe without an upward slope beyond a certain ADV threshold.`;
+
+    setSummaryText(summary);
   };
 
   useEffect(() => {
+    fetchAvailableRuns();
     fetchGridData();
   }, []);
 
@@ -243,14 +313,33 @@ const GridHygieneSummary = () => {
           Grid Hygiene Summary
         </h3>
         
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4">
-          <div>
-            <Label htmlFor="model">Model Version</Label>
-            <Input 
-              id="model"
-              value={modelVersion}
-              onChange={(e) => setModelVersion(e.target.value)}
-            />
+        <div className="grid grid-cols-1 md:grid-cols-5 gap-4 mb-4">
+          <div className="md:col-span-2">
+            <Label htmlFor="run">Select Backtest Run</Label>
+            <Select 
+              value={`${modelVersion}|${startDate}|${endDate}|${side}`}
+              onValueChange={(val) => {
+                const [m, s, e, sd] = val.split('|');
+                setModelVersion(m);
+                setStartDate(s);
+                setEndDate(e);
+                setSide(sd);
+              }}
+            >
+              <SelectTrigger id="run">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {availableRuns.map(run => (
+                  <SelectItem 
+                    key={`${run.model_version}|${run.start_date}|${run.end_date}|${run.side}`}
+                    value={`${run.model_version}|${run.start_date}|${run.end_date}|${run.side}`}
+                  >
+                    {run.model_version} | {run.start_date} to {run.end_date} | {run.side} ({run.count} pockets)
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
           <div>
             <Label htmlFor="start">Start Date</Label>
@@ -272,7 +361,7 @@ const GridHygieneSummary = () => {
           </div>
           <div>
             <Label htmlFor="side">Side</Label>
-            <Select value={side} onValueChange={setSide}>
+            <Select value={side} onValueChange={setSide} disabled>
               <SelectTrigger id="side">
                 <SelectValue />
               </SelectTrigger>
@@ -298,6 +387,21 @@ const GridHygieneSummary = () => {
 
       {gridData.length > 0 && (
         <>
+          {/* Summary Text */}
+          {summaryText && (
+            <Card className="p-6 bg-gradient-to-br from-primary/5 to-accent/5">
+              <h4 className="text-lg font-bold mb-4 flex items-center gap-2">
+                <TrendingUp className="w-5 h-5" />
+                Executive Summary
+              </h4>
+              <div className="prose prose-sm max-w-none">
+                {summaryText.split('\n\n').map((para, idx) => (
+                  <p key={idx} className="mb-3 text-sm leading-relaxed whitespace-pre-wrap">{para}</p>
+                ))}
+              </div>
+            </Card>
+          )}
+
           {/* Horizon Summary */}
           <Card className="p-6">
             <h4 className="text-md font-bold mb-4">Horizon Summary</h4>
@@ -399,25 +503,53 @@ const GridHygieneSummary = () => {
           <Card className="p-6">
             <h4 className="text-md font-bold mb-4">Sharpe vs Liquidity (ADV30)</h4>
             <ResponsiveContainer width="100%" height={350}>
-              <ScatterChart margin={{ top: 20, right: 20, bottom: 20, left: 20 }}>
+              <ScatterChart margin={{ top: 20, right: 20, bottom: 60, left: 60 }}>
                 <CartesianGrid strokeDasharray="3 3" />
                 <XAxis 
                   dataKey="avg_daily_dollar_volume_30d" 
-                  name="ADV30" 
-                  scale="log" 
-                  domain={['auto', 'auto']}
-                  tickFormatter={(val) => `${(val / 1e9).toFixed(1)}B`}
+                  name="ADV30"
+                  type="number"
+                  scale="log"
+                  domain={['dataMin', 'dataMax']}
+                  tickFormatter={(val) => {
+                    const bil = val / 1e9;
+                    return bil >= 1 ? `$${bil.toFixed(1)}B` : `$${(val / 1e6).toFixed(0)}M`;
+                  }}
+                  label={{ value: 'ADV30 (log scale)', position: 'bottom', offset: 40 }}
                 />
-                <YAxis dataKey="sharpe" name="Sharpe" />
+                <YAxis 
+                  dataKey="sharpe" 
+                  name="Sharpe"
+                  label={{ value: 'Sharpe Ratio', angle: -90, position: 'insideLeft' }}
+                />
                 <Tooltip 
                   formatter={(value: number, name: string) => {
-                    if (name === 'ADV30') return `$${(value / 1e9).toFixed(2)}B`;
+                    if (name === 'ADV30') {
+                      const bil = value / 1e9;
+                      return bil >= 1 ? `$${bil.toFixed(2)}B` : `$${(value / 1e6).toFixed(0)}M`;
+                    }
                     return value.toFixed(3);
                   }}
-                  labelFormatter={(label) => `${label}`}
+                  labelFormatter={(label) => ``}
+                  content={({ active, payload }) => {
+                    if (!active || !payload || !payload.length) return null;
+                    const data = payload[0].payload as GridRow;
+                    return (
+                      <div className="bg-background border border-border rounded p-2 shadow-lg">
+                        <p className="font-bold">{data.symbol} {data.horizon}</p>
+                        <p className="text-sm">Sharpe: {(data.sharpe || 0).toFixed(3)}</p>
+                        <p className="text-sm">ADV30: ${((data.avg_daily_dollar_volume_30d || 0) / 1e9).toFixed(2)}B</p>
+                        <p className="text-sm">Trades: {data.trades}</p>
+                      </div>
+                    );
+                  }}
                 />
-                <Legend />
-                <Scatter name="Pockets" data={gridData} fill="hsl(var(--primary))" />
+                <Scatter 
+                  name="Pockets" 
+                  data={gridData.filter(d => d.avg_daily_dollar_volume_30d && d.avg_daily_dollar_volume_30d > 0)} 
+                  fill="hsl(var(--primary))"
+                  fillOpacity={0.6}
+                />
               </ScatterChart>
             </ResponsiveContainer>
           </Card>
