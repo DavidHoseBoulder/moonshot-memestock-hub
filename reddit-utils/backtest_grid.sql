@@ -525,6 +525,8 @@ SELECT
   lead(price_close, 5) OVER (PARTITION BY upper(symbol) ORDER BY data_date) AS close_t5
 FROM enhanced_market_data;
 
+CREATE INDEX ON tmp_px (symbol, d);
+
 \if :DEBUG
   SELECT 'tmp_px_n' AS label, COUNT(*) AS n FROM tmp_px;
   -- check price coverage on signal starts (both original day and first tradable day)
