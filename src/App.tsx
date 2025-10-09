@@ -15,6 +15,7 @@ import Reports from "./pages/Reports";
 import Trades from "./pages/Trades";
 import RecommendedTrades from "./pages/RecommendedTrades";
 import Configuration from "./pages/Configuration";
+import Backtesting from "./pages/Backtesting";
 import { Toaster } from "@/components/ui/toaster";
 
 
@@ -49,7 +50,8 @@ const App: React.FC = () => {
         <Route path="/candidates" element={<ProtectedRoute><RecommendedTrades /></ProtectedRoute>} />
         <Route path="/sentiment" element={<ProtectedRoute><SentimentDashboardPage /></ProtectedRoute>} />
         <Route path="/portfolio" element={<ProtectedRoute><Trades /></ProtectedRoute>} />
-        <Route path="/backtesting" element={<ProtectedRoute><SentimentCohorts /></ProtectedRoute>} />
+        <Route path="/backtesting" element={<ProtectedRoute><Backtesting /></ProtectedRoute>} />
+        <Route path="/sentiment-cohorts" element={<ProtectedRoute><SentimentCohorts /></ProtectedRoute>} />
         <Route path="/admin-setup" element={<ProtectedRoute><AdminSetup /></ProtectedRoute>} />
         <Route path="/configuration" element={<ProtectedRoute><Configuration /></ProtectedRoute>} />
         <Route path="/bulk-import" element={<ProtectedRoute><BulkImport /></ProtectedRoute>} />
