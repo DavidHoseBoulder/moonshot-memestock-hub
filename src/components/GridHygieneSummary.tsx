@@ -75,8 +75,8 @@ interface PromotedSummary {
 const GridHygieneSummary = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [modelVersion, setModelVersion] = useState("gpt-sent-v1");
-  const [startDate, setStartDate] = useState("2025-03-01");
-  const [endDate, setEndDate] = useState("2025-09-30");
+  const [startDate, setStartDate] = useState("2025-06-01");
+  const [endDate, setEndDate] = useState("2025-10-09");
   const [side, setSide] = useState("LONG");
   
   const [gridData, setGridData] = useState<GridRow[]>([]);
