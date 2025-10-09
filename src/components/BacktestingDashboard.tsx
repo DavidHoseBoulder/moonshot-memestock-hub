@@ -11,6 +11,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import ParameterOptimization from "./ParameterOptimization";
 import ParameterOptimizationResults from "./ParameterOptimizationResults";
+import GridHygieneSummary from "./GridHygieneSummary";
 
 interface BacktestResult {
   id: string;
@@ -170,10 +171,11 @@ const BacktestingDashboard = () => {
       </div>
 
       <Tabs defaultValue="manual" className="w-full">
-        <TabsList className="grid w-full grid-cols-3">
+        <TabsList className="grid w-full grid-cols-4">
           <TabsTrigger value="manual">Manual Testing</TabsTrigger>
           <TabsTrigger value="optimization">Parameter Optimization</TabsTrigger>
           <TabsTrigger value="results">Results & Analysis</TabsTrigger>
+          <TabsTrigger value="grid">Grid Hygiene</TabsTrigger>
         </TabsList>
         
         <TabsContent value="manual" className="space-y-6">
@@ -367,6 +369,10 @@ const BacktestingDashboard = () => {
 
         <TabsContent value="results" className="space-y-6">
           <ParameterOptimizationResults />
+        </TabsContent>
+
+        <TabsContent value="grid" className="space-y-6">
+          <GridHygieneSummary />
         </TabsContent>
       </Tabs>
     </div>
