@@ -45,6 +45,8 @@ MIN_MENTIONS_REQ=${MIN_MENTIONS_REQ:-"NULL"}
 POS_RATE_MIN=${POS_RATE_MIN:-"0.60"}
 AVG_ABS_MIN=${AVG_ABS_MIN:-"0.30"}
 DEBUG=${DEBUG:-"0"}
+SYMBOLS=${SYMBOLS:-""}
+SYNTH_IF_EMPTY=${SYNTH_IF_EMPTY:-"0"}
 
 echo "Running backtest from: $SQL_PATH"
 echo "Working dir: $WORKING_DIR"
@@ -58,6 +60,8 @@ psql "$PGURI" \
   -v POS_RATE_MIN="$POS_RATE_MIN" \
   -v AVG_ABS_MIN="$AVG_ABS_MIN" \
   -v DEBUG="$DEBUG" \
+  -v SYMBOLS="$SYMBOLS" \
+  -v SYNTH_IF_EMPTY="$SYNTH_IF_EMPTY" \
   -f "$SQL_PATH"
 
 echo "Backtest complete. Summary printed above; per-pocket saved to backtest_sweep_results."

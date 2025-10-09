@@ -20,12 +20,12 @@ POS_RATE_LIST=(0.20 0.35 0.50)
 WEIGHT_LIST=("1.0,0.0" "0.7,0.3" "0.5,0.5" "0.3,0.7" "0.0,1.0")
 GATE_SCENARIOS=(
   "name=base vz=NULL vr=NULL vs=NULL rl=NULL rs=NULL"
-  "name=vr15 vz=NULL vr=1.5 vs=NULL rl=NULL rs=NULL"
-  "name=vr20_vs025 vz=NULL vr=2.0 vs=0.25 rl=NULL rs=NULL"
-  "name=vz05 vz=0.5 vr=NULL vs=NULL rl=NULL rs=NULL"
-  "name=vz10_rl65 vz=1.0 vr=NULL vs=NULL rl=65 rs=NULL"
-  "name=vs03 vz=NULL vr=NULL vs=0.3 rl=NULL rs=NULL"
-  "name=vr15_rl60_rs35 vz=NULL vr=1.5 vs=NULL rl=60 rs=35"
+  "name=vs03 vz=NULL vr=NULL vs=0.30 rl=NULL rs=NULL"
+  "name=vr12_vs020 vz=NULL vr=1.2 vs=0.20 rl=NULL rs=NULL"
+  "name=vr14_vs024 vz=NULL vr=1.4 vs=0.24 rl=NULL rs=NULL"
+  "name=vz04 vz=0.4 vr=NULL vs=NULL rl=NULL rs=NULL"
+  "name=vr12 vz=NULL vr=1.2 vs=NULL rl=NULL rs=NULL"
+  "name=vs018 vz=NULL vr=NULL vs=0.18 rl=NULL rs=NULL"
 )
 
 LOG_SUMMARY="$OUTPUT_DIR/summary_$(date +%Y%m%d_%H%M%S).csv"

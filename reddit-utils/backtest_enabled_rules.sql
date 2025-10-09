@@ -157,10 +157,10 @@ DROP TABLE IF EXISTS tmp_daily_sent;
 CREATE TEMP TABLE tmp_daily_sent AS
 WITH base AS (
   SELECT
-    upper(m.symbol)          AS symbol,
-    m.created_utc::date      AS d,
-    s.overall_score::numeric AS score,
-    s.confidence::numeric    AS conf
+    upper(m.symbol)                               AS symbol,
+    m.created_utc::date                           AS d,
+    COALESCE(s.overall_score, s.score)::numeric   AS score,
+    s.confidence::numeric                         AS conf
   FROM reddit_mentions m
   JOIN reddit_sentiment s
     ON s.mention_id = m.mention_id
@@ -268,6 +268,12 @@ ANALYZE tmp_agg;
   FROM tmp_agg
   ORDER BY symbol, d, horizon, side
   LIMIT 200;
+
+  SELECT
+    symbol, d, min_conf, mentions, avg_raw, avg_abs, pos_rate, avg_sign
+  FROM tmp_daily_sent
+  ORDER BY d DESC, symbol
+  LIMIT 50;
 \endif
 
 -- 4) Signal starts (side-aware)

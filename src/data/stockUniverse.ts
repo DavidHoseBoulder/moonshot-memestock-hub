@@ -83,7 +83,7 @@ export const STOCK_UNIVERSE: Stock[] = [
   { ticker: 'WBD', category: 'Media & Internet' },
   { ticker: 'TTD', category: 'Media & Internet' },
   { ticker: 'ROKU', category: 'Media & Internet' },
-  { ticker: 'PARA', category: 'Media & Internet' },
+  { ticker: 'PSKY', category: 'Media & Internet' },
   { ticker: 'FUBO', category: 'Media & Internet' },
   { ticker: 'PINS', category: 'Media & Internet' },
   { ticker: 'BILI', category: 'Media & Internet' },

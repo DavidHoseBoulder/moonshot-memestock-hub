@@ -30,9 +30,9 @@ fi
 START_DATE=${START_DATE:-"2025-06-01"}
 if [ -z "${END_DATE:-}" ]; then
   if command -v gdate >/dev/null 2>&1; then
-    END_DATE="$(gdate -u +"%Y-%m-%d")"
+    END_DATE="$(gdate -u +%Y-%m-%d)"
   else
-    END_DATE="$(date -u +"%Y-%m-%d")"
+    END_DATE="$(date -u +%Y-%m-%d)"
   fi
 fi
 MODEL_VERSION=${MODEL_VERSION:-"gpt-sent-v1"}

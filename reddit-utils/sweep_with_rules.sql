@@ -39,6 +39,7 @@
 \if :{?MIN_VOLUME_SHARE}  \else \set MIN_VOLUME_SHARE  'NULL'      \endif
 \if :{?RSI_LONG_MAX}      \else \set RSI_LONG_MAX      'NULL'      \endif
 \if :{?RSI_SHORT_MIN}     \else \set RSI_SHORT_MIN     'NULL'      \endif
+\if :{?ST_SENTIMENT_MODE} \else \set ST_SENTIMENT_MODE STAT       \endif
 \if :{?W_REDDIT}      \else \set W_REDDIT      1.0                 \endif
 \if :{?W_STOCKTWITS}  \else \set W_STOCKTWITS  0.0                 \endif
 -- Default DEBUG=1 (verbose) if not passed in
@@ -80,7 +81,8 @@ SELECT
   NULLIF(:'MIN_VOLUME_RATIO','NULL')::numeric   AS min_volume_ratio,
   NULLIF(:'MIN_VOLUME_SHARE','NULL')::numeric   AS min_volume_share,
   NULLIF(:'RSI_LONG_MAX','NULL')::numeric       AS rsi_long_max,
-  NULLIF(:'RSI_SHORT_MIN','NULL')::numeric      AS rsi_short_min;
+  NULLIF(:'RSI_SHORT_MIN','NULL')::numeric      AS rsi_short_min,
+  UPPER(:ST_SENTIMENT_MODE)::text               AS st_sentiment_mode;
 
 -- Rules (filter by model_version if present in your table)
 -- If your rules table DOESN'T have model_version, remove that WHERE line.
@@ -115,10 +117,13 @@ SELECT
   COALESCE(sub.stocktwits_total_messages, 0)         AS stocktwits_mentions,
   COALESCE(sub.reddit_n_mentions, 0) + COALESCE(sub.stocktwits_total_messages, 0) AS total_mentions,
   COALESCE(sub.reddit_used_score, 0)::numeric        AS reddit_used_score,
-  COALESCE(sub.stocktwits_sentiment_score, 0)::numeric AS stocktwits_sentiment_score,
+  COALESCE(sub.stocktwits_selected_score, 0)::numeric AS stocktwits_sentiment_score,
+  sub.stocktwits_simple_score::numeric               AS stocktwits_simple_score,
+  sub.stocktwits_weighted_score::numeric             AS stocktwits_weighted_score,
+  COALESCE(sub.stocktwits_follower_sum, 0)::numeric  AS stocktwits_follower_sum,
   CASE
     WHEN sub.denom_weighted > 0 THEN sub.blended_score
-    ELSE COALESCE(sub.reddit_used_score, sub.stocktwits_sentiment_score, 0)::numeric
+    ELSE COALESCE(sub.reddit_used_score, sub.stocktwits_selected_score, 0)::numeric
   END AS used_score,
   COALESCE(sub.reddit_n_mentions, 0)                 AS n_mentions,
   m.volume_zscore_20,
@@ -128,6 +133,11 @@ SELECT
 FROM (
   SELECT
     o.*,
+    CASE
+      WHEN p.st_sentiment_mode = 'SIMPLE' THEN o.stocktwits_simple_score
+      WHEN p.st_sentiment_mode = 'WEIGHTED' THEN COALESCE(o.stocktwits_weighted_score, o.stocktwits_simple_score, o.stocktwits_sentiment_score)
+      ELSE o.stocktwits_sentiment_score
+    END AS stocktwits_selected_score,
     (p.w_reddit * COALESCE(o.reddit_n_mentions, 0) +
      p.w_stocktwits * COALESCE(o.stocktwits_total_messages, 0)) AS denom_weighted,
     CASE
@@ -135,7 +145,13 @@ FROM (
             p.w_stocktwits * COALESCE(o.stocktwits_total_messages, 0)) > 0
       THEN (
         p.w_reddit * COALESCE(o.reddit_used_score, 0)::numeric * COALESCE(o.reddit_n_mentions, 0) +
-        p.w_stocktwits * COALESCE(o.stocktwits_sentiment_score, 0)::numeric * COALESCE(o.stocktwits_total_messages, 0)
+        p.w_stocktwits * COALESCE(
+          CASE
+            WHEN p.st_sentiment_mode = 'SIMPLE' THEN o.stocktwits_simple_score
+            WHEN p.st_sentiment_mode = 'WEIGHTED' THEN COALESCE(o.stocktwits_weighted_score, o.stocktwits_simple_score, o.stocktwits_sentiment_score)
+            ELSE o.stocktwits_sentiment_score
+          END,
+          0)::numeric * COALESCE(o.stocktwits_total_messages, 0)
       ) / (p.w_reddit * COALESCE(o.reddit_n_mentions, 0) +
             p.w_stocktwits * COALESCE(o.stocktwits_total_messages, 0))
       ELSE NULL
@@ -355,6 +371,22 @@ SELECT
   END AS ret
 FROM tmp_priced p;
 
+DO $$
+BEGIN
+  IF TO_REGCLASS('pg_temp.tmp_calc') IS NULL THEN
+    CREATE TEMP TABLE tmp_calc (
+      symbol text,
+      horizon text,
+      trade_date date,
+      entry_date date,
+      exit_date date,
+      entry_price numeric,
+      exit_price numeric,
+      ret numeric
+    ) ON COMMIT PRESERVE ROWS;
+  END IF;
+END$$;
+
 -- First day where price_high reaches entry_price * (1 + TP_PCT)
 CREATE TEMP TABLE tmp_tp_hits AS
 WITH t AS (
@@ -387,6 +419,22 @@ GROUP BY 1,2,3;
 CREATE INDEX ON tmp_tp_hits(symbol, horizon, trade_date);
 
 -- Merge TP into priced trades
+DO $$
+BEGIN
+  IF TO_REGCLASS('pg_temp.tmp_calc') IS NULL THEN
+    CREATE TEMP TABLE tmp_calc (
+      symbol text,
+      horizon text,
+      trade_date date,
+      entry_date date,
+      exit_date date,
+      entry_price numeric,
+      exit_price numeric,
+      ret numeric
+    ) ON COMMIT PRESERVE ROWS;
+  END IF;
+END$$;
+
 CREATE TEMP TABLE tmp_calc_tp AS
 SELECT
   c.*,
