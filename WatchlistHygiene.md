@@ -13,10 +13,13 @@ This note captures the cleanup and enrichment work we should run on `ticker_univ
   - Next: Wire a sector validation step into the intake job (compare against reference feed) and fail the insert/update when a mismatch appears.
 
 ## 2. Enrich with Trading Signals
-- **Liquidity profile:** Add `avg_daily_dollar_volume_30d`, `shares_float`, and `short_interest_pct_float` so entry sizing, borrow checks, and squeeze logic can run off the universe itself.
-- **Volatility & regime:** Persist `atr_14d`, `true_range_pct`, and `beta_vs_spy` so we can pre-filter for the high-volatility vector and detect when a name cools off.
-- **Sentiment coverage:** Track `reddit_msgs_30d`, `stocktwits_msgs_30d`, and data-latency health metrics. Only promote symbols with reliable coverage into the Core tier.
-- **Operational flags:** Store `primary_exchange`, `listing_status`, `hard_to_borrow_flag`, and `borrow_cost_bps` to keep compliance/risk constraints in view.
+- [x] **Liquidity profile:** Add `avg_daily_dollar_volume_30d`, `shares_float`, and `short_interest_pct_float` so entry sizing, borrow checks, and squeeze logic can run off the universe itself.
+  - Status: Polygon backfill + edge job now refresh `avg_daily_dollar_volume_30d` nightly; `shares_float` populated via fundamentals; short-interest/borrow deferred to a later sprint.
+- [x] **Volatility & regime:** Persist `atr_14d`, `true_range_pct`, and `beta_vs_spy` so we can pre-filter for the high-volatility vector and detect when a name cools off.
+  - Status: Metrics computed during backfill and by the Polygon cron for all active tickers.
+- [x] **Sentiment coverage:** Track `reddit_msgs_30d`, `stocktwits_msgs_30d`, and data-latency health metrics. Only promote symbols with reliable coverage into the Core tier.
+  - Status: `refresh_sentiment_coverage()` job (hourly via pg_cron) updates 30-day counts + health score in `ticker_universe`; next, layer alerting on job failures.
+- [ ] **Operational flags:** Store `primary_exchange`, `listing_status`, `hard_to_borrow_flag`, and `borrow_cost_bps` to keep compliance/risk constraints in view.
 
 ## 3. Automate Stewardship
 - **Universe refresh job:** Nightly job that re-computes enrichment fields, re-scores tiers, and emits a diff report (new entrants, drops, status flips).
@@ -31,18 +34,19 @@ This note captures the cleanup and enrichment work we should run on `ticker_univ
 - **Universe cap:** Maintain ~60 Core + 40 Satellite slots. When promoting a name, demote or retire a stale one so monitoring and alerting stay manageable.
 
 ## 5. Populate New Columns (ETL Roadmap)
-- **Polygon daily job enhancements:** Extend the `polygon-market-data` edge function (already on a Supabase cron) to pull 60 days of bars per symbol, compute ADV30, ATR14, true_range_pct, and beta vs SPY, then upsert those stats into `ticker_universe`. Hit Polygon fundamentals endpoints to hydrate shares_float, short_interest_pct_float, borrow_cost_bps, and hard_to_borrow_flag in the same run.
-- **Backfill script:** Add a one-off backfill runner (Node script or Supabase function) that iterates the current universe, calls the enhanced Polygon job with `days=120`, and patches any NULL metrics. Log progress so we can rerun failed symbols.
-- **Data staging:** Cache raw Polygon JSON in `storage` or S3 for traceability, and stage intermediate calculations in `enhanced_market_data` so dashboards can debug discrepancies between intraday pulls and aggregated stats.
+- [x] **Polygon daily job enhancements:** Extend the `polygon-market-data` edge function (already on a Supabase cron) to pull 60 days of bars per symbol, compute ADV30, ATR14, true_range_pct, and beta vs SPY, then upsert those stats into `ticker_universe`. Hit Polygon fundamentals endpoints to hydrate shares_float, short_interest_pct_float, borrow_cost_bps, and hard_to_borrow_flag in the same run.
+- [x] **Backfill script:** Add a one-off backfill runner (Node script or Supabase function) that iterates the current universe, calls the enhanced Polygon job with `days=120`, and patches any NULL metrics. Log progress so we can rerun failed symbols.
+- [ ] **Data staging:** Cache raw Polygon JSON in `storage` or S3 for traceability, and stage intermediate calculations in `enhanced_market_data` so dashboards can debug discrepancies between intraday pulls and aggregated stats.
 
-- **Sentiment rollups:** Update `reddit-utils/reddit_pipeline.sh` (and the Stocktwits cron) to compute `reddit_msgs_30d`, `stocktwits_msgs_30d`, and a `sentiment_health_score`. Schedule nightly so counts stay fresh.
-- **Market data enrichments:** Extend the price/volatility ETL to pull `avg_daily_dollar_volume_30d`, `atr_14d`, `true_range_pct`, `beta_vs_spy`, plus `shares_float`, `short_interest_pct_float`, and `borrow_cost_bps` from your market data vendor.
+- [ ] **Sentiment rollups:** Update `reddit-utils/reddit_pipeline.sh` (and the Stocktwits cron) to compute `reddit_msgs_30d`, `stocktwits_msgs_30d`, and a `sentiment_health_score`. Schedule nightly so counts stay fresh.
+- [x] **Market data enrichments:** Extend the price/volatility ETL to pull `avg_daily_dollar_volume_30d`, `atr_14d`, `true_range_pct`, `beta_vs_spy`, plus `shares_float`, `short_interest_pct_float`, and `borrow_cost_bps` from your market data vendor.
   - Status: 60-day Polygon backfill complete for all active tickers (ADV30, ATR14, TR%, beta updated in `ticker_universe`).
   - Deferred: `shares_float` populated via Polygon fundamentals; short-interest/borrow columns still null—documented as later enhancement.
-- **Operational flags:** Add exchange/listing/borrow flags in the same run; validate values against broker metadata so compliance filters don’t drift.
-- **Priority normalization:** After enrichment, run the remap script to keep Core 1–30, Satellite 31–70, Experimental 71+, and inactive names ≥ 200. Emit a diff report for audit.
-- **QA & dashboards:** Backfill missing values, spot-check a sample (ADV, sentiment counts, borrow flags) against raw feeds, and update any Looker/Supabase dashboards that surface the new fields.
+- [ ] **Operational flags:** Add exchange/listing/borrow flags in the same run; validate values against broker metadata so compliance filters don’t drift.
+- [ ] **Priority normalization:** After enrichment, run the remap script to keep Core 1–30, Satellite 31–70, Experimental 71+, and inactive names ≥ 200. Emit a diff report for audit.
+- [ ] **QA & dashboards:** Backfill missing values, spot-check a sample (ADV, sentiment counts, borrow flags) against raw feeds, and update any Looker/Supabase dashboards that surface the new fields.
   - Suggested spot check: pick one name per cohort (e.g., AAPL, NVDA, META, NET, SOFI, GOOGL) and verify ADV/ATR/beta against Polygon portal or cached JSON before the nightly cron promotes new metrics.
+  - Status update: Grid backtests and promotion SQL now persist the new liquidity/volatility/sentiment columns, so downstream reports see the same hygiene signals surfaced in `ticker_universe`.
 
 ## 6. Future Priority Scoring
 - **Composite score:** Once enrichment lands, shift the ranker from `priority, symbol` to a score blending liquidity, volatility, sentiment coverage, and backtest quality. Example: `w1*liquidity_rank + w2*volatility_rank + w3*sentiment_rank + w4*backtest_score` (all normalized 0–1).

@@ -55,6 +55,17 @@
 -- ==============================================
 \set ON_ERROR_STOP on
 
+\if :{?STATEMENT_TIMEOUT_MS} \else \set STATEMENT_TIMEOUT_MS 0 \endif
+SET statement_timeout = :'STATEMENT_TIMEOUT_MS';
+
+\if :{?WORK_MEM} \else \set WORK_MEM 'NULL' \endif
+\if :WORK_MEM = 'NULL'
+\else
+  SET work_mem = :'WORK_MEM';
+\endif
+
+\if :{?INCLUDE_INACTIVE} \else \set INCLUDE_INACTIVE 0 \endif
+
 -- ================================
 -- Defaults (overridable via -v)
 -- ================================
@@ -130,12 +141,15 @@ SELECT
 FROM reddit_mentions m
 JOIN reddit_sentiment s
   ON s.mention_id = m.mention_id
+JOIN ticker_universe tu
+  ON tu.symbol = upper(m.symbol)
 WHERE s.model_version = :'MODEL_VERSION'
   AND m.created_utc::date >= (:'START_DATE')::date
   AND m.created_utc::date <  (:'END_DATE')::date
   AND COALESCE(s.confidence, 0) >= (:'MIN_CONF')::numeric
   AND m.doc_type IN ('post', 'comment')
   AND m.symbol IS NOT NULL AND m.symbol <> ''
+  AND ((:'INCLUDE_INACTIVE')::int = 1 OR tu.active = true)
   AND (
         NULLIF(:'SYMBOLS','NULL') IS NULL
         OR upper(m.symbol) = ANY (string_to_array(upper(NULLIF(:'SYMBOLS','NULL')), ',')::text[])
@@ -398,10 +412,23 @@ SELECT
   c.volume_zscore_20,
   c.volume_ratio_avg_20,
   c.volume_share_20,
-  c.rsi_14
+  c.rsi_14,
+  tu.avg_daily_dollar_volume_30d,
+  tu.atr_14d,
+  tu.true_range_pct,
+  tu.beta_vs_spy,
+  tu.shares_float,
+  tu.short_interest_pct_float,
+  tu.borrow_cost_bps,
+  tu.hard_to_borrow_flag,
+  tu.reddit_msgs_30d,
+  tu.stocktwits_msgs_30d,
+  tu.sentiment_health_score
 FROM tmp_candidates c
 JOIN tmp_grid g ON TRUE
 LEFT JOIN tmp_symbol_volume_thresholds vt ON vt.symbol = c.symbol
+LEFT JOIN ticker_universe tu
+  ON tu.symbol = c.symbol
 WHERE c.mentions >= GREATEST( (:'MIN_MENTIONS_REQ')::int, g.min_mentions )
   AND (
         (g.side='LONG'
@@ -561,6 +588,17 @@ SELECT
   s.volume_ratio_avg_20,
   s.volume_share_20,
   s.rsi_14,
+  s.avg_daily_dollar_volume_30d,
+  s.atr_14d,
+  s.true_range_pct,
+  s.beta_vs_spy,
+  s.shares_float,
+  s.short_interest_pct_float,
+  s.borrow_cost_bps,
+  s.hard_to_borrow_flag,
+  s.reddit_msgs_30d,
+  s.stocktwits_msgs_30d,
+  s.sentiment_health_score,
   s.start_day,
   s.trading_day,
   s.hold_days,
@@ -639,7 +677,18 @@ SELECT
   AVG(f.volume_zscore_20)::numeric    AS avg_volume_zscore_20,
   AVG(f.volume_ratio_avg_20)::numeric AS avg_volume_ratio_avg_20,
   AVG(f.volume_share_20)::numeric     AS avg_volume_share_20,
-  AVG(f.rsi_14)::numeric              AS avg_rsi_14
+  AVG(f.rsi_14)::numeric              AS avg_rsi_14,
+  AVG(f.avg_daily_dollar_volume_30d)::numeric AS avg_daily_dollar_volume_30d,
+  AVG(f.atr_14d)::numeric                     AS avg_atr_14d,
+  AVG(f.true_range_pct)::numeric              AS avg_true_range_pct,
+  AVG(f.beta_vs_spy)::numeric                 AS avg_beta_vs_spy,
+  AVG(f.shares_float)::numeric                AS avg_shares_float,
+  AVG(f.short_interest_pct_float)::numeric    AS avg_short_interest_pct_float,
+  AVG(f.borrow_cost_bps)::numeric             AS avg_borrow_cost_bps,
+  BOOL_OR(f.hard_to_borrow_flag)::boolean     AS hard_to_borrow_flag,
+  AVG(f.reddit_msgs_30d)::numeric             AS avg_reddit_msgs_30d,
+  AVG(f.stocktwits_msgs_30d)::numeric         AS avg_stocktwits_msgs_30d,
+  AVG(f.sentiment_health_score)::numeric      AS avg_sentiment_health_score
 FROM tmp_fwd f
 GROUP BY 1,2,3,4,5,6,7,8
 HAVING COUNT(*) >= (:'MIN_TRADES')::int
@@ -667,6 +716,7 @@ SELECT
   f.fold,
   COUNT(*)::int AS trades,
   AVG(f.fwd_ret)::numeric AS avg_ret,
+  AVG((f.fwd_ret > 0)::int)::numeric AS win_rate,
   CASE WHEN stddev_samp(f.fwd_ret)=0 OR stddev_samp(f.fwd_ret) IS NULL
        THEN NULL ELSE (AVG(f.fwd_ret)/stddev_samp(f.fwd_ret))::numeric END AS sharpe
 FROM tmp_folds f
@@ -681,7 +731,11 @@ WITH s AS (
     MIN(CASE WHEN fold='train' THEN trades END) AS train_trades,
     MIN(CASE WHEN fold='valid' THEN trades END) AS valid_trades,
     MIN(CASE WHEN fold='train' THEN sharpe END) AS train_sharpe,
-    MIN(CASE WHEN fold='valid' THEN sharpe END) AS valid_sharpe
+    MIN(CASE WHEN fold='valid' THEN sharpe END) AS valid_sharpe,
+    MIN(CASE WHEN fold='train' THEN win_rate END) AS train_win_rate,
+    MIN(CASE WHEN fold='valid' THEN win_rate END) AS valid_win_rate,
+    MIN(CASE WHEN fold='train' THEN avg_ret END) AS train_avg_ret,
+    MIN(CASE WHEN fold='valid' THEN avg_ret END) AS valid_avg_ret
   FROM tmp_fold_agg
   GROUP BY 1,2,3,4,5
 ), r_train AS (
@@ -758,6 +812,32 @@ INSERT INTO tmp_results_final
 SELECT * FROM tmp_results_filtered
 WHERE (:'REQUIRE_STABLE')::int = 1
    OR (:'REQUIRE_RANK_CONSISTENT')::int = 1;
+
+ALTER TABLE tmp_results_final
+  ADD COLUMN train_trades int,
+  ADD COLUMN train_sharpe numeric,
+  ADD COLUMN train_win_rate numeric,
+  ADD COLUMN train_avg_ret numeric,
+  ADD COLUMN valid_trades int,
+  ADD COLUMN valid_sharpe numeric,
+  ADD COLUMN valid_win_rate numeric,
+  ADD COLUMN valid_avg_ret numeric;
+
+UPDATE tmp_results_final r
+SET train_trades   = d.train_trades,
+    train_sharpe   = d.train_sharpe,
+    train_win_rate = d.train_win_rate,
+    train_avg_ret  = d.train_avg_ret,
+    valid_trades   = d.valid_trades,
+    valid_sharpe   = d.valid_sharpe,
+    valid_win_rate = d.valid_win_rate,
+    valid_avg_ret  = d.valid_avg_ret
+FROM tmp_fold_diag d
+WHERE d.symbol        = r.symbol
+  AND d.horizon       = r.horizon
+  AND d.side          = r.side
+  AND d.min_mentions  = r.min_mentions
+  AND d.pos_thresh    = r.pos_thresh;
 
 -- ================================
 -- 11) Baseline uplift (optional gating)
@@ -969,6 +1049,12 @@ SELECT
   r.uplift_random,
   d.train_trades, d.valid_trades, d.train_sharpe, d.valid_sharpe,
   d.r_train_rank, d.r_valid_rank,
+  r.avg_volume_zscore_20, r.avg_volume_ratio_avg_20, r.avg_volume_share_20,
+  r.avg_rsi_14,
+  r.avg_daily_dollar_volume_30d, r.avg_atr_14d, r.avg_true_range_pct,
+  r.avg_beta_vs_spy, r.avg_shares_float, r.avg_short_interest_pct_float,
+  r.avg_borrow_cost_bps, r.hard_to_borrow_flag,
+  r.avg_reddit_msgs_30d, r.avg_stocktwits_msgs_30d, r.avg_sentiment_health_score,
   r.start_date, r.end_date, r.model_version
 FROM tmp_results_gated r
 LEFT JOIN tmp_fold_diag d
@@ -988,6 +1074,17 @@ ALTER TABLE IF EXISTS backtest_sweep_results
   ADD COLUMN IF NOT EXISTS avg_volume_ratio_avg_20 numeric,
   ADD COLUMN IF NOT EXISTS avg_volume_share_20 numeric,
   ADD COLUMN IF NOT EXISTS avg_rsi_14 numeric,
+  ADD COLUMN IF NOT EXISTS avg_daily_dollar_volume_30d numeric,
+  ADD COLUMN IF NOT EXISTS avg_atr_14d numeric,
+  ADD COLUMN IF NOT EXISTS avg_true_range_pct numeric,
+  ADD COLUMN IF NOT EXISTS avg_beta_vs_spy numeric,
+  ADD COLUMN IF NOT EXISTS avg_shares_float numeric,
+  ADD COLUMN IF NOT EXISTS avg_short_interest_pct_float numeric,
+  ADD COLUMN IF NOT EXISTS avg_borrow_cost_bps numeric,
+  ADD COLUMN IF NOT EXISTS hard_to_borrow_flag boolean,
+  ADD COLUMN IF NOT EXISTS avg_reddit_msgs_30d numeric,
+  ADD COLUMN IF NOT EXISTS avg_stocktwits_msgs_30d numeric,
+  ADD COLUMN IF NOT EXISTS avg_sentiment_health_score numeric,
   ADD COLUMN IF NOT EXISTS baseline_naive_trades int,
   ADD COLUMN IF NOT EXISTS baseline_naive_avg_ret numeric,
   ADD COLUMN IF NOT EXISTS baseline_random_trades int,
@@ -1000,6 +1097,17 @@ ALTER TABLE IF EXISTS backtest_sweep_grid
   ADD COLUMN IF NOT EXISTS avg_volume_ratio_avg_20 numeric,
   ADD COLUMN IF NOT EXISTS avg_volume_share_20 numeric,
   ADD COLUMN IF NOT EXISTS avg_rsi_14 numeric,
+  ADD COLUMN IF NOT EXISTS avg_daily_dollar_volume_30d numeric,
+  ADD COLUMN IF NOT EXISTS avg_atr_14d numeric,
+  ADD COLUMN IF NOT EXISTS avg_true_range_pct numeric,
+  ADD COLUMN IF NOT EXISTS avg_beta_vs_spy numeric,
+  ADD COLUMN IF NOT EXISTS avg_shares_float numeric,
+  ADD COLUMN IF NOT EXISTS avg_short_interest_pct_float numeric,
+  ADD COLUMN IF NOT EXISTS avg_borrow_cost_bps numeric,
+  ADD COLUMN IF NOT EXISTS hard_to_borrow_flag boolean,
+  ADD COLUMN IF NOT EXISTS avg_reddit_msgs_30d numeric,
+  ADD COLUMN IF NOT EXISTS avg_stocktwits_msgs_30d numeric,
+  ADD COLUMN IF NOT EXISTS avg_sentiment_health_score numeric,
   ADD COLUMN IF NOT EXISTS baseline_naive_trades int,
   ADD COLUMN IF NOT EXISTS baseline_naive_avg_ret numeric,
   ADD COLUMN IF NOT EXISTS baseline_random_trades int,
@@ -1029,8 +1137,14 @@ r_best AS (
     symbol, horizon, side,
     min_mentions, pos_thresh,
     trades, avg_ret, win_rate, sharpe,
+    train_trades, train_sharpe, train_win_rate, train_avg_ret,
+    valid_trades, valid_sharpe, valid_win_rate, valid_avg_ret,
     avg_volume_zscore_20, avg_volume_ratio_avg_20, avg_volume_share_20,
     avg_rsi_14,
+    avg_daily_dollar_volume_30d, avg_atr_14d, avg_true_range_pct,
+    avg_beta_vs_spy, avg_shares_float, avg_short_interest_pct_float,
+    avg_borrow_cost_bps, hard_to_borrow_flag,
+    avg_reddit_msgs_30d, avg_stocktwits_msgs_30d, avg_sentiment_health_score,
     baseline_naive_trades, baseline_naive_avg_ret,
     baseline_random_trades, baseline_random_avg_ret,
     uplift, uplift_random
@@ -1053,9 +1167,15 @@ INSERT INTO backtest_sweep_results (
   model_version, symbol, horizon, side,
   start_date, end_date,
   trades, avg_ret, median_ret, win_rate, stdev_ret, sharpe,
+  train_trades, train_sharpe, train_win_rate, train_avg_ret,
+  valid_trades, valid_sharpe, valid_win_rate, valid_avg_ret,
   min_mentions, pos_thresh,
   avg_volume_zscore_20, avg_volume_ratio_avg_20, avg_volume_share_20,
   avg_rsi_14,
+  avg_daily_dollar_volume_30d, avg_atr_14d, avg_true_range_pct,
+  avg_beta_vs_spy, avg_shares_float, avg_short_interest_pct_float,
+  avg_borrow_cost_bps, hard_to_borrow_flag,
+  avg_reddit_msgs_30d, avg_stocktwits_msgs_30d, avg_sentiment_health_score,
   baseline_naive_trades, baseline_naive_avg_ret,
   baseline_random_trades, baseline_random_avg_ret,
   uplift, uplift_random,
@@ -1066,9 +1186,15 @@ SELECT
   r.symbol, r.horizon, r.side,
   :'START_DATE'::date, :'END_DATE'::date,
   r.trades, r.avg_ret, m.median_ret, r.win_rate, m.stdev_ret, r.sharpe,
+  r.train_trades, r.train_sharpe, r.train_win_rate, r.train_avg_ret,
+  r.valid_trades, r.valid_sharpe, r.valid_win_rate, r.valid_avg_ret,
   r.min_mentions, r.pos_thresh,
   r.avg_volume_zscore_20, r.avg_volume_ratio_avg_20, r.avg_volume_share_20,
   r.avg_rsi_14,
+  r.avg_daily_dollar_volume_30d, r.avg_atr_14d, r.avg_true_range_pct,
+  r.avg_beta_vs_spy, r.avg_shares_float, r.avg_short_interest_pct_float,
+  r.avg_borrow_cost_bps, r.hard_to_borrow_flag,
+  r.avg_reddit_msgs_30d, r.avg_stocktwits_msgs_30d, r.avg_sentiment_health_score,
   r.baseline_naive_trades, r.baseline_naive_avg_ret,
   r.baseline_random_trades, r.baseline_random_avg_ret,
   r.uplift, r.uplift_random,
@@ -1091,6 +1217,25 @@ DO UPDATE SET
   avg_volume_ratio_avg_20  = EXCLUDED.avg_volume_ratio_avg_20,
   avg_volume_share_20      = EXCLUDED.avg_volume_share_20,
   avg_rsi_14               = EXCLUDED.avg_rsi_14,
+  avg_daily_dollar_volume_30d   = EXCLUDED.avg_daily_dollar_volume_30d,
+  avg_atr_14d                   = EXCLUDED.avg_atr_14d,
+  avg_true_range_pct            = EXCLUDED.avg_true_range_pct,
+  avg_beta_vs_spy               = EXCLUDED.avg_beta_vs_spy,
+  avg_shares_float              = EXCLUDED.avg_shares_float,
+  avg_short_interest_pct_float  = EXCLUDED.avg_short_interest_pct_float,
+  avg_borrow_cost_bps           = EXCLUDED.avg_borrow_cost_bps,
+  hard_to_borrow_flag           = EXCLUDED.hard_to_borrow_flag,
+  avg_reddit_msgs_30d           = EXCLUDED.avg_reddit_msgs_30d,
+  avg_stocktwits_msgs_30d       = EXCLUDED.avg_stocktwits_msgs_30d,
+  avg_sentiment_health_score    = EXCLUDED.avg_sentiment_health_score,
+  train_trades   = EXCLUDED.train_trades,
+  train_sharpe   = EXCLUDED.train_sharpe,
+  train_win_rate = EXCLUDED.train_win_rate,
+  train_avg_ret  = EXCLUDED.train_avg_ret,
+  valid_trades   = EXCLUDED.valid_trades,
+  valid_sharpe   = EXCLUDED.valid_sharpe,
+  valid_win_rate = EXCLUDED.valid_win_rate,
+  valid_avg_ret  = EXCLUDED.valid_avg_ret,
   baseline_naive_trades   = EXCLUDED.baseline_naive_trades,
   baseline_naive_avg_ret  = EXCLUDED.baseline_naive_avg_ret,
   baseline_random_trades  = EXCLUDED.baseline_random_trades,
@@ -1146,6 +1291,17 @@ CREATE TABLE IF NOT EXISTS backtest_sweep_grid (
   avg_volume_ratio_avg_20 numeric,
   avg_volume_share_20 numeric,
   avg_rsi_14 numeric,
+  avg_daily_dollar_volume_30d numeric,
+  avg_atr_14d numeric,
+  avg_true_range_pct numeric,
+  avg_beta_vs_spy numeric,
+  avg_shares_float numeric,
+  avg_short_interest_pct_float numeric,
+  avg_borrow_cost_bps numeric,
+  hard_to_borrow_flag boolean,
+  avg_reddit_msgs_30d numeric,
+  avg_stocktwits_msgs_30d numeric,
+  avg_sentiment_health_score numeric,
   baseline_naive_trades int,
   baseline_naive_avg_ret numeric,
   baseline_random_trades int,
@@ -1169,7 +1325,12 @@ INSERT INTO backtest_sweep_grid (
   model_version,start_date,end_date,
   symbol,horizon,side,min_mentions,pos_thresh,
   trades,avg_ret,median_ret,win_rate,stdev_ret,sharpe,
+  train_trades,train_sharpe,train_win_rate,train_avg_ret,
+  valid_trades,valid_sharpe,valid_win_rate,valid_avg_ret,
   avg_volume_zscore_20,avg_volume_ratio_avg_20,avg_volume_share_20,avg_rsi_14,
+  avg_daily_dollar_volume_30d,avg_atr_14d,avg_true_range_pct,avg_beta_vs_spy,
+  avg_shares_float,avg_short_interest_pct_float,avg_borrow_cost_bps,
+  hard_to_borrow_flag,avg_reddit_msgs_30d,avg_stocktwits_msgs_30d,avg_sentiment_health_score,
   baseline_naive_trades,baseline_naive_avg_ret,
   baseline_random_trades,baseline_random_avg_ret,
   uplift,uplift_random
@@ -1178,7 +1339,12 @@ SELECT
   model_version,start_date,end_date,
   symbol,horizon,side,min_mentions,pos_thresh,
   trades,avg_ret,median_ret,win_rate,stdev_ret,sharpe,
+  train_trades,train_sharpe,train_win_rate,train_avg_ret,
+  valid_trades,valid_sharpe,valid_win_rate,valid_avg_ret,
   avg_volume_zscore_20,avg_volume_ratio_avg_20,avg_volume_share_20,avg_rsi_14,
+  avg_daily_dollar_volume_30d,avg_atr_14d,avg_true_range_pct,avg_beta_vs_spy,
+  avg_shares_float,avg_short_interest_pct_float,avg_borrow_cost_bps,
+  hard_to_borrow_flag,avg_reddit_msgs_30d,avg_stocktwits_msgs_30d,avg_sentiment_health_score,
   baseline_naive_trades,baseline_naive_avg_ret,
   baseline_random_trades,baseline_random_avg_ret,
   uplift,uplift_random
@@ -1195,6 +1361,25 @@ DO UPDATE SET
   avg_volume_ratio_avg_20  = EXCLUDED.avg_volume_ratio_avg_20,
   avg_volume_share_20      = EXCLUDED.avg_volume_share_20,
   avg_rsi_14               = EXCLUDED.avg_rsi_14,
+  avg_daily_dollar_volume_30d   = EXCLUDED.avg_daily_dollar_volume_30d,
+  avg_atr_14d                   = EXCLUDED.avg_atr_14d,
+  avg_true_range_pct            = EXCLUDED.avg_true_range_pct,
+  avg_beta_vs_spy               = EXCLUDED.avg_beta_vs_spy,
+  avg_shares_float              = EXCLUDED.avg_shares_float,
+  avg_short_interest_pct_float  = EXCLUDED.avg_short_interest_pct_float,
+  avg_borrow_cost_bps           = EXCLUDED.avg_borrow_cost_bps,
+  hard_to_borrow_flag           = EXCLUDED.hard_to_borrow_flag,
+  avg_reddit_msgs_30d           = EXCLUDED.avg_reddit_msgs_30d,
+  avg_stocktwits_msgs_30d       = EXCLUDED.avg_stocktwits_msgs_30d,
+  avg_sentiment_health_score    = EXCLUDED.avg_sentiment_health_score,
+  train_trades   = EXCLUDED.train_trades,
+  train_sharpe   = EXCLUDED.train_sharpe,
+  train_win_rate = EXCLUDED.train_win_rate,
+  train_avg_ret  = EXCLUDED.train_avg_ret,
+  valid_trades   = EXCLUDED.valid_trades,
+  valid_sharpe   = EXCLUDED.valid_sharpe,
+  valid_win_rate = EXCLUDED.valid_win_rate,
+  valid_avg_ret  = EXCLUDED.valid_avg_ret,
   baseline_naive_trades   = EXCLUDED.baseline_naive_trades,
   baseline_naive_avg_ret  = EXCLUDED.baseline_naive_avg_ret,
   baseline_random_trades  = EXCLUDED.baseline_random_trades,

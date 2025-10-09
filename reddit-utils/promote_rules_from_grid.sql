@@ -30,6 +30,10 @@ WITH grid AS (
     min_mentions, pos_thresh,
     trades, avg_ret, median_ret, win_rate, stdev_ret, sharpe,
     avg_volume_zscore_20, avg_volume_ratio_avg_20, avg_volume_share_20, avg_rsi_14,
+    avg_daily_dollar_volume_30d, avg_atr_14d, avg_true_range_pct,
+    avg_beta_vs_spy, avg_shares_float, avg_short_interest_pct_float,
+    avg_borrow_cost_bps, hard_to_borrow_flag,
+    avg_reddit_msgs_30d, avg_stocktwits_msgs_30d, avg_sentiment_health_score,
     start_date, end_date
   FROM backtest_sweep_results
   WHERE :USE_FULL_GRID::int = 0
@@ -42,6 +46,10 @@ WITH grid AS (
     min_mentions, pos_thresh,
     trades, avg_ret, median_ret, win_rate, stdev_ret, sharpe,
     avg_volume_zscore_20, avg_volume_ratio_avg_20, avg_volume_share_20, avg_rsi_14,
+    avg_daily_dollar_volume_30d, avg_atr_14d, avg_true_range_pct,
+    avg_beta_vs_spy, avg_shares_float, avg_short_interest_pct_float,
+    avg_borrow_cost_bps, hard_to_borrow_flag,
+    avg_reddit_msgs_30d, avg_stocktwits_msgs_30d, avg_sentiment_health_score,
     start_date, end_date
   FROM backtest_sweep_grid
   WHERE :USE_FULL_GRID::int = 1
@@ -227,6 +235,10 @@ best_per AS (
     min_mentions, pos_thresh,
     trades, avg_ret, median_ret, win_rate, stdev_ret, sharpe, q_value,
     avg_volume_zscore_20, avg_volume_ratio_avg_20, avg_volume_share_20, avg_rsi_14,
+    avg_daily_dollar_volume_30d, avg_atr_14d, avg_true_range_pct,
+    avg_beta_vs_spy, avg_shares_float, avg_short_interest_pct_float,
+    avg_borrow_cost_bps, hard_to_borrow_flag,
+    avg_reddit_msgs_30d, avg_stocktwits_msgs_30d, avg_sentiment_health_score,
     ROW_NUMBER() OVER (
       PARTITION BY model_version, symbol, horizon, side
       ORDER BY sharpe DESC NULLS LAST, trades DESC
@@ -239,7 +251,11 @@ chosen AS (
     model_version, symbol, horizon, side,
     min_mentions, pos_thresh,
     trades, avg_ret, median_ret, win_rate, stdev_ret, sharpe, q_value,
-    avg_volume_zscore_20, avg_volume_ratio_avg_20, avg_volume_share_20, avg_rsi_14
+    avg_volume_zscore_20, avg_volume_ratio_avg_20, avg_volume_share_20, avg_rsi_14,
+    avg_daily_dollar_volume_30d, avg_atr_14d, avg_true_range_pct,
+    avg_beta_vs_spy, avg_shares_float, avg_short_interest_pct_float,
+    avg_borrow_cost_bps, hard_to_borrow_flag,
+    avg_reddit_msgs_30d, avg_stocktwits_msgs_30d, avg_sentiment_health_score
   FROM best_per
   WHERE rk = 1
 ),
@@ -272,6 +288,10 @@ final AS (
     c.min_mentions, c.pos_thresh,
     c.trades, c.avg_ret, c.median_ret, c.win_rate, c.stdev_ret, c.sharpe, c.q_value,
     c.avg_volume_zscore_20, c.avg_volume_ratio_avg_20, c.avg_volume_share_20, c.avg_rsi_14,
+    c.avg_daily_dollar_volume_30d, c.avg_atr_14d, c.avg_true_range_pct,
+    c.avg_beta_vs_spy, c.avg_shares_float, c.avg_short_interest_pct_float,
+    c.avg_borrow_cost_bps, c.hard_to_borrow_flag,
+    c.avg_reddit_msgs_30d, c.avg_stocktwits_msgs_30d, c.avg_sentiment_health_score,
     r.neighbor_cnt
   FROM chosen c
   JOIN robust r
@@ -300,12 +320,23 @@ SELECT
   trades, avg_ret, median_ret, win_rate, sharpe, q_value,
   :'START_DATE'::date, :'END_DATE'::date,
   format(
-    'auto-promoted from grid on %s | robust_neighbors=%s | q_value=%s | avg_volume_z20=%s | avg_rsi_14=%s | filters: MIN_TRADES=%s, MIN_SHARPE=%s, MIN_WIN_RATE=%s, MIN_AVG_RET=%s, Q_MAX=%s',
+    'auto-promoted from grid on %s | neighbors=%s | q_value=%s | vol_z20=%s | vol_ratio20=%s | vol_share20=%s | rsi14=%s | adv30=%s | atr14=%s | tr_pct=%s | beta_vs_spy=%s | shares_float=%s | short_interest_pct_float=%s | borrow_bps=%s | hard_to_borrow=%s | reddit30=%s | stocktwits30=%s | health=%s | filters: MIN_TRADES=%s, MIN_SHARPE=%s, MIN_WIN_RATE=%s, MIN_AVG_RET=%s, Q_MAX=%s',
     now()::timestamptz, neighbor_cnt, q_value,
     COALESCE(avg_volume_zscore_20::text,'NULL'),
     COALESCE(avg_volume_ratio_avg_20::text,'NULL'),
     COALESCE(avg_volume_share_20::text,'NULL'),
     COALESCE(avg_rsi_14::text,'NULL'),
+    COALESCE(avg_daily_dollar_volume_30d::text,'NULL'),
+    COALESCE(avg_atr_14d::text,'NULL'),
+    COALESCE(avg_true_range_pct::text,'NULL'),
+    COALESCE(avg_beta_vs_spy::text,'NULL'),
+    COALESCE(avg_shares_float::text,'NULL'),
+    COALESCE(avg_short_interest_pct_float::text,'NULL'),
+    COALESCE(avg_borrow_cost_bps::text,'NULL'),
+    COALESCE(hard_to_borrow_flag::text,'NULL'),
+    COALESCE(avg_reddit_msgs_30d::text,'NULL'),
+    COALESCE(avg_stocktwits_msgs_30d::text,'NULL'),
+    COALESCE(avg_sentiment_health_score::text,'NULL'),
     :'MIN_TRADES', :'MIN_SHARPE', :'MIN_WIN_RATE', :'MIN_AVG_RET', :'Q_MAX'
   )::text,
   100

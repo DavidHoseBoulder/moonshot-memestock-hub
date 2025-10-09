@@ -71,12 +71,30 @@ flowchart TD
   - Input: Scored mentions + prices; sweeps `min_mentions` and `pos_thresh` across horizons/sides.
   - Output: Full in-session grid (`tmp_results`), optional full-grid persistence to `backtest_sweep_grid`, and persisted winners (one per symbol/horizon/side) to `backtest_sweep_results`.
   - Diagnostics in output/CSV: `band`, `train_trades`, `valid_trades`, `train_sharpe`, `valid_sharpe`, `r_train_rank`, `r_valid_rank`.
+  - New hygiene metrics (from `ticker_universe` enrichment pass) now travel with each pocket: `avg_daily_dollar_volume_30d`, `avg_atr_14d`, `avg_true_range_pct`, `avg_beta_vs_spy`, `avg_shares_float`, `avg_short_interest_pct_float`, `avg_borrow_cost_bps`, `hard_to_borrow_flag`, `avg_reddit_msgs_30d`, `avg_stocktwits_msgs_30d`, `avg_sentiment_health_score`.
+  - Performance knobs: set `STATEMENT_TIMEOUT_MS` (ms) and/or `WORK_MEM` (e.g. `512MB`) before calling the runner to lift session limits; `INCLUDE_INACTIVE=1` reintroduces retired tickers for ad-hoc sweeps.
+    - Example (full universe, 4-month window + full-grid persistence):
+      ```bash
+      STATEMENT_TIMEOUT_MS=900000 WORK_MEM=512MB \
+        DO_PERSIST=1 PERSIST_FULL_GRID=1 \
+        $CODE_DIR/run_backtest_grid.sh 2025-06-01 2025-10-09 /tmp/grid_full.csv
+      ```
+      ```bash
+      PGURI="$PGURI" $CODE_DIR/run_promote_rules_from_grid.sh 2025-06-01 2025-10-09 gpt-sent-v1
+      ```
+      That pass persisted 682 pockets to `backtest_sweep_grid`, promoted 29 rules (SPY/GOOGL/MSFT/AAPL/SOFi/SOUN, etc.), and left a diagnostic CSV at `/tmp/grid_full.csv` for downstream analysis.
+    - Example (active Core tickers only):
+      ```bash
+      SYMBOLS="AAPL,MSFT,GOOGL,NVDA,TSLA" DO_PERSIST=1 \
+        $CODE_DIR/run_backtest_grid.sh 2025-08-01 2025-10-09
+      ```
+  - Database hygiene: keep `reddit_mentions`, `reddit_sentiment`, `v_stocktwits_daily_signals`, and `enhanced_market_data` analyzed; index `(created_utc, symbol)` on mentions and `(model_version, mention_id)` on sentiment to avoid timeouts when scanning the full universe.
   - Optional: Client-side CSV export via `COPY ... TO STDOUT` + `\g :CSV_PATH`.
 
 - Promotion from Grid
   - Script: `moonshot-memestock-hub/reddit-utils/promote_rules_from_grid.sql`
   - Input: `backtest_sweep_results` (window, model_version)
-  - Logic: Hard filters (min trades/sharpe/win/avg) and optional robustness check; upsert into `live_sentiment_entry_rules` with provenance note.
+  - Logic: Hard filters (min trades/sharpe/win/avg) and optional robustness check; new provenance note now echoes the liquidity/volatility/sentiment hygiene rollups so we can audit watchlist gates alongside performance; upsert into `live_sentiment_entry_rules` with that context.
   - Output: New/updated enabled rules for the window with metrics embedded.
 
 - Promotion Report
