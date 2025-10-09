@@ -150,6 +150,11 @@ const GridHygieneSummary = () => {
     try {
       await fetchPromotedKeys();
 
+      // Define band thresholds
+      const BAND_STRONG = 0.30;
+      const BAND_MODERATE = 0.20;
+      const BAND_WEAK = 0.10;
+
       const { data, error } = await supabase
         .from('backtest_sweep_grid')
         .select('*')
@@ -170,8 +175,16 @@ const GridHygieneSummary = () => {
         return;
       }
 
-      setGridData(data as GridRow[]);
-      computeSummaries(data as GridRow[]);
+      // Add band labels to data
+      const dataWithBands = data.map(row => ({
+        ...row,
+        band: row.pos_thresh >= BAND_STRONG ? 'STRONG' :
+              row.pos_thresh >= BAND_MODERATE ? 'MODERATE' :
+              row.pos_thresh >= BAND_WEAK ? 'WEAK' : 'VERY_WEAK'
+      }));
+
+      setGridData(dataWithBands as GridRow[]);
+      computeSummaries(dataWithBands as GridRow[]);
 
       toast({
         title: "Data loaded",
@@ -283,13 +296,17 @@ const GridHygieneSummary = () => {
 
     const topBand = bands.sort((a, b) => b.mean - a.mean)[0];
 
+    const promotedSection = (promotedStats?.n || 0) > 0 
+      ? `• **Promoted pockets** (${promotedStats?.n || 0}) average Sharpe ≈ ${promotedStats?.sharpe_avg.toFixed(2) || 0} versus ≈ ${othersStats?.sharpe_avg.toFixed(2) || 0} for others, and they cluster in higher-liquidity names (ADV ≈ $${promotedStats?.adv30_avg_bil.toFixed(1) || 0}B) with health = ${promotedStats?.health_avg.toFixed(2) || 0}.`
+      : `• **No pockets promoted this run** — all results remain in exploratory phase.`;
+
     const summary = `**Highlights from the current sweep:**
 
 • **${bestHorizon.horizon} horizons lead** with mean Sharpe ≈ ${bestHorizon.sharpe_avg.toFixed(2)} and ~${Math.round(bestHorizon.trades_avg)} trades, while ${worstHorizon.horizon} lags at ≈ ${worstHorizon.sharpe_avg.toFixed(2)}. Liquidity and sentiment health stay strong across the board (ADV ≈ $${bestHorizon.adv30_avg_bil}–${worstHorizon.adv30_avg_bil}B, health ≈ ${bestHorizon.health_avg}–${worstHorizon.health_avg}).
 
 • **${topBand.band} band** shows the strongest performance with mean Sharpe ≈ ${topBand.mean.toFixed(2)} (max ${topBand.max.toFixed(2)}) across ${topBand.count} pockets.
 
-• **Promoted pockets** (${promotedStats?.n || 0}) average Sharpe ≈ ${promotedStats?.sharpe_avg.toFixed(2) || 0} versus ≈ ${othersStats?.sharpe_avg.toFixed(2) || 0} for others, and they cluster in higher-liquidity names (ADV ≈ $${promotedStats?.adv30_avg_bil.toFixed(1) || 0}B) with health = ${promotedStats?.health_avg.toFixed(2) || 0}.
+${promotedSection}
 
 • **Top Sharpe pockets** include ${topFive.slice(0, 3).map(p => `${p.symbol} ${p.horizon}`).join(', ')}, now annotated with hygiene metrics so you can cite ADV/beta alongside Sharpe.
 
@@ -301,8 +318,42 @@ Points cluster between ~$0.5B and ~$10B ADV30, where Sharpe spans 0 to ≈${Math
   };
 
   useEffect(() => {
-    fetchAvailableRuns();
-    fetchGridData();
+    const initializeData = async () => {
+      await fetchAvailableRuns();
+      
+      // After fetching available runs, check if current selection exists, otherwise use most recent
+      const currentKey = `${modelVersion}|${startDate}|${endDate}|${side}`;
+      const { data } = await supabase
+        .from('backtest_sweep_grid')
+        .select('model_version, start_date, end_date, side')
+        .eq('model_version', modelVersion)
+        .eq('start_date', startDate)
+        .eq('end_date', endDate)
+        .eq('side', side)
+        .limit(1);
+      
+      if (!data || data.length === 0) {
+        // Current selection doesn't exist, use most recent available
+        const mostRecent = await supabase
+          .from('backtest_sweep_grid')
+          .select('model_version, start_date, end_date, side')
+          .order('start_date', { ascending: false })
+          .limit(1)
+          .single();
+        
+        if (mostRecent.data) {
+          setModelVersion(mostRecent.data.model_version);
+          setStartDate(mostRecent.data.start_date);
+          setEndDate(mostRecent.data.end_date);
+          setSide(mostRecent.data.side);
+        }
+      }
+      
+      // Load initial data
+      await fetchGridData();
+    };
+    
+    initializeData();
   }, []);
 
   return (
@@ -468,36 +519,38 @@ Points cluster between ~$0.5B and ~$10B ADV30, where Sharpe spans 0 to ≈${Math
             </Table>
           </Card>
 
-          {/* Promoted vs Others */}
-          <Card className="p-6">
-            <h4 className="text-md font-bold mb-4">Promoted vs Others</h4>
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Status</TableHead>
-                  <TableHead className="text-right">Count</TableHead>
-                  <TableHead className="text-right">Avg Sharpe</TableHead>
-                  <TableHead className="text-right">Avg Trades</TableHead>
-                  <TableHead className="text-right">ADV30 ($B)</TableHead>
-                  <TableHead className="text-right">Health Score</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {promotedSummary.map(row => (
-                  <TableRow key={row.is_promoted ? 'promoted' : 'others'}>
-                    <TableCell className="font-medium">
-                      {row.is_promoted ? '✓ Promoted' : 'Others'}
-                    </TableCell>
-                    <TableCell className="text-right">{row.n}</TableCell>
-                    <TableCell className="text-right">{row.sharpe_avg}</TableCell>
-                    <TableCell className="text-right">{row.trades_avg}</TableCell>
-                    <TableCell className="text-right">{row.adv30_avg_bil}</TableCell>
-                    <TableCell className="text-right">{row.health_avg}</TableCell>
+          {/* Promoted vs Others - only show if there are promoted pockets */}
+          {promotedSummary.some(p => p.is_promoted && p.n > 0) && (
+            <Card className="p-6">
+              <h4 className="text-md font-bold mb-4">Promoted vs Others</h4>
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Status</TableHead>
+                    <TableHead className="text-right">Count</TableHead>
+                    <TableHead className="text-right">Avg Sharpe</TableHead>
+                    <TableHead className="text-right">Avg Trades</TableHead>
+                    <TableHead className="text-right">ADV30 ($B)</TableHead>
+                    <TableHead className="text-right">Health Score</TableHead>
                   </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </Card>
+                </TableHeader>
+                <TableBody>
+                  {promotedSummary.map(row => (
+                    <TableRow key={row.is_promoted ? 'promoted' : 'others'}>
+                      <TableCell className="font-medium">
+                        {row.is_promoted ? '✓ Promoted' : 'Others'}
+                      </TableCell>
+                      <TableCell className="text-right">{row.n}</TableCell>
+                      <TableCell className="text-right">{row.sharpe_avg}</TableCell>
+                      <TableCell className="text-right">{row.trades_avg}</TableCell>
+                      <TableCell className="text-right">{row.adv30_avg_bil}</TableCell>
+                      <TableCell className="text-right">{row.health_avg}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </Card>
+          )}
 
           {/* Sharpe vs ADV Scatter */}
           <Card className="p-6">
