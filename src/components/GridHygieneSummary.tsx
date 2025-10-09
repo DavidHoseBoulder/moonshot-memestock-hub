@@ -94,7 +94,8 @@ const GridHygieneSummary = () => {
     try {
       const { data, error } = await supabase
         .from('backtest_sweep_grid')
-        .select('model_version, start_date, end_date, side');
+        .select('model_version, start_date, end_date, side')
+        .limit(10000);
 
       if (error) throw error;
 
