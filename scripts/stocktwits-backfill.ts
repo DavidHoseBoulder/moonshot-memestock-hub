@@ -69,6 +69,7 @@ const MAX_FOLLOWER_WEIGHT = 10_000;
 const MAX_METADATA_MESSAGES = 50;
 const PAGINATION_DELAY_MS = Number(process.env.ST_BACKFILL_PAGE_DELAY_MS || 800);
 const SYMBOL_DELAY_MS = Number(process.env.ST_BACKFILL_SYMBOL_DELAY_MS || 1200);
+const FETCH_TIMEOUT_MS = Number(process.env.ST_BACKFILL_FETCH_TIMEOUT_MS || 20_000);
 
 const SUPABASE_URL = process.env.SUPABASE_URL || '';
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
@@ -176,9 +177,20 @@ async function fetchSymbols(): Promise<string[]> {
   return (data ?? []).map(({ symbol }) => String(symbol).toUpperCase());
 }
 
-async function fetchMessagesForDay(symbol: string, windowStart: number, windowEnd: number, perDayLimit: number): Promise<StockTwitsMessage[]> {
+interface FetchResult {
+  messages: StockTwitsMessage[];
+  nextCursor?: number;
+}
+
+async function fetchMessagesForDay(
+  symbol: string,
+  windowStart: number,
+  windowEnd: number,
+  perDayLimit: number,
+  startCursor?: number,
+): Promise<FetchResult> {
   const messages: StockTwitsMessage[] = [];
-  let maxId: number | undefined;
+  let maxId: number | undefined = startCursor;
   const maxMessages = Math.min(perDayLimit, MAX_MESSAGES_PER_SYMBOL);
   const maxRetries = Number(process.env.ST_BACKFILL_FETCH_RETRIES || 3);
 
@@ -189,41 +201,55 @@ async function fetchMessagesForDay(symbol: string, windowStart: number, windowEn
     if (maxId) url.searchParams.set('max', String(maxId));
 
     let response: Response | null = null;
+    let payload: { messages?: StockTwitsMessage[] } | null = null;
+    let lastStatus: number | string | null = null;
+    let lastError: unknown = null;
+
     for (let attempt = 0; attempt < maxRetries; attempt += 1) {
+      console.log(`[${symbol}] fetch attempt ${attempt + 1}/${maxRetries} (collected ${messages.length}/${maxMessages})`);
+      const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
+      const timer = controller ? setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS) : null;
       try {
         response = await fetch(url.toString(), {
           headers: { 'User-Agent': 'MoonshotBackfill/1.0' },
+          signal: controller?.signal,
         });
-      } catch (error) {
-        if (attempt === maxRetries - 1) throw error;
-      }
 
-      if (response && response.ok) break;
-      const status = response?.status ?? 'network-error';
-      if (attempt === maxRetries - 1) {
-        console.warn(`StockTwits request failed for ${symbol} (${status})`);
-        return messages;
+        lastStatus = response.status;
+        if (!response.ok) {
+          const backoff = PAGINATION_DELAY_MS * (attempt + 1);
+          console.warn(`StockTwits request for ${symbol} returned ${response.status} (attempt ${attempt + 1}/${maxRetries}); retrying in ${backoff}ms`);
+          if (attempt === maxRetries - 1) {
+            console.warn(`StockTwits request failed for ${symbol} (${response.status})`);
+            return { messages, nextCursor: maxId };
+          }
+          await sleep(backoff);
+          continue;
+        }
+
+        payload = await response.json() as { messages?: StockTwitsMessage[] };
+        break;
+      } catch (error) {
+        lastError = error;
+        const isAbortError = (error as Error)?.name === 'AbortError';
+        const reason = isAbortError ? 'timeout' : (error as Error)?.message || error;
+        if (attempt === maxRetries - 1) {
+          console.warn(`StockTwits fetch error for ${symbol} after ${maxRetries} attempts: ${reason}`);
+          return { messages, nextCursor: maxId };
+        }
+        const backoff = PAGINATION_DELAY_MS * (attempt + 1);
+        console.warn(`StockTwits fetch error for ${symbol} (attempt ${attempt + 1}/${maxRetries}): ${reason}. Retrying in ${backoff}ms`);
+        await sleep(backoff);
+      } finally {
+        if (timer) clearTimeout(timer);
       }
-      const backoff = PAGINATION_DELAY_MS * (attempt + 1);
-      await sleep(backoff);
     }
 
-    if (!response) break;
-
-    let payload: { messages?: StockTwitsMessage[] } | null = null;
-    try {
-      payload = await response.json() as { messages?: StockTwitsMessage[] };
-    } catch (error) {
-      // Some StockTwits payloads contain malformed escape sequences; skip this page gracefully
-      console.warn(`Failed to parse JSON for ${symbol}:`, (error as Error).message || error);
-      if (messages.length === 0) {
-        // If this is the first page, abort the symbol so the caller can retry later
-        throw error;
-      }
+    if (!payload) {
+      const statusLabel = lastStatus ?? (lastError instanceof Error ? lastError.message : 'unknown-error');
+      console.warn(`Aborting ${symbol} pagination because no payload was retrieved (${statusLabel}).`);
       break;
     }
-
-    if (!payload) break;
     const page: StockTwitsMessage[] = Array.isArray(payload?.messages) ? payload.messages : [];
     if (page.length === 0) break;
 
@@ -252,7 +278,7 @@ async function fetchMessagesForDay(symbol: string, windowStart: number, windowEn
     deduped.push(msg);
   }
 
-  return deduped;
+  return { messages: deduped, nextCursor: maxId };
 }
 
 async function upsertDay(symbol: string, windowStart: number, windowEnd: number, messages: StockTwitsMessage[]) {
@@ -344,7 +370,9 @@ async function processSymbolBatch(symbols: string[], params: {
 }) {
   const { startDate, endDate, perDayLimit } = params;
 
-  for (let d = new Date(startDate); d <= endDate; d = addDays(d, 1)) {
+  const symbolCursors = new Map<string, number | undefined>();
+
+  for (let d = new Date(endDate); d >= startDate; d = addDays(d, -1)) {
     const windowStart = Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate());
     const windowEnd = windowStart + 24 * 60 * 60 * 1000;
     const windowLabel = new Date(windowStart).toISOString().slice(0, 10);
@@ -353,7 +381,11 @@ async function processSymbolBatch(symbols: string[], params: {
 
     for (const symbol of symbols) {
       try {
-        const messages = await fetchMessagesForDay(symbol, windowStart, windowEnd, perDayLimit);
+        const cursor = symbolCursors.get(symbol);
+        const { messages, nextCursor } = await fetchMessagesForDay(symbol, windowStart, windowEnd, perDayLimit, cursor);
+        if (typeof nextCursor === 'number') {
+          symbolCursors.set(symbol, nextCursor);
+        }
         if (messages.length === 0) {
           console.log(`[${symbol}] no messages`);
         } else {

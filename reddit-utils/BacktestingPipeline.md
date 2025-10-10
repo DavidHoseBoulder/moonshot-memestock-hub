@@ -91,6 +91,8 @@ flowchart TD
   - Database hygiene: keep `reddit_mentions`, `reddit_sentiment`, `v_stocktwits_daily_signals`, and `enhanced_market_data` analyzed; index `(created_utc, symbol)` on mentions and `(model_version, mention_id)` on sentiment to avoid timeouts when scanning the full universe.
   - Optional: Client-side CSV export via `COPY ... TO STDOUT` + `\g :CSV_PATH`.
   - Offline summaries: use `analysis/grid_hygiene_summary.py --input /tmp/grid_full.csv --output results/grid_full_summary.md` to snapshot horizon/band/promoted hygiene metrics after each sweep; script will also emit PNG plots into `results/` when `--plots` is supplied.
+    - Latest long sweep (2025-06-01→2025-10-09): Sharpe improves with horizon (1d ≈ 0.13, 3d ≈ 0.24, 5d ≈ 0.33) while promoted pockets concentrate in high-liquidity, health=1.0 names with Sharpe ≈ 0.62.
+    - Latest short sweep (same window with `SIDES=SHORT`): Mean Sharpe < 0 across all horizons (best pockets ~0.35 Sharpe on low-trade SNAP/PLTR combos). No short cohorts promoted—treat shorts as monitor-only.
 
 - Promotion from Grid
   - Script: `moonshot-memestock-hub/reddit-utils/promote_rules_from_grid.sql`

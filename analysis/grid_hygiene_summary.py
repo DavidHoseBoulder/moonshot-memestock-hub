@@ -220,7 +220,10 @@ def main(argv: Iterable[str] | None = None) -> int:
             data=horizon_df,
             x="horizon",
             y="sharpe_avg",
+            hue="horizon",
             palette="Blues_d",
+            dodge=False,
+            legend=False,
         )
         plt.title("Mean Sharpe by Horizon")
         plt.ylabel("Mean Sharpe")
