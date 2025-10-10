@@ -78,7 +78,7 @@ const GridHygieneSummary = () => {
   const [startDate, setStartDate] = useState("2025-06-01");
   const [endDate, setEndDate] = useState("2025-10-09");
   const [side, setSide] = useState("LONG");
-  const [availableRuns, setAvailableRuns] = useState<Array<{model_version: string; start_date: string; end_date: string; side: string; count: number}>>([]);
+  const [availableRuns, setAvailableRuns] = useState<Array<{model_version: string; start_date: string; end_date: string; side: string; count: number; created_at: string}>>([]);
   
   const [gridData, setGridData] = useState<GridRow[]>([]);
   const [promotedKeys, setPromotedKeys] = useState<Set<string>>(new Set());
@@ -94,13 +94,13 @@ const GridHygieneSummary = () => {
     try {
       const { data, error } = await supabase
         .from('backtest_sweep_grid')
-        .select('model_version, start_date, end_date, side')
+        .select('model_version, start_date, end_date, side, created_at')
         .limit(10000);
 
       if (error) throw error;
 
-      // Group by unique combinations
-      const runsMap = new Map<string, {model_version: string; start_date: string; end_date: string; side: string; count: number}>();
+      // Group by unique combinations and track the most recent created_at
+      const runsMap = new Map<string, {model_version: string; start_date: string; end_date: string; side: string; count: number; created_at: string}>();
       data?.forEach(row => {
         const key = `${row.model_version}|${row.start_date}|${row.end_date}|${row.side}`;
         if (!runsMap.has(key)) {
@@ -109,19 +109,21 @@ const GridHygieneSummary = () => {
             start_date: row.start_date,
             end_date: row.end_date,
             side: row.side,
+            created_at: row.created_at,
             count: 0
           });
         }
         const existing = runsMap.get(key)!;
         existing.count++;
+        // Keep the most recent created_at
+        if (row.created_at > existing.created_at) {
+          existing.created_at = row.created_at;
+        }
       });
 
       const runs = Array.from(runsMap.values()).sort((a, b) => {
-        // Sort by start_date desc, then end_date desc
-        if (a.start_date !== b.start_date) {
-          return b.start_date.localeCompare(a.start_date);
-        }
-        return b.end_date.localeCompare(a.end_date);
+        // Sort by created_at descending (most recent first)
+        return b.created_at.localeCompare(a.created_at);
       });
       
       console.log('Available runs found:', runs.length, runs);
@@ -355,14 +357,23 @@ Points cluster between ~$0.5B and ~$10B ADV30, where Sharpe spans 0 to ≈${Math
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                {availableRuns.map(run => (
-                  <SelectItem 
-                    key={`${run.model_version}|${run.start_date}|${run.end_date}|${run.side}`}
-                    value={`${run.model_version}|${run.start_date}|${run.end_date}|${run.side}`}
-                  >
-                    {run.model_version} | {run.start_date} to {run.end_date} | {run.side} ({run.count} pockets)
-                  </SelectItem>
-                ))}
+                {availableRuns.map(run => {
+                  const createdDate = new Date(run.created_at).toLocaleString('en-US', {
+                    month: 'short',
+                    day: 'numeric',
+                    year: 'numeric',
+                    hour: '2-digit',
+                    minute: '2-digit'
+                  });
+                  return (
+                    <SelectItem 
+                      key={`${run.model_version}|${run.start_date}|${run.end_date}|${run.side}`}
+                      value={`${run.model_version}|${run.start_date}|${run.end_date}|${run.side}`}
+                    >
+                      {createdDate} — {run.model_version} | {run.start_date} to {run.end_date} | {run.side} ({run.count})
+                    </SelectItem>
+                  );
+                })}
               </SelectContent>
             </Select>
           </div>
