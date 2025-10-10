@@ -70,6 +70,7 @@ const MAX_METADATA_MESSAGES = 50;
 const PAGINATION_DELAY_MS = Number(process.env.ST_BACKFILL_PAGE_DELAY_MS || 800);
 const SYMBOL_DELAY_MS = Number(process.env.ST_BACKFILL_SYMBOL_DELAY_MS || 1200);
 const FETCH_TIMEOUT_MS = Number(process.env.ST_BACKFILL_FETCH_TIMEOUT_MS || 20_000);
+const MAX_PAGES_PER_DAY = Number(process.env.ST_BACKFILL_MAX_PAGES_PER_DAY || 600);
 
 const SUPABASE_URL = process.env.SUPABASE_URL || '';
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
@@ -191,10 +192,17 @@ async function fetchMessagesForDay(
 ): Promise<FetchResult> {
   const messages: StockTwitsMessage[] = [];
   let maxId: number | undefined = startCursor;
+  let pageCount = 0;
   const maxMessages = Math.min(perDayLimit, MAX_MESSAGES_PER_SYMBOL);
   const maxRetries = Number(process.env.ST_BACKFILL_FETCH_RETRIES || 3);
 
   while (messages.length < maxMessages) {
+    if (pageCount >= MAX_PAGES_PER_DAY) {
+      console.warn(`[${symbol}] hit per-day page cap (${MAX_PAGES_PER_DAY}); stopping with ${messages.length} messages collected.`);
+      break;
+    }
+    pageCount += 1;
+
     const batchSize = Math.min(MAX_PER_REQUEST, maxMessages - messages.length);
     const url = new URL(`${STOCKTWITS_API_BASE}/${symbol}.json`);
     url.searchParams.set('limit', String(batchSize));
@@ -205,8 +213,12 @@ async function fetchMessagesForDay(
     let lastStatus: number | string | null = null;
     let lastError: unknown = null;
 
+    console.log(`[${symbol}] page ${pageCount} (collected ${messages.length}/${maxMessages}, cursor=${maxId ?? 'latest'})`);
+
     for (let attempt = 0; attempt < maxRetries; attempt += 1) {
-      console.log(`[${symbol}] fetch attempt ${attempt + 1}/${maxRetries} (collected ${messages.length}/${maxMessages})`);
+      if (attempt > 0) {
+        console.log(`[${symbol}] fetch retry ${attempt + 1}/${maxRetries}`);
+      }
       const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
       const timer = controller ? setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS) : null;
       try {
