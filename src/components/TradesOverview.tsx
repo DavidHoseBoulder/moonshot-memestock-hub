@@ -1677,67 +1677,109 @@ const TradesOverview = ({ onSymbolSelect, onOpenChat }: TradesOverviewProps) => 
             </AlertDialogDescription>
           </AlertDialogHeader>
           
-          {tradeDetailData?.priceHistory && tradeDetailData.priceHistory.length > 0 ? (
-            <div className="grid grid-cols-2 gap-3 py-4">
-              {/* 1-day exit price */}
-              {tradeDetailData.priceHistory.length >= 1 && (
-                <Button
-                  variant={selectedExitPrice === tradeDetailData.priceHistory[0]?.price ? "default" : "outline"}
-                  className="flex flex-col items-start h-auto py-3"
-                  onClick={() => setSelectedExitPrice(tradeDetailData.priceHistory[0]?.price)}
-                >
-                  <span className="text-xs text-muted-foreground">1-Day Exit</span>
-                  <span className="text-lg font-semibold">
-                    ${tradeDetailData.priceHistory[0]?.price.toFixed(2)}
-                  </span>
-                </Button>
-              )}
-              
-              {/* 3-day exit price */}
-              {tradeDetailData.priceHistory.length >= 3 && (
-                <Button
-                  variant={selectedExitPrice === tradeDetailData.priceHistory[2]?.price ? "default" : "outline"}
-                  className="flex flex-col items-start h-auto py-3"
-                  onClick={() => setSelectedExitPrice(tradeDetailData.priceHistory[2]?.price)}
-                >
-                  <span className="text-xs text-muted-foreground">3-Day Exit</span>
-                  <span className="text-lg font-semibold">
-                    ${tradeDetailData.priceHistory[2]?.price.toFixed(2)}
-                  </span>
-                </Button>
-              )}
-              
-              {/* 5-day exit price */}
-              {tradeDetailData.priceHistory.length >= 5 && (
-                <Button
-                  variant={selectedExitPrice === tradeDetailData.priceHistory[4]?.price ? "default" : "outline"}
-                  className="flex flex-col items-start h-auto py-3"
-                  onClick={() => setSelectedExitPrice(tradeDetailData.priceHistory[4]?.price)}
-                >
-                  <span className="text-xs text-muted-foreground">5-Day Exit</span>
-                  <span className="text-lg font-semibold">
-                    ${tradeDetailData.priceHistory[4]?.price.toFixed(2)}
-                  </span>
-                </Button>
-              )}
-              
-              {/* Current/Latest price */}
-              <Button
-                variant={selectedExitPrice === tradeDetailData.priceHistory[tradeDetailData.priceHistory.length - 1]?.price ? "default" : "outline"}
-                className="flex flex-col items-start h-auto py-3"
-                onClick={() => setSelectedExitPrice(tradeDetailData.priceHistory[tradeDetailData.priceHistory.length - 1]?.price)}
-              >
-                <span className="text-xs text-muted-foreground">Current Price</span>
-                <span className="text-lg font-semibold">
-                  ${tradeDetailData.priceHistory[tradeDetailData.priceHistory.length - 1]?.price.toFixed(2)}
-                </span>
-              </Button>
-            </div>
-          ) : (
-            <div className="py-4 text-center text-muted-foreground">
-              No price data available. Loading...
-            </div>
-          )}
+          {/* Use price history if available, otherwise fall back to current market data */}
+          {(() => {
+            const priceHistory = tradeDetailData?.priceHistory || [];
+            const currentMarketPrice = selectedTrade ? marketData[selectedTrade.symbol]?.price : null;
+            
+            // If we have price history, use it
+            if (priceHistory.length > 0) {
+              return (
+                <div className="grid grid-cols-2 gap-3 py-4">
+                  {/* 1-day exit price */}
+                  {priceHistory[0] && (
+                    <Button
+                      variant={selectedExitPrice === priceHistory[0].price ? "default" : "outline"}
+                      className="flex flex-col items-start h-auto py-3"
+                      onClick={() => setSelectedExitPrice(priceHistory[0].price)}
+                    >
+                      <span className="text-xs text-muted-foreground">1-Day Exit</span>
+                      <span className="text-lg font-semibold">
+                        ${priceHistory[0].price.toFixed(2)}
+                      </span>
+                    </Button>
+                  )}
+                  
+                  {/* 3-day exit price */}
+                  {priceHistory[2] && (
+                    <Button
+                      variant={selectedExitPrice === priceHistory[2].price ? "default" : "outline"}
+                      className="flex flex-col items-start h-auto py-3"
+                      onClick={() => setSelectedExitPrice(priceHistory[2].price)}
+                    >
+                      <span className="text-xs text-muted-foreground">3-Day Exit</span>
+                      <span className="text-lg font-semibold">
+                        ${priceHistory[2].price.toFixed(2)}
+                      </span>
+                    </Button>
+                  )}
+                  
+                  {/* 5-day exit price */}
+                  {priceHistory[4] && (
+                    <Button
+                      variant={selectedExitPrice === priceHistory[4].price ? "default" : "outline"}
+                      className="flex flex-col items-start h-auto py-3"
+                      onClick={() => setSelectedExitPrice(priceHistory[4].price)}
+                    >
+                      <span className="text-xs text-muted-foreground">5-Day Exit</span>
+                      <span className="text-lg font-semibold">
+                        ${priceHistory[4].price.toFixed(2)}
+                      </span>
+                    </Button>
+                  )}
+                  
+                  {/* Current/Latest price */}
+                  <Button
+                    variant={selectedExitPrice === priceHistory[priceHistory.length - 1].price ? "default" : "outline"}
+                    className="flex flex-col items-start h-auto py-3"
+                    onClick={() => setSelectedExitPrice(priceHistory[priceHistory.length - 1].price)}
+                  >
+                    <span className="text-xs text-muted-foreground">Current Price</span>
+                    <span className="text-lg font-semibold">
+                      ${priceHistory[priceHistory.length - 1].price.toFixed(2)}
+                    </span>
+                  </Button>
+                </div>
+              );
+            }
+            
+            // Fall back to current market data if available
+            if (currentMarketPrice && typeof currentMarketPrice === 'number') {
+              return (
+                <div className="py-4">
+                  <p className="text-sm text-muted-foreground mb-3">
+                    Using current market price (historical data not available):
+                  </p>
+                  <Button
+                    variant={selectedExitPrice === currentMarketPrice ? "default" : "outline"}
+                    className="w-full flex flex-col items-center h-auto py-4"
+                    onClick={() => setSelectedExitPrice(currentMarketPrice)}
+                  >
+                    <span className="text-xs text-muted-foreground mb-1">Current Market Price</span>
+                    <span className="text-2xl font-bold">
+                      ${currentMarketPrice.toFixed(2)}
+                    </span>
+                  </Button>
+                </div>
+              );
+            }
+            
+            // No data available
+            return (
+              <div className="py-4 text-center text-muted-foreground">
+                {isLoadingDetails ? (
+                  <div>
+                    <div className="animate-pulse">Loading price data...</div>
+                  </div>
+                ) : (
+                  <div>
+                    <p className="mb-2">No price data available for {selectedTrade?.symbol}</p>
+                    <p className="text-xs">Please enter a price manually or wait for data to load.</p>
+                  </div>
+                )}
+              </div>
+            );
+          })()}
 
           <AlertDialogFooter>
             <AlertDialogCancel onClick={() => setSelectedExitPrice(null)}>Cancel</AlertDialogCancel>
