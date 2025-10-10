@@ -146,3 +146,21 @@ verify_jwt = false
 
 [functions.reddit-loader-orchestrator]
 verify_jwt = false
+
+[functions.symbol-ai-chat]
+verify_jwt = false
+
+[functions.polygon-market-data-scheduler]
+verify_jwt = false
+
+[functions.database-backup]
+verify_jwt = false
+
+[functions.reddit-build-mentions]
+verify_jwt = false
+
+[functions.sentiment-score]
+verify_jwt = false
+
+[functions.twitter-volume-test]
+verify_jwt = false

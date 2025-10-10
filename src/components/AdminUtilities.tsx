@@ -3,7 +3,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/hooks/use-toast';
-import { Shield, Copy, CheckCircle } from 'lucide-react';
+import { Shield, Copy, CheckCircle, TrendingUp } from 'lucide-react';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 
 const AdminUtilities: React.FC = () => {
@@ -11,6 +11,7 @@ const AdminUtilities: React.FC = () => {
   const [isAdmin, setIsAdmin] = useState(false);
   const [loading, setLoading] = useState(true);
   const [granting, setGranting] = useState(false);
+  const [fetchingPolygon, setFetchingPolygon] = useState(false);
   const { toast } = useToast();
 
   useEffect(() => {
@@ -87,6 +88,29 @@ const AdminUtilities: React.FC = () => {
       });
     } finally {
       setGranting(false);
+    }
+  };
+
+  const fetchPolygonData = async () => {
+    setFetchingPolygon(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('polygon-market-data-scheduler');
+
+      if (error) throw error;
+
+      toast({
+        title: 'Success!',
+        description: `Polygon data fetched for ${data.symbols_processed}/${data.symbols_requested} symbols`,
+      });
+    } catch (error) {
+      console.error('Error fetching Polygon data:', error);
+      toast({
+        title: 'Error',
+        description: error instanceof Error ? error.message : 'Failed to fetch Polygon data',
+        variant: 'destructive',
+      });
+    } finally {
+      setFetchingPolygon(false);
     }
   };
 
@@ -195,6 +219,36 @@ const AdminUtilities: React.FC = () => {
 {`INSERT INTO user_roles (user_id, role) 
 VALUES ('${userId || 'your-user-id'}', 'admin');`}
             </pre>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <TrendingUp className="h-5 w-5" />
+              Polygon Market Data
+            </CardTitle>
+            <CardDescription>
+              Manually fetch latest market data for all active symbols
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <p className="text-sm text-muted-foreground">
+              This will fetch current price data from Polygon.io for all active symbols in your ticker universe. 
+              The function respects Polygon's free tier rate limits (5 requests/minute).
+            </p>
+            <Button 
+              onClick={fetchPolygonData}
+              disabled={fetchingPolygon}
+              className="w-full"
+            >
+              {fetchingPolygon ? 'Fetching Data...' : 'Fetch Polygon Data'}
+            </Button>
+            <Alert>
+              <AlertDescription className="text-xs">
+                <strong>Note:</strong> For automatic daily updates, set up a cron job to call the <code>polygon-market-data-scheduler</code> edge function at market close (4:30 PM ET).
+              </AlertDescription>
+            </Alert>
           </CardContent>
         </Card>
       </div>
