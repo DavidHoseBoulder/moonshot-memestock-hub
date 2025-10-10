@@ -608,24 +608,33 @@ const TradesOverview = ({ onSymbolSelect, onOpenChat }: TradesOverviewProps) => 
         console.error('Error fetching mentions:', error);
       }
 
-      // 3. Fetch price history since entry
+      // 3. Fetch price history around entry date (before and after)
       const priceHistory: MarketData[] = [];
       try {
+        // Calculate date range: 5 days before entry to 30 days after
+        const entryDate = new Date(tradeDate);
+        const startDate = new Date(entryDate);
+        startDate.setDate(startDate.getDate() - 5);
+        const startDateStr = startDate.toISOString().split('T')[0];
+        
         const { data: prices } = await supabase
           .from('enhanced_market_data')
           .select('symbol, price_close, timestamp, data_date')
           .eq('symbol', trade.symbol)
-          .gte('data_date', tradeDate)
+          .gte('data_date', startDateStr)
           .order('data_date', { ascending: true })
-          .limit(30);
+          .limit(50);
 
-        if (prices) {
+        if (prices && prices.length > 0) {
           priceHistory.push(...prices.map((p: any) => ({
             symbol: p.symbol,
             price: Number(p.price_close),
             timestamp: p.timestamp,
             data_date: p.data_date,
           })));
+          console.log(`Found ${prices.length} price records for ${trade.symbol} starting from ${startDateStr}`);
+        } else {
+          console.warn(`No price history found for ${trade.symbol} from ${startDateStr}`);
         }
       } catch (error) {
         console.error('Error fetching price history:', error);
