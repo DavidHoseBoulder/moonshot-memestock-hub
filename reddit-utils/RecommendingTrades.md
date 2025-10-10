@@ -117,7 +117,8 @@ Inside Lovable:
 
 ## 8. Hardened Recommendation Gate
 - New view `v_recommended_trades_today_conf_hardened` wraps `fn_recommended_trades_conf` and enforces the deployability gate (no open positions, trades ≥ 20, ADV ≥ $30M, dynamic Sharpe/Win bars).
-- Dynamic thresholds: pulls the 75th percentile of Sharpe and win_rate from the last 90 days of `backtest_sweep_grid`, falling back to floors 0.45 / 0.57 so the bar adjusts with grid quality.
+- Dynamic thresholds: pulls the 65th percentile (tunable) of Sharpe and win_rate from the last 90 days of `backtest_sweep_grid`, falling back to floors 0.45 / 0.57 so the bar adjusts with grid quality.
+  - Update `v_recommended_trades_today_conf_hardened` or call `fn_recommended_trades_conf_filtered(..., percentile => 0.65)` to change the percentile as needed.
 - Liquidity: ADV now comes from the latest `backtest_sweep_results` row per pocket; missing values are set to 0 so symbols without Polygon coverage fail the filter until backfilled.
 - Tuning: call `fn_recommended_trades_conf_filtered(p_date, lookback_days, adv_floor, trades_floor, sharpe_floor, win_floor)` to replay historical days or experiment with other production settings.
 - Adoption: point Lovable + automation at the hardened view once QA passes; keep the legacy view around for comparisons during rollout.

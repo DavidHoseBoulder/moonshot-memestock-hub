@@ -124,6 +124,7 @@
 - Add metrics logging to `stocktwits-data` (duration, symbols requested/fetched, rate-limit incidents).
 - Create hourly aggregation job/view combining Reddit + StockTwits signals (counts, average sentiment, latest timestamp).
 - Normalize StockTwits sentiment (bullish/bearish → [-1,1]) before persisting.
+- While paginating, persist a lightweight `messages_seen` counter so we capture total StockTwits volume even when we cap stored messages at 200.
 
 *(Status: not started—these tasks remain open and block the Operational Cost question. Next step: ticket each bullet so Phase 3 cost analysis can begin.)*
 
