@@ -76,8 +76,18 @@ export type Database = {
       }
       backtest_sweep_grid: {
         Row: {
+          avg_atr_14d: number | null
+          avg_beta_vs_spy: number | null
+          avg_borrow_cost_bps: number | null
+          avg_daily_dollar_volume_30d: number | null
+          avg_reddit_msgs_30d: number | null
           avg_ret: number | null
           avg_rsi_14: number | null
+          avg_sentiment_health_score: number | null
+          avg_shares_float: number | null
+          avg_short_interest_pct_float: number | null
+          avg_stocktwits_msgs_30d: number | null
+          avg_true_range_pct: number | null
           avg_volume_ratio_avg_20: number | null
           avg_volume_share_20: number | null
           avg_volume_zscore_20: number | null
@@ -87,6 +97,7 @@ export type Database = {
           baseline_random_trades: number | null
           created_at: string | null
           end_date: string
+          hard_to_borrow_flag: boolean | null
           horizon: string
           median_ret: number | null
           min_mentions: number
@@ -98,13 +109,31 @@ export type Database = {
           stdev_ret: number | null
           symbol: string
           trades: number
+          train_avg_ret: number | null
+          train_sharpe: number | null
+          train_trades: number | null
+          train_win_rate: number | null
           uplift: number | null
           uplift_random: number | null
+          valid_avg_ret: number | null
+          valid_sharpe: number | null
+          valid_trades: number | null
+          valid_win_rate: number | null
           win_rate: number | null
         }
         Insert: {
+          avg_atr_14d?: number | null
+          avg_beta_vs_spy?: number | null
+          avg_borrow_cost_bps?: number | null
+          avg_daily_dollar_volume_30d?: number | null
+          avg_reddit_msgs_30d?: number | null
           avg_ret?: number | null
           avg_rsi_14?: number | null
+          avg_sentiment_health_score?: number | null
+          avg_shares_float?: number | null
+          avg_short_interest_pct_float?: number | null
+          avg_stocktwits_msgs_30d?: number | null
+          avg_true_range_pct?: number | null
           avg_volume_ratio_avg_20?: number | null
           avg_volume_share_20?: number | null
           avg_volume_zscore_20?: number | null
@@ -114,6 +143,7 @@ export type Database = {
           baseline_random_trades?: number | null
           created_at?: string | null
           end_date: string
+          hard_to_borrow_flag?: boolean | null
           horizon: string
           median_ret?: number | null
           min_mentions: number
@@ -125,13 +155,31 @@ export type Database = {
           stdev_ret?: number | null
           symbol: string
           trades: number
+          train_avg_ret?: number | null
+          train_sharpe?: number | null
+          train_trades?: number | null
+          train_win_rate?: number | null
           uplift?: number | null
           uplift_random?: number | null
+          valid_avg_ret?: number | null
+          valid_sharpe?: number | null
+          valid_trades?: number | null
+          valid_win_rate?: number | null
           win_rate?: number | null
         }
         Update: {
+          avg_atr_14d?: number | null
+          avg_beta_vs_spy?: number | null
+          avg_borrow_cost_bps?: number | null
+          avg_daily_dollar_volume_30d?: number | null
+          avg_reddit_msgs_30d?: number | null
           avg_ret?: number | null
           avg_rsi_14?: number | null
+          avg_sentiment_health_score?: number | null
+          avg_shares_float?: number | null
+          avg_short_interest_pct_float?: number | null
+          avg_stocktwits_msgs_30d?: number | null
+          avg_true_range_pct?: number | null
           avg_volume_ratio_avg_20?: number | null
           avg_volume_share_20?: number | null
           avg_volume_zscore_20?: number | null
@@ -141,6 +189,7 @@ export type Database = {
           baseline_random_trades?: number | null
           created_at?: string | null
           end_date?: string
+          hard_to_borrow_flag?: boolean | null
           horizon?: string
           median_ret?: number | null
           min_mentions?: number
@@ -152,16 +201,34 @@ export type Database = {
           stdev_ret?: number | null
           symbol?: string
           trades?: number
+          train_avg_ret?: number | null
+          train_sharpe?: number | null
+          train_trades?: number | null
+          train_win_rate?: number | null
           uplift?: number | null
           uplift_random?: number | null
+          valid_avg_ret?: number | null
+          valid_sharpe?: number | null
+          valid_trades?: number | null
+          valid_win_rate?: number | null
           win_rate?: number | null
         }
         Relationships: []
       }
       backtest_sweep_results: {
         Row: {
+          avg_atr_14d: number | null
+          avg_beta_vs_spy: number | null
+          avg_borrow_cost_bps: number | null
+          avg_daily_dollar_volume_30d: number | null
+          avg_reddit_msgs_30d: number | null
           avg_ret: number | null
           avg_rsi_14: number | null
+          avg_sentiment_health_score: number | null
+          avg_shares_float: number | null
+          avg_short_interest_pct_float: number | null
+          avg_stocktwits_msgs_30d: number | null
+          avg_true_range_pct: number | null
           avg_volume_ratio_avg_20: number | null
           avg_volume_share_20: number | null
           avg_volume_zscore_20: number | null
@@ -171,6 +238,7 @@ export type Database = {
           baseline_random_trades: number | null
           created_at: string
           end_date: string | null
+          hard_to_borrow_flag: boolean | null
           horizon: string
           median_ret: number | null
           min_mentions: number
@@ -182,14 +250,32 @@ export type Database = {
           stdev_ret: number | null
           symbol: string
           trades: number
+          train_avg_ret: number | null
+          train_sharpe: number | null
+          train_trades: number | null
+          train_win_rate: number | null
           uplift: number | null
           uplift_random: number | null
           use_weighted: boolean
+          valid_avg_ret: number | null
+          valid_sharpe: number | null
+          valid_trades: number | null
+          valid_win_rate: number | null
           win_rate: number | null
         }
         Insert: {
+          avg_atr_14d?: number | null
+          avg_beta_vs_spy?: number | null
+          avg_borrow_cost_bps?: number | null
+          avg_daily_dollar_volume_30d?: number | null
+          avg_reddit_msgs_30d?: number | null
           avg_ret?: number | null
           avg_rsi_14?: number | null
+          avg_sentiment_health_score?: number | null
+          avg_shares_float?: number | null
+          avg_short_interest_pct_float?: number | null
+          avg_stocktwits_msgs_30d?: number | null
+          avg_true_range_pct?: number | null
           avg_volume_ratio_avg_20?: number | null
           avg_volume_share_20?: number | null
           avg_volume_zscore_20?: number | null
@@ -199,6 +285,7 @@ export type Database = {
           baseline_random_trades?: number | null
           created_at?: string
           end_date?: string | null
+          hard_to_borrow_flag?: boolean | null
           horizon: string
           median_ret?: number | null
           min_mentions: number
@@ -210,14 +297,32 @@ export type Database = {
           stdev_ret?: number | null
           symbol: string
           trades: number
+          train_avg_ret?: number | null
+          train_sharpe?: number | null
+          train_trades?: number | null
+          train_win_rate?: number | null
           uplift?: number | null
           uplift_random?: number | null
           use_weighted: boolean
+          valid_avg_ret?: number | null
+          valid_sharpe?: number | null
+          valid_trades?: number | null
+          valid_win_rate?: number | null
           win_rate?: number | null
         }
         Update: {
+          avg_atr_14d?: number | null
+          avg_beta_vs_spy?: number | null
+          avg_borrow_cost_bps?: number | null
+          avg_daily_dollar_volume_30d?: number | null
+          avg_reddit_msgs_30d?: number | null
           avg_ret?: number | null
           avg_rsi_14?: number | null
+          avg_sentiment_health_score?: number | null
+          avg_shares_float?: number | null
+          avg_short_interest_pct_float?: number | null
+          avg_stocktwits_msgs_30d?: number | null
+          avg_true_range_pct?: number | null
           avg_volume_ratio_avg_20?: number | null
           avg_volume_share_20?: number | null
           avg_volume_zscore_20?: number | null
@@ -227,6 +332,7 @@ export type Database = {
           baseline_random_trades?: number | null
           created_at?: string
           end_date?: string | null
+          hard_to_borrow_flag?: boolean | null
           horizon?: string
           median_ret?: number | null
           min_mentions?: number
@@ -238,9 +344,17 @@ export type Database = {
           stdev_ret?: number | null
           symbol?: string
           trades?: number
+          train_avg_ret?: number | null
+          train_sharpe?: number | null
+          train_trades?: number | null
+          train_win_rate?: number | null
           uplift?: number | null
           uplift_random?: number | null
           use_weighted?: boolean
+          valid_avg_ret?: number | null
+          valid_sharpe?: number | null
+          valid_trades?: number | null
+          valid_win_rate?: number | null
           win_rate?: number | null
         }
         Relationships: []
@@ -1936,29 +2050,74 @@ export type Database = {
       ticker_universe: {
         Row: {
           active: boolean
+          atr_14d: number | null
+          avg_daily_dollar_volume_30d: number | null
+          beta_vs_spy: number | null
+          borrow_cost_bps: number | null
           created_at: string
+          hard_to_borrow_flag: boolean | null
+          listing_status: string | null
           name: string | null
+          primary_exchange: string | null
           priority: number
+          reddit_msgs_30d: number | null
+          retired_at: string | null
+          retired_reason: string | null
           sector: string | null
+          sentiment_health_score: number | null
+          shares_float: number | null
+          short_interest_pct_float: number | null
+          stocktwits_msgs_30d: number | null
           symbol: string
+          true_range_pct: number | null
           updated_at: string
         }
         Insert: {
           active?: boolean
+          atr_14d?: number | null
+          avg_daily_dollar_volume_30d?: number | null
+          beta_vs_spy?: number | null
+          borrow_cost_bps?: number | null
           created_at?: string
+          hard_to_borrow_flag?: boolean | null
+          listing_status?: string | null
           name?: string | null
+          primary_exchange?: string | null
           priority?: number
+          reddit_msgs_30d?: number | null
+          retired_at?: string | null
+          retired_reason?: string | null
           sector?: string | null
+          sentiment_health_score?: number | null
+          shares_float?: number | null
+          short_interest_pct_float?: number | null
+          stocktwits_msgs_30d?: number | null
           symbol: string
+          true_range_pct?: number | null
           updated_at?: string
         }
         Update: {
           active?: boolean
+          atr_14d?: number | null
+          avg_daily_dollar_volume_30d?: number | null
+          beta_vs_spy?: number | null
+          borrow_cost_bps?: number | null
           created_at?: string
+          hard_to_borrow_flag?: boolean | null
+          listing_status?: string | null
           name?: string | null
+          primary_exchange?: string | null
           priority?: number
+          reddit_msgs_30d?: number | null
+          retired_at?: string | null
+          retired_reason?: string | null
           sector?: string | null
+          sentiment_health_score?: number | null
+          shares_float?: number | null
+          short_interest_pct_float?: number | null
+          stocktwits_msgs_30d?: number | null
           symbol?: string
+          true_range_pct?: number | null
           updated_at?: string
         }
         Relationships: []
@@ -2499,6 +2658,231 @@ export type Database = {
         }
         Relationships: []
       }
+      ticker_universe_active: {
+        Row: {
+          active: boolean | null
+          atr_14d: number | null
+          avg_daily_dollar_volume_30d: number | null
+          beta_vs_spy: number | null
+          borrow_cost_bps: number | null
+          created_at: string | null
+          hard_to_borrow_flag: boolean | null
+          listing_status: string | null
+          name: string | null
+          primary_exchange: string | null
+          priority: number | null
+          reddit_msgs_30d: number | null
+          retired_at: string | null
+          retired_reason: string | null
+          sector: string | null
+          sentiment_health_score: number | null
+          shares_float: number | null
+          short_interest_pct_float: number | null
+          stocktwits_msgs_30d: number | null
+          symbol: string | null
+          true_range_pct: number | null
+          updated_at: string | null
+        }
+        Insert: {
+          active?: boolean | null
+          atr_14d?: number | null
+          avg_daily_dollar_volume_30d?: number | null
+          beta_vs_spy?: number | null
+          borrow_cost_bps?: number | null
+          created_at?: string | null
+          hard_to_borrow_flag?: boolean | null
+          listing_status?: string | null
+          name?: string | null
+          primary_exchange?: string | null
+          priority?: number | null
+          reddit_msgs_30d?: number | null
+          retired_at?: string | null
+          retired_reason?: string | null
+          sector?: string | null
+          sentiment_health_score?: number | null
+          shares_float?: number | null
+          short_interest_pct_float?: number | null
+          stocktwits_msgs_30d?: number | null
+          symbol?: string | null
+          true_range_pct?: number | null
+          updated_at?: string | null
+        }
+        Update: {
+          active?: boolean | null
+          atr_14d?: number | null
+          avg_daily_dollar_volume_30d?: number | null
+          beta_vs_spy?: number | null
+          borrow_cost_bps?: number | null
+          created_at?: string | null
+          hard_to_borrow_flag?: boolean | null
+          listing_status?: string | null
+          name?: string | null
+          primary_exchange?: string | null
+          priority?: number | null
+          reddit_msgs_30d?: number | null
+          retired_at?: string | null
+          retired_reason?: string | null
+          sector?: string | null
+          sentiment_health_score?: number | null
+          shares_float?: number | null
+          short_interest_pct_float?: number | null
+          stocktwits_msgs_30d?: number | null
+          symbol?: string | null
+          true_range_pct?: number | null
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
+      ticker_universe_core: {
+        Row: {
+          active: boolean | null
+          atr_14d: number | null
+          avg_daily_dollar_volume_30d: number | null
+          beta_vs_spy: number | null
+          borrow_cost_bps: number | null
+          created_at: string | null
+          hard_to_borrow_flag: boolean | null
+          listing_status: string | null
+          name: string | null
+          primary_exchange: string | null
+          priority: number | null
+          reddit_msgs_30d: number | null
+          retired_at: string | null
+          retired_reason: string | null
+          sector: string | null
+          sentiment_health_score: number | null
+          shares_float: number | null
+          short_interest_pct_float: number | null
+          stocktwits_msgs_30d: number | null
+          symbol: string | null
+          true_range_pct: number | null
+          updated_at: string | null
+        }
+        Insert: {
+          active?: boolean | null
+          atr_14d?: number | null
+          avg_daily_dollar_volume_30d?: number | null
+          beta_vs_spy?: number | null
+          borrow_cost_bps?: number | null
+          created_at?: string | null
+          hard_to_borrow_flag?: boolean | null
+          listing_status?: string | null
+          name?: string | null
+          primary_exchange?: string | null
+          priority?: number | null
+          reddit_msgs_30d?: number | null
+          retired_at?: string | null
+          retired_reason?: string | null
+          sector?: string | null
+          sentiment_health_score?: number | null
+          shares_float?: number | null
+          short_interest_pct_float?: number | null
+          stocktwits_msgs_30d?: number | null
+          symbol?: string | null
+          true_range_pct?: number | null
+          updated_at?: string | null
+        }
+        Update: {
+          active?: boolean | null
+          atr_14d?: number | null
+          avg_daily_dollar_volume_30d?: number | null
+          beta_vs_spy?: number | null
+          borrow_cost_bps?: number | null
+          created_at?: string | null
+          hard_to_borrow_flag?: boolean | null
+          listing_status?: string | null
+          name?: string | null
+          primary_exchange?: string | null
+          priority?: number | null
+          reddit_msgs_30d?: number | null
+          retired_at?: string | null
+          retired_reason?: string | null
+          sector?: string | null
+          sentiment_health_score?: number | null
+          shares_float?: number | null
+          short_interest_pct_float?: number | null
+          stocktwits_msgs_30d?: number | null
+          symbol?: string | null
+          true_range_pct?: number | null
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
+      ticker_universe_satellite: {
+        Row: {
+          active: boolean | null
+          atr_14d: number | null
+          avg_daily_dollar_volume_30d: number | null
+          beta_vs_spy: number | null
+          borrow_cost_bps: number | null
+          created_at: string | null
+          hard_to_borrow_flag: boolean | null
+          listing_status: string | null
+          name: string | null
+          primary_exchange: string | null
+          priority: number | null
+          reddit_msgs_30d: number | null
+          retired_at: string | null
+          retired_reason: string | null
+          sector: string | null
+          sentiment_health_score: number | null
+          shares_float: number | null
+          short_interest_pct_float: number | null
+          stocktwits_msgs_30d: number | null
+          symbol: string | null
+          true_range_pct: number | null
+          updated_at: string | null
+        }
+        Insert: {
+          active?: boolean | null
+          atr_14d?: number | null
+          avg_daily_dollar_volume_30d?: number | null
+          beta_vs_spy?: number | null
+          borrow_cost_bps?: number | null
+          created_at?: string | null
+          hard_to_borrow_flag?: boolean | null
+          listing_status?: string | null
+          name?: string | null
+          primary_exchange?: string | null
+          priority?: number | null
+          reddit_msgs_30d?: number | null
+          retired_at?: string | null
+          retired_reason?: string | null
+          sector?: string | null
+          sentiment_health_score?: number | null
+          shares_float?: number | null
+          short_interest_pct_float?: number | null
+          stocktwits_msgs_30d?: number | null
+          symbol?: string | null
+          true_range_pct?: number | null
+          updated_at?: string | null
+        }
+        Update: {
+          active?: boolean | null
+          atr_14d?: number | null
+          avg_daily_dollar_volume_30d?: number | null
+          beta_vs_spy?: number | null
+          borrow_cost_bps?: number | null
+          created_at?: string | null
+          hard_to_borrow_flag?: boolean | null
+          listing_status?: string | null
+          name?: string | null
+          primary_exchange?: string | null
+          priority?: number | null
+          reddit_msgs_30d?: number | null
+          retired_at?: string | null
+          retired_reason?: string | null
+          sector?: string | null
+          sentiment_health_score?: number | null
+          shares_float?: number | null
+          short_interest_pct_float?: number | null
+          stocktwits_msgs_30d?: number | null
+          symbol?: string | null
+          true_range_pct?: number | null
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
       tmp_symbol_disambig: {
         Row: {
           exclude_keywords: string[] | null
@@ -2781,6 +3165,35 @@ export type Database = {
           symbol: string | null
           trades: number | null
           triggered_at: string | null
+          win_rate: number | null
+        }
+        Relationships: []
+      }
+      v_recommended_trades_today_conf_hardened: {
+        Row: {
+          adv_mil: number | null
+          avg_ret: number | null
+          confidence_label: string | null
+          confidence_score: number | null
+          end_date: string | null
+          grade: string | null
+          grade_explain: string | null
+          has_open_any: boolean | null
+          has_open_paper: boolean | null
+          has_open_real: boolean | null
+          horizon: string | null
+          mentions: number | null
+          min_mentions: number | null
+          rule_threshold: number | null
+          score: number | null
+          sharpe: number | null
+          sharpe_cut: number | null
+          side: string | null
+          start_date: string | null
+          symbol: string | null
+          trades: number | null
+          triggered_at: string | null
+          win_cut: number | null
           win_rate: number | null
         }
         Relationships: []
@@ -3219,6 +3632,52 @@ export type Database = {
           win_rate: number
         }[]
       }
+      fn_recommended_trades_conf_filtered: {
+        Args:
+          | {
+              adv_floor?: number
+              lookback_days?: number
+              p_date?: string
+              percentile?: number
+              sharpe_floor?: number
+              trades_floor?: number
+              win_floor?: number
+            }
+          | {
+              adv_floor?: number
+              lookback_days?: number
+              p_date?: string
+              sharpe_floor?: number
+              trades_floor?: number
+              win_floor?: number
+            }
+        Returns: {
+          adv_mil: number
+          avg_ret: number
+          confidence_label: string
+          confidence_score: number
+          end_date: string
+          grade: string
+          grade_explain: string
+          has_open_any: boolean
+          has_open_paper: boolean
+          has_open_real: boolean
+          horizon: string
+          mentions: number
+          min_mentions: number
+          rule_threshold: number
+          score: number
+          sharpe: number
+          sharpe_cut: number
+          side: string
+          start_date: string
+          symbol: string
+          trades: number
+          triggered_at: string
+          win_cut: number
+          win_rate: number
+        }[]
+      }
       from_epochish: {
         Args: { txt: string }
         Returns: string
@@ -3273,6 +3732,10 @@ export type Database = {
       reddit_refresh_mentions: {
         Args: { d0: string; d3: string }
         Returns: Json
+      }
+      refresh_sentiment_coverage: {
+        Args: Record<PropertyKey, never>
+        Returns: undefined
       }
       try_parse_jsonb: {
         Args: { txt: string }
