@@ -6,6 +6,10 @@ import {
   Target,
   TrendingUp,
   DollarSign,
+  Database,
+  FileText,
+  ShieldCheck,
+  Users,
 } from "lucide-react"
 import { NavLink, useLocation } from "react-router-dom"
 
@@ -29,6 +33,10 @@ const navItems = [
   { path: "/sentiment", icon: MessageSquare, label: "Sentiment" },
   { path: "/portfolio", icon: DollarSign, label: "Portfolio & Trades" },
   { path: "/backtesting", icon: BarChart3, label: "Backtesting" },
+  { path: "/bulk-import", icon: Database, label: "Data Backfills" },
+  { path: "/sentiment-cohorts", icon: Users, label: "Sentiment Cohorts" },
+  { path: "/reports", icon: FileText, label: "Reports" },
+  { path: "/admin-setup", icon: ShieldCheck, label: "Admin Setup" },
   { path: "/configuration", icon: Settings, label: "Configuration" },
 ];
 
