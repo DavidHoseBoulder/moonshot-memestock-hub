@@ -13,26 +13,24 @@ const PolygonRealTimeImport = () => {
     try {
       setIsImporting(true);
 
-      // Get symbols from the most recent available date from enhanced_market_data
+      // Get all active symbols from ticker_universe
       const { data: tickersData, error: tickersError } = await supabase
-        .from('enhanced_market_data')
+        .from('ticker_universe')
         .select('symbol')
-        .order('data_date', { ascending: false })
-        .order('created_at', { ascending: false })
-        .limit(50);
+        .eq('active', true)
+        .order('symbol');
 
       if (tickersError) throw tickersError;
 
       const symbols = tickersData?.map((t) => t.symbol) || [];
-      const limitedSymbols = symbols.slice(0, 20); // keep UI-friendly cap
-      setProgress({ processed: 0, total: limitedSymbols.length });
+      setProgress({ processed: 0, total: symbols.length });
 
       let success = 0;
       let failed = 0;
 
       // Process one symbol per request to avoid long-running server calls/timeouts
-      for (let i = 0; i < limitedSymbols.length; i++) {
-        const symbol = limitedSymbols[i];
+      for (let i = 0; i < symbols.length; i++) {
+        const symbol = symbols[i];
         try {
           const { data, error } = await supabase.functions.invoke('polygon-market-data', {
             body: { symbols: [symbol], days: 1 },
@@ -45,7 +43,7 @@ const PolygonRealTimeImport = () => {
           console.error('Polygon fetch error for', symbol, e);
           failed++;
         } finally {
-          setProgress({ processed: i + 1, total: limitedSymbols.length });
+          setProgress({ processed: i + 1, total: symbols.length });
           // Gentle client-side pacing to reduce 429s
           await new Promise((r) => setTimeout(r, 1200));
         }
@@ -53,7 +51,7 @@ const PolygonRealTimeImport = () => {
 
       toast({
         title: "Today's Market Data Fetched",
-        description: `Processed ${success}/${limitedSymbols.length} symbols (${failed} failed)`,
+        description: `Processed ${success}/${symbols.length} symbols (${failed} failed)`,
       });
     } catch (error) {
       console.error('Polygon fetch error:', error);
@@ -91,7 +89,7 @@ const PolygonRealTimeImport = () => {
         <div className="text-sm text-muted-foreground space-y-1">
           <p><strong>Data source:</strong> Polygon.io API</p>
           <p><strong>Coverage:</strong> Real-time and recent market data</p>
-          <p><strong>Symbols:</strong> Processes up to 20 symbols with 1.2s throttling between requests</p>
+          <p><strong>Symbols:</strong> Processes all active symbols from ticker_universe with 1.2s throttling between requests</p>
         </div>
       </CardContent>
     </Card>
