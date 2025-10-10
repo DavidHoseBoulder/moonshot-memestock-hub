@@ -5,9 +5,7 @@ LOG_TAG="[nightly-grid]"
 MAIL_FILE=$(mktemp)
 subj="Nightly grid job $(date -u '+%Y-%m-%d %H:%M UTC')"
 
-cleanup() {
-  rm -f "$MAIL_FILE"
-}
+cleanup() { rm -f "$MAIL_FILE"; }
 trap cleanup EXIT
 
 say() {
@@ -18,6 +16,17 @@ say() {
 : "${SUPABASE_URL:?SUPABASE_URL must be set}"
 : "${SUPABASE_SERVICE_ROLE_KEY:?SUPABASE_SERVICE_ROLE_KEY must be set}"
 
+REPO_DIR=${REPO_DIR:-"/home/dhose/moonshot-memestock-hub"}
+GRID_SCRIPT="$REPO_DIR/reddit-utils/run_backtest_grid.sh"
+WRAPPER_SCRIPT="$REPO_DIR/reddit-utils/run_nightly_grid.sh"  # self path when running locally
+HARDENED_VIEW_REFRESH=${HARDENED_VIEW_REFRESH:-0}
+
+if ! [[ -f "$GRID_SCRIPT" ]]; then
+  say "FATAL: run_backtest_grid.sh not found at $GRID_SCRIPT"
+  exit 127
+fi
+
+# Date helpers (GNU date on Linux, gdate on macOS if invoked manually)
 if command -v date >/dev/null 2>&1 && date -d '1 day' >/dev/null 2>&1; then
   START_DATE=${START_DATE:-$(date -u -d '90 days ago' +%F)}
   END_DATE=${END_DATE:-$(date -u -d 'yesterday' +%F)}
@@ -40,12 +49,17 @@ export LB_Z=${LB_Z:-1.64}
 
 say "Grid env: MODEL_VERSION=$MODEL_VERSION W_REDDIT=$W_REDDIT W_STOCKTWITS=$W_STOCKTWITS"
 
-PGURI="$PGURI" "$(dirname "$0")/run_backtest_grid.sh" "$START_DATE" "$END_DATE" 2>&1 | tee -a "$MAIL_FILE"
+(
+  cd "$REPO_DIR"
+  PGURI="$PGURI" "$GRID_SCRIPT" "$START_DATE" "$END_DATE"
+) 2>&1 | tee -a "$MAIL_FILE"
 
 say "Grid sweep finished"
 
-say "Refreshing hardened recommendations"
-psql "$PGURI" -c "NOTIFY nightly_grid, 'refreshed';" >>"$MAIL_FILE" 2>&1 || true
+if [[ "$HARDENED_VIEW_REFRESH" == "1" ]]; then
+  say "Refreshing hardened recommendations"
+  psql "$PGURI" -c "REFRESH MATERIALIZED VIEW CONCURRENTLY v_recommended_trades_today_conf_hardened;" >>"$MAIL_FILE" 2>&1 || true
+fi
 
 say "Nightly grid job completed"
 
