@@ -91,7 +91,7 @@ const PolygonRealTimeImport = () => {
         <div className="text-sm text-muted-foreground space-y-1">
           <p><strong>Data source:</strong> Polygon.io API</p>
           <p><strong>Coverage:</strong> Real-time and recent market data</p>
-          <p><strong>Symbols:</strong> Top 20 priority symbols (to respect rate limits)</p>
+          <p><strong>Symbols:</strong> Processes up to 20 symbols with 1.2s throttling between requests</p>
         </div>
       </CardContent>
     </Card>
