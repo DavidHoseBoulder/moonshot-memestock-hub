@@ -7,10 +7,12 @@ flowchart TD
   subgraph Ingestion
     A[reddit_pipeline.sh<br/>mentions + sentiment]
     B[v_reddit_daily_signals]
+    A2[stocktwits-backfill.ts<br/>messages + sentiment]
+    B2[v_stocktwits_daily_signals]
   end
 
   subgraph Backtesting & Promotion
-    C[backtest_grid.sql<br/>sweeps thresholds]
+    C[backtest_grid.sql<br/>blended sweeps]
     D[promote_rules_from_grid.sql<br/>applies hard filters]
   end
 
@@ -26,18 +28,19 @@ flowchart TD
     J[Automation<br/>paper/live trades]
   end
 
-  A --> B --> C --> D --> E --> G --> H --> I
+  A --> B --> C--> D --> E --> G --> H --> I
+  A2 --> B2 --> C
   H --> J
   F -.-> I
 ```
 
 ## 1. Signals → Daily Aggregates
-1. `reddit_pipeline.sh` fetches posts/comments, builds mentions, and scores them (GPT model output).  
-2. `v_reddit_daily_signals` aggregates per `(trade_date, symbol)`:
-   - `n_mentions`, `avg_score`, `used_score` (currently identical).
-   - Only mentions that have a row in `reddit_sentiment` contribute; no model filter is applied yet.
+We ingest sentiment from two social feeds and keep their daily aggregates side-by-side so the downstream grid can blend them.
 
-This table is the raw sentiment feed. On its own it does not gate signals.
+- **Reddit** — `reddit_pipeline.sh` fetches posts/comments, builds mentions, and scores them with the GPT model. The scored rows land in `reddit_sentiment`, and `v_reddit_daily_signals` rolls them up per `(trade_date, symbol)` with `n_mentions`, `avg_score`, `avg_confidence`, etc.
+- **StockTwits** — `stocktwits-backfill.ts` (plus the nightly cron) backfills symbol streams into `stocktwits_messages`, and `v_stocktwits_daily_signals` produces the daily counts (`total_messages`, bullish/bearish splits, `sentiment_score`).
+
+The grid runner later joins both views and produces a blended `avg_raw` using the configurable weights `W_REDDIT` and `W_STOCKTWITS` (default 0.7 / 0.3). On their own the daily tables do not gate signals—they are raw sentiment inputs.
 
 ## 2. Backtesting & Rule Discovery
 To turn daily averages into rules, we run the **backtesting pipeline** (`BACKTESTING_PIPELINE.md`):
@@ -48,7 +51,8 @@ To turn daily averages into rules, we run the **backtesting pipeline** (`BACKTES
   - Yields per-day symbol candidates with computed `margin = used_score - pos_thresh` (or mirrored for shorts).
 
 - **Grid backtest** (`backtest_grid.sql`):
-  - Sweeps `min_mentions` / `pos_thresh` across horizons & sides.  
+  - Sweeps `min_mentions` / `pos_thresh` across horizons & sides.
+  - Joins the Reddit + StockTwits daily tables, computes weighted scores using `W_REDDIT` / `W_STOCKTWITS`, and persists the blended metrics (`avg_raw`, `avg_abs`, mention counts).
   - Persists full diagnostics (train/valid sharpe, win rate, edges) and writes winners into `backtest_sweep_results`.
 
 - **Promotion** (`promote_rules_from_grid.sql`):
@@ -96,14 +100,29 @@ Inside Lovable:
 - **Automation readiness**: Lovable and the pipelines only trust rules that have passed through promotion. Direct edits are possible, but discouraged because they skip validation.
 
 ## 6. Practical Workflow
-1. Run the scoring pipeline (collect mentions + LLM sentiment). ∙  
-2. Aggregate signals (`v_reddit_daily_signals`). ∙  
-3. Backtest grid across the lookback. ∙  
-4. Promote filtered winners → `live_sentiment_entry_rules`. ∙  
-5. Seed trades (`seed_paper_trades_rules_only.sh`) to exercise new rules. ∙  
-6. Review Lovable cards and paper trades. Disable any rules that misbehave, or iterate promotions.
+1. Run the Reddit scoring pipeline (collect mentions + LLM sentiment). ∙  
+2. Run the StockTwits backfill for the same window (or confirm the nightly job has populated `v_stocktwits_daily_signals`). ∙  
+3. Aggregate signals via the daily views (`v_reddit_daily_signals`, `v_stocktwits_daily_signals`). ∙  
+4. Backtest the blended grid across the lookback (set `W_REDDIT` / `W_STOCKTWITS` as needed). ∙  
+5. Promote filtered winners → `live_sentiment_entry_rules`. ∙  
+6. Seed trades (`seed_paper_trades_rules_only.sh`) to exercise new rules. ∙  
+7. Review Lovable cards and paper trades. Disable any rules that misbehave, or iterate promotions.
 
-## 7. FAQ
+> Optional: schedule a nightly grid hygiene run so new/adjusted rules immediately gain fresh diagnostics before promotion.
+
+## 7. Blended Weighting Notes
+- The grid runner reads `W_REDDIT` and `W_STOCKTWITS` from the environment (defaults set in `.env`). Adjusting them changes how aggressively StockTwits sentiment influences `avg_raw`/`avg_abs`.
+- When StockTwits lacks coverage for a given day, the blend falls back to Reddit averages (and vice versa).
+- Promotion notes now log per-source mention counts so we can tell which feed drove a rule. Keep the weights aligned with whatever the production cron uses.
+
+## 8. Hardened Recommendation Gate
+- New view `v_recommended_trades_today_conf_hardened` wraps `fn_recommended_trades_conf` and enforces the deployability gate (no open positions, trades ≥ 20, ADV ≥ $30M, dynamic Sharpe/Win bars).
+- Dynamic thresholds: pulls the 75th percentile of Sharpe and win_rate from the last 90 days of `backtest_sweep_grid`, falling back to floors 0.45 / 0.57 so the bar adjusts with grid quality.
+- Liquidity: ADV now comes from the latest `backtest_sweep_results` row per pocket; missing values are set to 0 so symbols without Polygon coverage fail the filter until backfilled.
+- Tuning: call `fn_recommended_trades_conf_filtered(p_date, lookback_days, adv_floor, trades_floor, sharpe_floor, win_floor)` to replay historical days or experiment with other production settings.
+- Adoption: point Lovable + automation at the hardened view once QA passes; keep the legacy view around for comparisons during rollout.
+
+## 8. FAQ
 - **“Why am I only seeing GOOGL?”**  
   Because no other symbol currently has an enabled row in `live_sentiment_entry_rules`. Add more via promotion or manual inserts.
 
