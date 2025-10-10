@@ -2,14 +2,9 @@
 set -euo pipefail
 
 LOG_TAG="[nightly-grid]"
-MAIL_FILE=$(mktemp)
-subj="Nightly grid job $(date -u '+%Y-%m-%d %H:%M UTC')"
-
-cleanup() { rm -f "$MAIL_FILE"; }
-trap cleanup EXIT
 
 say() {
-  printf '%s %s\n' "$LOG_TAG" "$*" | tee -a "$MAIL_FILE"
+  printf '%s %s\n' "$LOG_TAG" "$*"
 }
 
 : "${PGURI:?PGURI must be set}"
@@ -52,30 +47,17 @@ say "Grid env: MODEL_VERSION=$MODEL_VERSION W_REDDIT=$W_REDDIT W_STOCKTWITS=$W_S
 (
   cd "$REPO_DIR"
   PGURI="$PGURI" "$GRID_SCRIPT" "$START_DATE" "$END_DATE"
-) 2>&1 | tee -a "$MAIL_FILE"
+) 2>&1 | while IFS= read -r line; do
+  say "$line"
+done
 
 say "Grid sweep finished"
 
 if [[ "$HARDENED_VIEW_REFRESH" == "1" ]]; then
   say "Refreshing hardened recommendations"
-  psql "$PGURI" -c "REFRESH MATERIALIZED VIEW CONCURRENTLY v_recommended_trades_today_conf_hardened;" >>"$MAIL_FILE" 2>&1 || true
+  psql "$PGURI" -c "REFRESH MATERIALIZED VIEW CONCURRENTLY v_recommended_trades_today_conf_hardened;" 2>&1 | while IFS= read -r line; do
+    say "$line"
+  done || true
 fi
 
 say "Nightly grid job completed"
-
-if [[ -n "${MAIL_TO:-}" ]]; then
-  if command -v msmtp >/dev/null 2>&1; then
-    MSMTP_ACCOUNT=${MSMTP_ACCOUNT:-"default"}
-    {
-      echo "Subject: $subj"
-      echo "To: $MAIL_TO"
-      echo "From: nightly-grid <noreply@localhost>"
-      echo
-      cat "$MAIL_FILE"
-    } | msmtp -a "$MSMTP_ACCOUNT" "$MAIL_TO" || say "WARN: msmtp returned non-zero exit sending email"
-  else
-    say "INFO: msmtp not found; skipping email send"
-  fi
-else
-  say "INFO: MAIL_TO not set; skipping email send"
-fi
