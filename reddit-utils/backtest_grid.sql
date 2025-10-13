@@ -59,8 +59,7 @@
 SET statement_timeout = :'STATEMENT_TIMEOUT_MS';
 
 \if :{?WORK_MEM} \else \set WORK_MEM '__NONE__' \endif
-\if :'WORK_MEM' = '__NONE__'
-\else
+\if :'WORK_MEM' != '__NONE__'
   SET work_mem = :'WORK_MEM';
 \endif
 

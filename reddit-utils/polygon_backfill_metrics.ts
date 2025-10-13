@@ -39,7 +39,10 @@ const SUPABASE_KEY = must("SUPABASE_SERVICE_ROLE_KEY");
 const POLYGON_API_KEY = must("POLYGON_API_KEY");
 const START_DATE = must("START_DATE"); // inclusive YYYY-MM-DD
 const END_DATE = must("END_DATE");     // inclusive YYYY-MM-DD
-const SYMBOLS = env("SYMBOLS");
+const rawSymbols = env("SYMBOLS");
+const SYMBOLS = rawSymbols && rawSymbols.trim().toUpperCase() === "NULL"
+  ? undefined
+  : rawSymbols;
 const BATCH_SLEEP_MS = Number(env("BATCH_SLEEP_MS", "6000"));
 const MAX_SYMBOLS = Number(env("MAX_SYMBOLS", "0"));
 
@@ -71,6 +74,21 @@ interface MetricBundle {
   shortInterestPctFloat: number | null;
   borrowCostBps: number | null;
   hardToBorrow: boolean | null;
+}
+
+interface EnhancedMarketDataRow {
+  symbol: string;
+  price_open: number | null;
+  price_high: number | null;
+  price_low: number | null;
+  price_close: number | null;
+  volume: number | null;
+  timestamp: string;
+  data_date: string;
+  technical_indicators: Record<string, unknown>;
+  price_change_1d: number | null;
+  price_change_5d: number | null;
+  updated_at: string;
 }
 
 async function listSymbols(): Promise<string[]> {
@@ -261,6 +279,51 @@ function previousTimestamp(bars: PolygonBar[], current: number): number | undefi
   return undefined;
 }
 
+function toIsoDate(msSinceEpoch: number): { timestamp: string; date: string } {
+  const iso = new Date(msSinceEpoch).toISOString();
+  return { timestamp: iso, date: iso.split("T")[0] };
+}
+
+function toNullableNumber(value: number | undefined): number | null {
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+function computePercentChange(current: number | null, previous: number | null): number | null {
+  if (current === null || previous === null) return null;
+  if (previous === 0) return null;
+  return ((current - previous) / previous) * 100;
+}
+
+function buildEnhancedRows(symbol: string, bars: PolygonBar[], updatedAt: string): EnhancedMarketDataRow[] {
+  if (bars.length === 0) return [];
+
+  const sorted = [...bars].sort((a, b) => a.t - b.t);
+
+  return sorted.map((bar, idx) => {
+    const prev1 = idx > 0 ? sorted[idx - 1] : undefined;
+    const prev5 = idx > 4 ? sorted[idx - 5] : undefined;
+    const close = toNullableNumber(bar.c);
+    const prevClose1 = prev1 ? toNullableNumber(prev1.c) : null;
+    const prevClose5 = prev5 ? toNullableNumber(prev5.c) : null;
+    const { timestamp, date } = toIsoDate(bar.t);
+
+    return {
+      symbol,
+      price_open: toNullableNumber(bar.o),
+      price_high: toNullableNumber(bar.h),
+      price_low: toNullableNumber(bar.l),
+      price_close: close,
+      volume: toNullableNumber(bar.v),
+      timestamp,
+      data_date: date,
+      technical_indicators: {},
+      price_change_1d: computePercentChange(close, prevClose1),
+      price_change_5d: computePercentChange(close, prevClose5),
+      updated_at: updatedAt,
+    };
+  });
+}
+
 async function enrichFundamentals(metrics: MetricBundle, symbol: string): Promise<MetricBundle> {
   try {
     const fundamentals = await fetchFundamentals(symbol);
@@ -348,6 +411,20 @@ async function main() {
   for (const symbol of capped) {
     try {
       const bars = await fetchBars(symbol, START_DATE, END_DATE);
+      const upsertedAt = new Date().toISOString();
+      const enhancedRows = buildEnhancedRows(symbol, bars, upsertedAt);
+
+      if (enhancedRows.length > 0) {
+        const { error: enhancedError } = await supabase
+          .from("enhanced_market_data")
+          .upsert(enhancedRows, { onConflict: "symbol,data_date", ignoreDuplicates: false });
+
+        if (enhancedError) throw enhancedError;
+        log(`Upserted ${enhancedRows.length} enhanced rows for ${symbol}`);
+      } else {
+        log(`No Polygon bars returned for ${symbol}; skipping enhanced_market_data upsert`);
+      }
+
       const metrics = computeMetrics(bars, spyBars);
       await enrichFundamentals(metrics, symbol);
 

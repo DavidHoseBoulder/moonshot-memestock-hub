@@ -104,17 +104,17 @@ def analyse_grid(df: pd.DataFrame) -> Tuple[Dict[str, str], Dict[str, pd.DataFra
     tables["Band vs Sharpe"] = band
 
     df = df.copy()
-    df["is_promoted"] = df.apply(
-        lambda r: (
-            r.symbol,
-            r.horizon,
-            r.side,
-            int(r.min_mentions),
-            float(r.pos_thresh),
+    df["is_promoted"] = [
+        (
+            row.symbol,
+            row.horizon,
+            row.side,
+            int(row.min_mentions),
+            float(row.pos_thresh),
         )
-        in PROMOTED_KEYS,
-        axis=1,
-    )
+        in PROMOTED_KEYS
+        for row in df.itertuples(index=False)
+    ]
 
     promoted = (
         df.groupby("is_promoted")
