@@ -2,6 +2,20 @@
 
 This backlog captures expansion ideas we want to explore while the paper-trade cohort gathers live data. Items are ordered by current priority. Each card includes a thesis, required lift, and a lightweight go/no-go gate so we can prune aggressively.
 
+## Execution Task Stack
+
+Shortlist of workstreams we want to actively pull this cycle. Each task is traceable to the deeper docs linked in parentheses.
+
+- **Screener foundation** — Prototype high-volatility equity screen in ETL, backfill 12–18 months, and wire watchlist metadata joins (`High-Volume Volatility Screen`).
+- **Catalyst tagging** — Research earnings/analyst data providers, select source, then extend feature store with event flags and rerun segmented backtests to confirm uplift ≥30 bps (`Event-Driven Catalyst Layer`, `research/CatalystDataProviders.md`).
+- **Rule hygiene** — Lock "extra strong" promotion criteria, then run targeted grid backtests for symbols lacking shards (HOOD, GOOGL, SOFI + latest cohort) and schedule nightly sweeps once diagnostics exist (`RecommendingTrades.md`).
+- **Options data spike** — Source delayed options flow (or public sweep feed fallback), ingest, build sentiment/flow concordance score, and measure hit-rate lift (`Options Flow Confirmation`).
+- **Watchlist hygiene ops** — Dedupe ticker metadata, lock liquidity buckets, and instrument nightly Polygon + sentiment cron monitoring (ongoing hygiene backlog).
+- **Short-squeeze enrichment** — Pull short-interest and borrow metrics, enrich universe metadata, and backtest squeeze flag combos (`Short-Interest Squeeze Monitor`).
+- **StockTwits phase-up** — Close Phase 0 instrumentation tasks (noise-ratio analysis, cost instrumentation) before blended Reddit+StockTwits backtests and operational cost review (`AssessStocktwits.md`).
+- **Crypto pilot** — Park for now; when activated, normalize BTC/ETH market data, validate continuous-hours handling, and draft `CryptoVectors.md` once ingestion checks out (`Crypto Large-Cap Extension`).
+- **Micro-cap probe** — Stand up low-ADV sweep with execution guardrails (max order slices, halt triggers), compare hygiene metrics via `grid_hygiene_summary.py`, and decide go/no-go on micro-cap track (`Mid/Late Cycle Micro-Cap Sentiment Probe`).
+
 ## 1. High-Volume Volatility Screen (Equities)
 - **Thesis:** Target liquid names with elevated realized & implied volatility percentiles to harvest outsized swings when social sentiment spikes.
 - **Lift:** Build a daily screener (`ADV > $200M`, price > $10, IV/20d RV percentile > 70). Add metadata to the symbol universe so StockTwits/Reddit joins stay cheap.
