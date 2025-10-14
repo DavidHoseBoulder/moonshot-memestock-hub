@@ -10,6 +10,7 @@ import {
   FileText,
   ShieldCheck,
   Users,
+  Activity,
 } from "lucide-react"
 import { NavLink, useLocation } from "react-router-dom"
 
@@ -33,6 +34,7 @@ const navItems = [
   { path: "/sentiment", icon: MessageSquare, label: "Sentiment" },
   { path: "/portfolio", icon: DollarSign, label: "Portfolio & Trades" },
   { path: "/backtesting", icon: BarChart3, label: "Backtesting" },
+  { path: "/hvv-monitoring", icon: Activity, label: "HVV Monitoring" },
   { path: "/bulk-import", icon: Database, label: "Data Backfills" },
   { path: "/sentiment-cohorts", icon: Users, label: "Sentiment Cohorts" },
   { path: "/reports", icon: FileText, label: "Reports" },

@@ -16,6 +16,7 @@ import Trades from "./pages/Trades";
 import RecommendedTrades from "./pages/RecommendedTrades";
 import Configuration from "./pages/Configuration";
 import Backtesting from "./pages/Backtesting";
+import HVVMonitoring from "./pages/HVVMonitoring";
 import { Toaster } from "@/components/ui/toaster";
 
 
@@ -55,6 +56,7 @@ const App: React.FC = () => {
         <Route path="/admin-setup" element={<ProtectedRoute><AdminSetup /></ProtectedRoute>} />
         <Route path="/configuration" element={<ProtectedRoute><Configuration /></ProtectedRoute>} />
         <Route path="/bulk-import" element={<ProtectedRoute><BulkImport /></ProtectedRoute>} />
+        <Route path="/hvv-monitoring" element={<ProtectedRoute><HVVMonitoring /></ProtectedRoute>} />
         <Route path="/dev/extraction-tester" element={<ProtectedRoute><ExtractionTester /></ProtectedRoute>} />
         <Route path="/reports" element={<ProtectedRoute><Reports /></ProtectedRoute>} />
         {/* Legacy redirects */}
