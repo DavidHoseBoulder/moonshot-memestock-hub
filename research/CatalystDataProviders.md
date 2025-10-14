@@ -64,6 +64,10 @@ Quick scan of earnings, analyst, and corporate event data feeds we can evaluate 
 - [ ] Compare historical depth vs. backtesting window; note gaps needing alternate sources.
 - [ ] Draft ingestion spike plan (auth, rate limits, retries) for top candidate.
 - [ ] Document licensing/legal considerations for redistributing event data in Lovable and automation.
+- [ ] HVV data hygiene follow-ups:
+  - [ ] Once validated, update `enhanced_market_data` in place with forward-filled volatility (`jsonb_set`) and retire the temporary view.
+  - [ ] Port the warm-up/forward-fill logic into Polygon/Yahoo ingest functions so zero-vol rows stop appearing in fresh loads.
+  - [ ] Add ticker-alias handling for symbols that rebrand (e.g., `PARA` → `PSKY`) so backfills pull continuous history.
 
 Maintain this sheet as we gather quotes or sample payloads.
 

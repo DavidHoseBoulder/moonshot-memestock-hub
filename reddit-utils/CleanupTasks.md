@@ -27,6 +27,7 @@
 ### General
 
 - Track TODOs that don’t have a home (like index cleanup) here until they are built into the main pipeline roadmap.
+- [ ] Add ticker-merge alias handling to Polygon/Yahoo loaders so `PARA`→`PSKY` (and similar) keep a continuous history. Notes: capture rename map in `ticker_universe`, fan out to backfills + edge functions, rehydrate missing 2025-09 gaps once alias support lands.
 
 ### GitHub Repo Hardening (public → restricted)
 

@@ -39,6 +39,7 @@ const SUPABASE_KEY = must("SUPABASE_SERVICE_ROLE_KEY");
 const POLYGON_API_KEY = must("POLYGON_API_KEY");
 const START_DATE = must("START_DATE"); // inclusive YYYY-MM-DD
 const END_DATE = must("END_DATE");     // inclusive YYYY-MM-DD
+const WARMUP_DAYS = Number(env("WARMUP_DAYS", "45"));
 const rawSymbols = env("SYMBOLS");
 const SYMBOLS = rawSymbols && rawSymbols.trim().toUpperCase() === "NULL"
   ? undefined
@@ -294,10 +295,75 @@ function computePercentChange(current: number | null, previous: number | null): 
   return ((current - previous) / previous) * 100;
 }
 
-function buildEnhancedRows(symbol: string, bars: PolygonBar[], updatedAt: string): EnhancedMarketDataRow[] {
+function shiftDate(dateStr: string, deltaDays: number): string {
+  const date = new Date(`${dateStr}T00:00:00Z`);
+  if (Number.isNaN(date.getTime())) {
+    throw new Error(`Invalid date passed to shiftDate: ${dateStr}`);
+  }
+  date.setUTCDate(date.getUTCDate() + deltaDays);
+  const iso = date.toISOString().split('T')[0];
+  return iso;
+}
+
+function average(values: number[]): number | null {
+  if (values.length === 0) return null;
+  const sum = values.reduce((acc, val) => acc + val, 0);
+  return sum / values.length;
+}
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.min(max, Math.max(min, value));
+}
+
+function calculateRSI(closes: number[]): number {
+  if (closes.length < 2) return 50;
+
+  let gains = 0;
+  let losses = 0;
+  for (let i = 1; i < closes.length; i++) {
+    const change = closes[i] - closes[i - 1];
+    if (change > 0) gains += change;
+    else losses -= change;
+  }
+
+  const avgGain = gains / (closes.length - 1);
+  const avgLoss = losses / (closes.length - 1);
+  if (avgLoss === 0) return 100;
+
+  const rs = avgGain / avgLoss;
+  return 100 - (100 / (1 + rs));
+}
+
+function calculateVolatility(closes: number[]): number {
+  if (closes.length < 2) return 0;
+
+  const returns: number[] = [];
+  for (let i = 1; i < closes.length; i++) {
+    const prev = closes[i - 1];
+    const curr = closes[i];
+    if (prev > 0) returns.push((curr - prev) / prev);
+  }
+
+  if (returns.length === 0) return 0;
+
+  const mean = returns.reduce((acc, r) => acc + r, 0) / returns.length;
+  const variance = returns.reduce((acc, r) => acc + Math.pow(r - mean, 2), 0) /
+    returns.length;
+
+  return Math.sqrt(variance) * 100;
+}
+
+function buildEnhancedRows(
+  symbol: string,
+  bars: PolygonBar[],
+  updatedAt: string,
+  startDate: string,
+): EnhancedMarketDataRow[] {
   if (bars.length === 0) return [];
 
   const sorted = [...bars].sort((a, b) => a.t - b.t);
+
+  const startDateMs = Date.parse(`${startDate}T00:00:00Z`);
 
   return sorted.map((bar, idx) => {
     const prev1 = idx > 0 ? sorted[idx - 1] : undefined;
@@ -307,21 +373,71 @@ function buildEnhancedRows(symbol: string, bars: PolygonBar[], updatedAt: string
     const prevClose5 = prev5 ? toNullableNumber(prev5.c) : null;
     const { timestamp, date } = toIsoDate(bar.t);
 
+    const windowStartIdx = Math.max(0, idx - 59);
+    const windowBars = sorted.slice(windowStartIdx, idx + 1);
+
+    const closeSeries = windowBars
+      .map((b) => toNullableNumber(b.c))
+      .filter((v): v is number => v !== null && Number.isFinite(v));
+
+    const volumeSeries = windowBars
+      .map((b) => toNullableNumber(b.v))
+      .filter((v): v is number => v !== null && Number.isFinite(v) && v > 0);
+
+    const rsiSeries = closeSeries.slice(-14);
+    const rsi = rsiSeries.length >= 2
+      ? calculateRSI(rsiSeries)
+      : calculateRSI(closeSeries);
+
+    const sma20Source = closeSeries.length >= 20
+      ? closeSeries.slice(-20)
+      : closeSeries;
+    const sma50Source = closeSeries.length >= 50
+      ? closeSeries.slice(-50)
+      : closeSeries;
+
+    const sma20 = average(sma20Source) ?? close ?? 0;
+    const sma50 = average(sma50Source) ?? sma20;
+
+    const avgVolume = average(volumeSeries) ?? 0;
+    const rawVolume = toNullableNumber(bar.v);
+    const currentVolume = rawVolume ?? 0;
+    const roundedVolume = rawVolume !== null ? Math.round(rawVolume) : null;
+    const volumeRatio = avgVolume > 0
+      ? Math.max(currentVolume / avgVolume, 0.1)
+      : 1;
+
+    const volatilitySeries = closeSeries.slice(-Math.min(20, closeSeries.length));
+    const volatility = volatilitySeries.length >= 2
+      ? calculateVolatility(volatilitySeries)
+      : 0;
+
+    const momentum = prevClose1 !== null && close !== null
+      ? close - prevClose1
+      : 0;
+
     return {
       symbol,
       price_open: toNullableNumber(bar.o),
       price_high: toNullableNumber(bar.h),
       price_low: toNullableNumber(bar.l),
       price_close: close,
-      volume: toNullableNumber(bar.v),
+      volume: roundedVolume,
       timestamp,
       data_date: date,
-      technical_indicators: {},
+      technical_indicators: {
+        rsi: clamp(rsi, 0, 100),
+        sma_20: sma20,
+        sma_50: sma50,
+        volume_ratio: volumeRatio,
+        momentum,
+        volatility,
+      },
       price_change_1d: computePercentChange(close, prevClose1),
       price_change_5d: computePercentChange(close, prevClose5),
       updated_at: updatedAt,
     };
-  });
+  }).filter((row) => Date.parse(`${row.data_date}T00:00:00Z`) >= startDateMs);
 }
 
 async function enrichFundamentals(metrics: MetricBundle, symbol: string): Promise<MetricBundle> {
@@ -400,19 +516,22 @@ async function fetchWithRetry(url: string | URL, attempts = 6): Promise<Response
 }
 
 async function main() {
-  log("Starting Polygon backfill", { START_DATE, END_DATE });
+  log("Starting Polygon backfill", { START_DATE, END_DATE, WARMUP_DAYS });
   const symbols = await listSymbols();
   const capped = MAX_SYMBOLS > 0 ? symbols.slice(0, MAX_SYMBOLS) : symbols;
   log(`Processing ${capped.length} symbols`);
 
-  const spyBars = await fetchSpyBars(START_DATE, END_DATE);
+  const fetchStart = shiftDate(START_DATE, -WARMUP_DAYS);
+  log(`Using warm-up start date ${fetchStart}`);
+
+  const spyBars = await fetchSpyBars(fetchStart, END_DATE);
 
   let processed = 0;
   for (const symbol of capped) {
     try {
-      const bars = await fetchBars(symbol, START_DATE, END_DATE);
+      const bars = await fetchBars(symbol, fetchStart, END_DATE);
       const upsertedAt = new Date().toISOString();
-      const enhancedRows = buildEnhancedRows(symbol, bars, upsertedAt);
+      const enhancedRows = buildEnhancedRows(symbol, bars, upsertedAt, START_DATE);
 
       if (enhancedRows.length > 0) {
         const { error: enhancedError } = await supabase

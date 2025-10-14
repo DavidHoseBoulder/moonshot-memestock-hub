@@ -64,6 +64,7 @@ SET statement_timeout = :'STATEMENT_TIMEOUT_MS';
 \endif
 
 \if :{?INCLUDE_INACTIVE} \else \set INCLUDE_INACTIVE 0 \endif
+\if :{?USE_HVV} \else \set USE_HVV 1 \endif
 
 -- ================================
 -- Defaults (overridable via -v)
@@ -426,9 +427,13 @@ SELECT
 FROM tmp_candidates c
 JOIN tmp_grid g ON TRUE
 LEFT JOIN tmp_symbol_volume_thresholds vt ON vt.symbol = c.symbol
+LEFT JOIN hvv_universe_daily hvv
+  ON hvv.symbol = c.symbol
+ AND hvv.data_date = c.d
 LEFT JOIN ticker_universe tu
   ON tu.symbol = c.symbol
 WHERE c.mentions >= GREATEST( (:'MIN_MENTIONS_REQ')::int, g.min_mentions )
+  AND (:'USE_HVV'::int = 0 OR (hvv.is_hvv IS TRUE))
   AND (
         (g.side='LONG'
           AND c.pos_rate >= (:'POS_RATE_MIN')::numeric
@@ -494,7 +499,7 @@ WHERE c.mentions >= GREATEST( (:'MIN_MENTIONS_REQ')::int, g.min_mentions )
   AND c.symbol IS NOT NULL
   AND CASE g.horizon WHEN '1d' THEN 1 WHEN '3d' THEN 3 WHEN '5d' THEN 5 END IS NOT NULL;
 
-  \if :DEBUG
+\if :DEBUG
   SELECT 'tmp_sig_start_n' AS label, COUNT(*) AS n FROM tmp_sig_start;
   -- when zero, show the top 20 days that passed quality gates but missed thresholds
   WITH q AS (
@@ -508,6 +513,28 @@ WHERE c.mentions >= GREATEST( (:'MIN_MENTIONS_REQ')::int, g.min_mentions )
      OR (side='SHORT' AND avg_raw > -pos_thresh)
   ORDER BY mentions DESC
   LIMIT 20;
+  -- HVV coverage diagnostic
+  WITH hvv_diag AS (
+    SELECT symbol, data_date, vol, adv30, is_hvv
+    FROM hvv_universe_daily
+    WHERE data_date BETWEEN (:'START_DATE')::date AND (:'END_DATE')::date
+  )
+  SELECT c.symbol,
+         c.d AS trade_date,
+         hvv_diag.is_hvv,
+         hvv_diag.vol,
+         hvv_diag.adv30,
+         c.mentions,
+         c.avg_raw,
+         c.pos_rate,
+         c.volume_zscore_20,
+         c.volume_ratio_avg_20
+  FROM tmp_candidates c
+  LEFT JOIN hvv_diag
+    ON hvv_diag.symbol = c.symbol
+   AND hvv_diag.data_date = c.d
+  ORDER BY trade_date DESC, c.symbol
+  LIMIT 200;
 \endif
 
 -- ================================

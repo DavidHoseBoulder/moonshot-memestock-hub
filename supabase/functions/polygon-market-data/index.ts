@@ -159,13 +159,22 @@ Deno.serve(async (req) => {
     const enhancedData: PolygonMarketData[] = [];
     const failedSymbols: string[] = [];
     const BATCH_SIZE = 1; // Process one symbol at a time for rate limits
-    const MAX_SYMBOLS = 10; // Limit to 10 symbols max for free tier
+    const maxSymbolsEnv = Deno.env.get("POLYGON_MAX_SYMBOLS");
+    const parsedMax = maxSymbolsEnv ? Number(maxSymbolsEnv) : Number.POSITIVE_INFINITY;
+    const shouldLimit = Number.isFinite(parsedMax) && parsedMax > 0 && parsedMax < symbols.length;
+    const limitedSymbols = shouldLimit
+      ? symbols.slice(0, Math.max(0, Math.trunc(parsedMax)))
+      : symbols;
 
-    // Limit symbols for free tier rate limits
-    const limitedSymbols = symbols.slice(0, MAX_SYMBOLS);
-    console.log(
-      `[${requestId}] Limited symbols from ${symbols.length} to ${limitedSymbols.length} for Polygon free tier`,
-    );
+    if (shouldLimit) {
+      console.log(
+        `[${requestId}] Limited symbols from ${symbols.length} to ${limitedSymbols.length} via POLYGON_MAX_SYMBOLS=${parsedMax}`,
+      );
+    } else {
+      console.log(
+        `[${requestId}] Processing full symbol list (${symbols.length})`,
+      );
+    }
 
     let spyBarsCache: PolygonAggBar[] | null = null;
     let spyCacheKey: string | null = null;

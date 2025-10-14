@@ -72,6 +72,7 @@ flowchart TD
   - Output: Full in-session grid (`tmp_results`), optional full-grid persistence to `backtest_sweep_grid`, and persisted winners (one per symbol/horizon/side) to `backtest_sweep_results`.
   - Diagnostics in output/CSV: `band`, `train_trades`, `valid_trades`, `train_sharpe`, `valid_sharpe`, `r_train_rank`, `r_valid_rank`.
   - New hygiene metrics (from `ticker_universe` enrichment pass) now travel with each pocket: `avg_daily_dollar_volume_30d`, `avg_atr_14d`, `avg_true_range_pct`, `avg_beta_vs_spy`, `avg_shares_float`, `avg_short_interest_pct_float`, `avg_borrow_cost_bps`, `hard_to_borrow_flag`, `avg_reddit_msgs_30d`, `avg_stocktwits_msgs_30d`, `avg_sentiment_health_score`.
+  - HVV gating: `backtest_grid.sql` now joins `hvv_universe_daily` and defaults `USE_HVV=1`, so the nightly sweep only evaluates symbols passing the high-volume/high-volatility screen (price > $10, ADV ≥ $200M, daily vol ≥ 70th pct). Set `USE_HVV=0` to revert to the legacy full universe when running ad-hoc comparisons.
   - Performance knobs: set `STATEMENT_TIMEOUT_MS` (ms) and/or `WORK_MEM` (e.g. `512MB`) before calling the runner to lift session limits; `INCLUDE_INACTIVE=1` reintroduces retired tickers for ad-hoc sweeps.
     - Example (full universe, 4-month window + full-grid persistence):
       ```bash

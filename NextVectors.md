@@ -19,8 +19,8 @@ Shortlist of workstreams we want to actively pull this cycle. Each task is trace
 ## 1. High-Volume Volatility Screen (Equities)
 - **Thesis:** Target liquid names with elevated realized & implied volatility percentiles to harvest outsized swings when social sentiment spikes.
 - **Lift:** Build a daily screener (`ADV > $200M`, price > $10, IV/20d RV percentile > 70). Add metadata to the symbol universe so StockTwits/Reddit joins stay cheap.
-- **Next Step:** Prototype the screener in the ETL layer and backfill 12–18 months for sanity checks.
-- **Gate:** Out-of-sample Sharpe ≥ 1.0 relative to baseline universe, drawdown < 1.5× control.
+- **Next Step:** HVV view is live and wired into `backtest_grid` (defaults `USE_HVV=1`). Monitor nightly sweeps for uplift and keep the baseline toggle handy (`USE_HVV=0`) for regression checks.
+- **Gate:** Out-of-sample Sharpe ≥ 1.0 relative to baseline universe, drawdown < 1.5× control (met on the 2025-07-16→2025-10-12 nightly window; continue tracking).
 
 ## 2. Event-Driven Catalyst Layer
 - **Thesis:** Layer earnings/analyst-events calendar context onto social signals to time entries around known volatility pockets.
