@@ -37,6 +37,7 @@ interface FallenSymbol {
   current_price: number;
   current_adv30: number;
   fail_reason: string;
+  rule_count?: number;
 }
 
 const HVVMonitoring = () => {
@@ -73,13 +74,29 @@ const HVVMonitoring = () => {
       const currentData = hvvData?.filter(d => d.data_date === latestDate) || [];
       setCurrentHVV(currentData);
 
-      // 90-day metrics from backtest_sweep_grid
+      // 90-day metrics from backtest_sweep_results, filtered to HVV symbols only
       const ninetyDaysAgo = new Date();
       ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90);
 
+      // Get HVV symbols from the last 90 days
+      const { data: hvvSymbolsData, error: hvvSymbolsError } = await supabase
+        .from('hvv_universe_daily' as any)
+        .select('symbol')
+        .eq('is_hvv', true)
+        .gte('data_date', ninetyDaysAgo.toISOString().split('T')[0]) as { 
+          data: Array<{ symbol: string }> | null; 
+          error: any 
+        };
+
+      if (hvvSymbolsError) throw hvvSymbolsError;
+
+      const hvvSymbols = [...new Set(hvvSymbolsData?.map(d => d.symbol) || [])];
+
+      // Get metrics from backtest_sweep_results for HVV symbols only
       const { data: metricsData, error: metricsError } = await supabase
-        .from('backtest_sweep_grid')
-        .select('trades, sharpe, win_rate')
+        .from('backtest_sweep_results')
+        .select('symbol, trades, sharpe, win_rate, side, horizon')
+        .in('symbol', hvvSymbols.length > 0 ? hvvSymbols : ['__NONE__'])
         .gte('end_date', ninetyDaysAgo.toISOString().split('T')[0])
         .not('sharpe', 'is', null);
 
@@ -137,14 +154,31 @@ const HVVMonitoring = () => {
                 current_price: d.price_close,
                 current_adv30: d.adv30,
                 fail_reason: d.price_close < 10 ? 'Price < $10' : 
-                           d.adv30 < 200 ? 'ADV30 < $200M' : 'Vol percentile < 70th'
+                           d.adv30 < 200000000 ? 'ADV30 < $200M' : 'Vol percentile < 70th'
               }
             ];
           }
           return acc;
         }, [] as FallenSymbol[]) || [];
 
-      setFallenSymbols(fallen);
+      // Get rule count for fallen symbols
+      const { data: rulesData } = await supabase
+        .from('live_sentiment_entry_rules')
+        .select('symbol')
+        .in('symbol', fallen.map(f => f.symbol))
+        .eq('is_enabled', true);
+
+      const ruleCounts = rulesData?.reduce((acc, r) => {
+        acc[r.symbol] = (acc[r.symbol] || 0) + 1;
+        return acc;
+      }, {} as Record<string, number>) || {};
+
+      const fallenWithRules = fallen.map(f => ({
+        ...f,
+        rule_count: ruleCounts[f.symbol] || 0
+      }));
+
+      setFallenSymbols(fallenWithRules);
 
       // Current recommendations that fail HVV (from v_recommended_trades_today_conf)
       const { data: recosData, error: recosError } = await supabase.rpc(
@@ -154,13 +188,31 @@ const HVVMonitoring = () => {
 
       if (recosError) throw recosError;
 
-      // Check which recommendations are NOT in HVV
-      const failed = recosData
-        ?.filter((r: any) => !currentSymbols.has(r.symbol))
-        .map((r: any) => ({
-          ...r,
-          fail_reason: 'Not in HVV universe'
-        })) || [];
+      // Check which recommendations are NOT in HVV and determine why
+      const failedSymbols = recosData?.filter((r: any) => !currentSymbols.has(r.symbol)) || [];
+      
+      // Get current market data for failed symbols to determine exact reason
+      const { data: failedMarketData } = await supabase
+        .from('hvv_universe_daily' as any)
+        .select('*')
+        .in('symbol', failedSymbols.map((r: any) => r.symbol))
+        .eq('data_date', latestDate)
+        .order('data_date', { ascending: false })
+        .limit(100) as { data: HVVSymbol[] | null; error: any };
+
+      const failReasonMap = failedMarketData?.reduce((acc, d) => {
+        let reason = 'Not in HVV universe';
+        if (d.price_close < 10) reason = 'Price < $10';
+        else if (d.adv30 < 200000000) reason = 'ADV30 < $200M';
+        else if (!d.vol70 || d.vol70 < 0.70) reason = 'Vol < 70th percentile';
+        acc[d.symbol] = reason;
+        return acc;
+      }, {} as Record<string, string>) || {};
+
+      const failed = failedSymbols.map((r: any) => ({
+        ...r,
+        fail_reason: failReasonMap[r.symbol] || 'Not in HVV universe'
+      }));
 
       setFailedRecos(failed);
 
@@ -281,9 +333,9 @@ const HVVMonitoring = () => {
                     <tr className="border-b">
                       <th className="text-left py-2 px-4">Symbol</th>
                       <th className="text-right py-2 px-4">Price</th>
-                      <th className="text-right py-2 px-4">ADV30</th>
-                      <th className="text-right py-2 px-4">Vol %ile</th>
-                      <th className="text-right py-2 px-4">Daily Vol</th>
+                      <th className="text-right py-2 px-4">ADV30 ($M)</th>
+                      <th className="text-right py-2 px-4">Vol Percentile</th>
+                      <th className="text-right py-2 px-4">Daily Vol %</th>
                       <th className="text-center py-2 px-4">Status</th>
                     </tr>
                   </thead>
@@ -294,10 +346,10 @@ const HVVMonitoring = () => {
                         <td className="text-right py-2 px-4">{formatCurrency(sym.price_close)}</td>
                         <td className="text-right py-2 px-4">{formatMillions(sym.adv30)}</td>
                         <td className="text-right py-2 px-4">
-                          {sym.vol70 ? `${(sym.vol70 * 100).toFixed(0)}%` : 'N/A'}
+                          {sym.vol70 ? `${(sym.vol70 * 100).toFixed(0)}th` : 'N/A'}
                         </td>
                         <td className="text-right py-2 px-4">
-                          {sym.vol ? `${(sym.vol * 100).toFixed(1)}%` : 'N/A'}
+                          {sym.vol ? `${(sym.vol * 100).toFixed(2)}%` : 'N/A'}
                         </td>
                         <td className="text-center py-2 px-4">
                           <Badge variant="default" className="bg-green-600">
@@ -338,8 +390,9 @@ const HVVMonitoring = () => {
                         <th className="text-left py-2 px-4">Symbol</th>
                         <th className="text-right py-2 px-4">Last HVV Date</th>
                         <th className="text-right py-2 px-4">Current Price</th>
-                        <th className="text-right py-2 px-4">Current ADV30</th>
+                        <th className="text-right py-2 px-4">Current ADV30 ($M)</th>
                         <th className="text-left py-2 px-4">Fail Reason</th>
+                        <th className="text-right py-2 px-4">Active Rules</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -351,6 +404,15 @@ const HVVMonitoring = () => {
                           <td className="text-right py-2 px-4">{formatMillions(sym.current_adv30)}</td>
                           <td className="py-2 px-4">
                             <Badge variant="destructive">{sym.fail_reason}</Badge>
+                          </td>
+                          <td className="text-right py-2 px-4">
+                            {sym.rule_count && sym.rule_count > 0 ? (
+                              <Badge variant="outline" className="bg-yellow-500/10">
+                                {sym.rule_count} rule{sym.rule_count > 1 ? 's' : ''}
+                              </Badge>
+                            ) : (
+                              <span className="text-muted-foreground">—</span>
+                            )}
                           </td>
                         </tr>
                       ))}
