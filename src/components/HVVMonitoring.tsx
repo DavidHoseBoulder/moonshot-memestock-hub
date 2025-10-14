@@ -3,15 +3,18 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Button } from '@/components/ui/button';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
+import { useNavigate } from 'react-router-dom';
 import { 
   Activity, 
   TrendingUp, 
   AlertTriangle, 
   CheckCircle2,
   XCircle,
-  Info
+  Info,
+  ExternalLink
 } from 'lucide-react';
 
 interface HVVSymbol {
@@ -47,6 +50,7 @@ const HVVMonitoring = () => {
   const [fallenSymbols, setFallenSymbols] = useState<FallenSymbol[]>([]);
   const [failedRecos, setFailedRecos] = useState<any[]>([]);
   const { toast } = useToast();
+  const navigate = useNavigate();
 
   useEffect(() => {
     fetchHVVData();
@@ -407,9 +411,15 @@ const HVVMonitoring = () => {
                           </td>
                           <td className="text-right py-2 px-4">
                             {sym.rule_count && sym.rule_count > 0 ? (
-                              <Badge variant="outline" className="bg-yellow-500/10">
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                className="h-7"
+                                onClick={() => navigate(`/configuration?symbol=${sym.symbol}`)}
+                              >
+                                <ExternalLink className="h-3 w-3 mr-1" />
                                 {sym.rule_count} rule{sym.rule_count > 1 ? 's' : ''}
-                              </Badge>
+                              </Button>
                             ) : (
                               <span className="text-muted-foreground">—</span>
                             )}
@@ -451,6 +461,7 @@ const HVVMonitoring = () => {
                         <th className="text-right py-2 px-4">Confidence</th>
                         <th className="text-right py-2 px-4">Sharpe</th>
                         <th className="text-left py-2 px-4">Fail Reason</th>
+                        <th className="text-center py-2 px-4">Rule</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -469,6 +480,17 @@ const HVVMonitoring = () => {
                           </td>
                           <td className="py-2 px-4">
                             <Badge variant="outline">{reco.fail_reason}</Badge>
+                          </td>
+                          <td className="text-center py-2 px-4">
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-7"
+                              onClick={() => navigate(`/configuration?symbol=${reco.symbol}&horizon=${reco.horizon}&side=${reco.side}`)}
+                            >
+                              <ExternalLink className="h-3 w-3 mr-1" />
+                              View Rule
+                            </Button>
                           </td>
                         </tr>
                       ))}
