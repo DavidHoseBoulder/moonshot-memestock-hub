@@ -303,26 +303,45 @@ const TriggeredCandidatesDashboard = () => {
       quantity = "20"; // Reasonable default for paper trades
     }
 
-    // Fetch latest available opening price (not filtered by today's date)
+    // Fetch latest available opening price with data_date
     let openPrice = "";
+    let priceDataDate = "";
+    let priceIsStale = false;
     try {
       const { data, error } = await supabase
         .from('enhanced_market_data' as any)
-        .select('price_open, price')
+        .select('price_open, price, data_date')
         .eq('symbol', candidate.symbol)
         .order('data_date', { ascending: false })
         .limit(1)
         .maybeSingle();
       
       if (data && !error) {
+        const marketData = data as any;
         // Use price_open if available, otherwise use price
-        const currentPrice = (data as any).price_open || (data as any).price;
+        const currentPrice = marketData.price_open || marketData.price;
         if (currentPrice) {
           openPrice = currentPrice.toString();
+          priceDataDate = marketData.data_date;
+          
+          // Check if price data is from today (Denver time)
+          const todayDenver = todayInDenverDateString();
+          priceIsStale = marketData.data_date !== todayDenver;
+          
+          if (priceIsStale) {
+            console.warn(`⚠️ Stale price data for ${candidate.symbol}: data_date=${marketData.data_date}, today=${todayDenver}`);
+          }
         }
       }
     } catch (error) {
       console.error('Error fetching opening price:', error);
+    }
+    
+    // Build notes with price data warning if stale
+    let notesText = grade === 'Weak' ? `Weak confidence trade - paper trading recommended` : "";
+    if (priceIsStale && priceDataDate) {
+      const warningText = `⚠️ Entry price from ${priceDataDate} (stale data - verify current price before trading)`;
+      notesText = notesText ? `${notesText}\n${warningText}` : warningText;
     }
 
     setSelectedCandidate(candidate);
@@ -336,7 +355,7 @@ const TriggeredCandidatesDashboard = () => {
       qty: quantity,
       fees_bps: "0",
       slippage_bps: "0",
-      notes: grade === 'Weak' ? `Weak confidence trade - paper trading recommended` : "",
+      notes: notesText,
     });
     setNewTradeDialogOpen(true);
   };
