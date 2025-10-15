@@ -312,8 +312,14 @@ const TriggeredCandidatesDashboard = () => {
       
       if (data && !error) {
         const marketData = data as any;
-        // Use price_open if available, otherwise fallback to price (close)
-        if (marketData.price_open) {
+        priceDataDate = marketData.data_date;
+        
+        // Check if price data is from today (Denver time)
+        const todayDenver = todayInDenverDateString();
+        priceIsStale = marketData.data_date !== todayDenver;
+        
+        // If data is from today, use open; if stale, use close
+        if (!priceIsStale && marketData.price_open) {
           openPrice = marketData.price_open.toString();
           usedClosePrice = false;
         } else if (marketData.price) {
@@ -321,16 +327,8 @@ const TriggeredCandidatesDashboard = () => {
           usedClosePrice = true;
         }
         
-        if (openPrice) {
-          priceDataDate = marketData.data_date;
-          
-          // Check if price data is from today (Denver time)
-          const todayDenver = todayInDenverDateString();
-          priceIsStale = marketData.data_date !== todayDenver;
-          
-          if (priceIsStale) {
-            console.warn(`⚠️ Stale price data for ${candidate.symbol}: data_date=${marketData.data_date}, today=${todayDenver}`);
-          }
+        if (priceIsStale) {
+          console.warn(`⚠️ Stale price data for ${candidate.symbol}: data_date=${marketData.data_date}, today=${todayDenver}`);
         }
       }
     } catch (error) {
