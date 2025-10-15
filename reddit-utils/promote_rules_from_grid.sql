@@ -8,6 +8,8 @@
 \if :{?MIN_SHARPE}         \else \set MIN_SHARPE         0.40          \endif
 \if :{?MIN_WIN_RATE}       \else \set MIN_WIN_RATE       0.55          \endif
 \if :{?MIN_AVG_RET}        \else \set MIN_AVG_RET        0.00          \endif
+\if :{?MIN_WINDOWS}        \else \set MIN_WINDOWS        3             \endif  -- minimum distinct windows a pocket must prove out over
+\if :{?MIN_ROBUST_SHARPE}  \else \set MIN_ROBUST_SHARPE  0.50          \endif  -- require AVG(sharpe) - STDDEV(sharpe) >= threshold across history
 \if :{?SIDE_FILTER}        \else \set SIDE_FILTER        NULL          \endif  
 -- 'LONG'/'SHORT'/NULL
 \if :{?MIN_CONF}           \else \set MIN_CONF           0.70          \endif
@@ -23,8 +25,27 @@
 
 -- ===== pick winners from backtest_sweep_results (default) or backtest_sweep_grid (when USE_FULL_GRID=1)
 
+WITH cohort_stats AS (
+  SELECT
+    model_version,
+    symbol,
+    horizon,
+    side,
+    min_mentions,
+    pos_thresh,
+    COUNT(*) AS cohort_runs,
+    COUNT(DISTINCT (start_date, end_date)) AS cohort_windows,
+    AVG(sharpe) AS cohort_avg_sharpe,
+    STDDEV_POP(sharpe) AS cohort_stddev_sharpe,
+    AVG(win_rate) AS cohort_avg_win_rate,
+    AVG(avg_ret) AS cohort_avg_return
+  FROM backtest_sweep_grid
+  WHERE model_version = :'MODEL_VERSION'
+  GROUP BY 1,2,3,4,5,6
+),
+
 -- 1) base grid in the window for this model
-WITH grid AS (
+grid AS (
   SELECT
     model_version, symbol, horizon, side,
     min_mentions, pos_thresh,
@@ -34,8 +55,15 @@ WITH grid AS (
     avg_beta_vs_spy, avg_shares_float, avg_short_interest_pct_float,
     avg_borrow_cost_bps, hard_to_borrow_flag,
     avg_reddit_msgs_30d, avg_stocktwits_msgs_30d, avg_sentiment_health_score,
-    start_date, end_date
+    start_date, end_date,
+    cs.cohort_runs,
+    cs.cohort_windows,
+    cs.cohort_avg_sharpe,
+    cs.cohort_stddev_sharpe,
+    cs.cohort_avg_win_rate,
+    cs.cohort_avg_return
   FROM backtest_sweep_results
+  LEFT JOIN cohort_stats cs USING (model_version, symbol, horizon, side, min_mentions, pos_thresh)
   WHERE :USE_FULL_GRID::int = 0
     AND model_version = :'MODEL_VERSION'
     AND start_date    = :'START_DATE'::date
@@ -50,8 +78,15 @@ WITH grid AS (
     avg_beta_vs_spy, avg_shares_float, avg_short_interest_pct_float,
     avg_borrow_cost_bps, hard_to_borrow_flag,
     avg_reddit_msgs_30d, avg_stocktwits_msgs_30d, avg_sentiment_health_score,
-    start_date, end_date
+    start_date, end_date,
+    cs.cohort_runs,
+    cs.cohort_windows,
+    cs.cohort_avg_sharpe,
+    cs.cohort_stddev_sharpe,
+    cs.cohort_avg_win_rate,
+    cs.cohort_avg_return
   FROM backtest_sweep_grid
+  LEFT JOIN cohort_stats cs USING (model_version, symbol, horizon, side, min_mentions, pos_thresh)
   WHERE :USE_FULL_GRID::int = 1
     AND model_version = :'MODEL_VERSION'
     AND start_date    = :'START_DATE'::date
@@ -66,6 +101,14 @@ hard_filtered AS (
     AND (:'MIN_SHARPE'::numeric   IS NULL OR sharpe   >= :'MIN_SHARPE'::numeric)
     AND (:'MIN_WIN_RATE'::numeric IS NULL OR win_rate >= :'MIN_WIN_RATE'::numeric)
     AND (:'MIN_AVG_RET'::numeric  IS NULL OR avg_ret  >= :'MIN_AVG_RET'::numeric)
+    AND (:'MIN_WINDOWS'::int IS NULL OR cohort_windows >= :'MIN_WINDOWS'::int)
+    AND (
+      :'MIN_ROBUST_SHARPE'::numeric IS NULL
+      OR (
+        cohort_avg_sharpe - COALESCE(cohort_stddev_sharpe, 0)
+          >= :'MIN_ROBUST_SHARPE'::numeric
+      )
+    )
 ),
 
 -- 2b) Active TA heuristics config from reddit_heuristics (model-specific first, then global)
