@@ -203,12 +203,14 @@ Deno.serve(async (req) => {
           const isMarketHours = etHour >= 9.5 && etHour <= 16;
 
           let barsUrl: string;
+          let attemptedMinuteRange = false;
 
           if (isWeekday && isMarketHours) {
             // During market hours, try to get current day's minute data aggregated
             console.log(`Market is open for ${symbol}, fetching intraday data`);
             barsUrl =
               `https://api.polygon.io/v2/aggs/ticker/${symbol}/range/1/minute/${toDate}/${toDate}?adjusted=true&sort=desc&limit=1&apikey=${polygonApiKey}`;
+            attemptedMinuteRange = true;
           } else {
             // Market closed, get daily bars including today (if available)
             console.log(`Market is closed for ${symbol}, fetching daily bars`);
@@ -220,21 +222,46 @@ Deno.serve(async (req) => {
             `[${requestId}] Fetching Polygon data for ${symbol} from ${fromDate} to ${toDate}`,
           );
 
-          const response = await fetchWithBackoff(barsUrl);
+          let response = await fetchWithBackoff(barsUrl);
+          let isDailyRange = barsUrl.includes("/1/day/");
 
           if (!response.ok) {
+            const errorText = await response.text().catch(() => "");
             console.error(
-              `[${requestId}] ❌ Failed to fetch Polygon data for ${symbol}:`,
-              response.status,
-              response.statusText,
+              `[${requestId}] ❌ Failed to fetch Polygon data for ${symbol}: ${response.status} ${response.statusText}`,
             );
-            const errorText = await response.text();
-            console.error(
-              `[${requestId}] Polygon API error response:`,
-              errorText,
-            );
-            failedSymbols.push(symbol);
-            return null;
+            if (
+              attemptedMinuteRange && response.status === 403 &&
+              errorText?.toLowerCase().includes("plan doesn't include this data timeframe")
+            ) {
+              console.warn(
+                `[${requestId}] ⚠️ Polygon plan restriction for ${symbol} intraday data; retrying with daily aggregates`,
+              );
+              const fallbackUrl =
+                `https://api.polygon.io/v2/aggs/ticker/${symbol}/range/1/day/${fromDate}/${toDate}?adjusted=true&sort=desc&limit=5000&apikey=${polygonApiKey}`;
+              response = await fetchWithBackoff(fallbackUrl);
+              isDailyRange = true;
+
+              if (!response.ok) {
+                const fallbackText = await response.text().catch(() => "");
+                console.error(
+                  `[${requestId}] ❌ Fallback daily fetch failed for ${symbol}: ${response.status} ${response.statusText}`,
+                );
+                console.error(
+                  `[${requestId}] Polygon API error response:`,
+                  fallbackText,
+                );
+                failedSymbols.push(symbol);
+                return null;
+              }
+            } else {
+              console.error(
+                `[${requestId}] Polygon API error response:`,
+                errorText,
+              );
+              failedSymbols.push(symbol);
+              return null;
+            }
           }
 
           const data = await response.json();
@@ -261,8 +288,6 @@ Deno.serve(async (req) => {
           }
 
           const results = data.results;
-          const isDailyRange = barsUrl.includes("/1/day/");
-
           let metricsBars = sanitizeBars(results);
 
           if (!isDailyRange) {
@@ -483,11 +508,13 @@ Deno.serve(async (req) => {
     console.log(
       `[${requestId}] Processed: ${enhancedData.length}/${limitedSymbols.length} symbols`,
     );
-    console.log(
-      `[${requestId}] Failed symbols: ${
-        failedSymbols.length > 0 ? failedSymbols.join(", ") : "none"
-      }`,
-    );
+    if (failedSymbols.length === 0) {
+      console.log(`[${requestId}] Failed symbols: none`);
+    } else {
+      console.log(
+        `[${requestId}] Failed symbols (${failedSymbols.length}): ${JSON.stringify(failedSymbols)}`,
+      );
+    }
     console.log(
       `[${requestId}] ==================================================`,
     );
@@ -498,6 +525,7 @@ Deno.serve(async (req) => {
         enhanced_data: enhancedData,
         total_processed: enhancedData.length,
         symbols_requested: symbols.length,
+        failed_symbols: failedSymbols,
         source: "polygon",
         stored_to_db: enhancedData.length,
       }),
