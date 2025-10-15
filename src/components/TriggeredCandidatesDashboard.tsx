@@ -295,15 +295,8 @@ const TriggeredCandidatesDashboard = () => {
 
   const handleNewTrade = async (candidate: TriggeredCandidate) => {
     const grade = candidate.grade || mapConfidenceToGrade(candidate.confidence_label);
-    const size = getDefaultTradeSize(grade);
     
-    // For weak trades, default to 20 shares for ~$1000 worth
-    let quantity = size.qty.toString();
-    if (grade === 'Weak') {
-      quantity = "20"; // Reasonable default for paper trades
-    }
-
-    // Fetch latest available opening price with data_date
+    // Fetch latest available opening price with data_date FIRST
     let openPrice = "";
     let priceDataDate = "";
     let priceIsStale = false;
@@ -318,7 +311,7 @@ const TriggeredCandidatesDashboard = () => {
       
       if (data && !error) {
         const marketData = data as any;
-        // Use price_open if available, otherwise use price
+        // Use price_open if available, otherwise fallback to price (close)
         const currentPrice = marketData.price_open || marketData.price;
         if (currentPrice) {
           openPrice = currentPrice.toString();
@@ -336,6 +329,11 @@ const TriggeredCandidatesDashboard = () => {
     } catch (error) {
       console.error('Error fetching opening price:', error);
     }
+    
+    // Calculate trade size using the actual fetched price
+    const currentPrice = openPrice ? parseFloat(openPrice) : undefined;
+    const size = getDefaultTradeSize(grade, currentPrice);
+    const quantity = size.qty.toString();
     
     // Build notes with price data warning if stale
     let notesText = grade === 'Weak' ? `Weak confidence trade - paper trading recommended` : "";
