@@ -300,6 +300,7 @@ const TriggeredCandidatesDashboard = () => {
     let openPrice = "";
     let priceDataDate = "";
     let priceIsStale = false;
+    let usedClosePrice = false;
     try {
       const { data, error } = await supabase
         .from('enhanced_market_data' as any)
@@ -312,9 +313,15 @@ const TriggeredCandidatesDashboard = () => {
       if (data && !error) {
         const marketData = data as any;
         // Use price_open if available, otherwise fallback to price (close)
-        const currentPrice = marketData.price_open || marketData.price;
-        if (currentPrice) {
-          openPrice = currentPrice.toString();
+        if (marketData.price_open) {
+          openPrice = marketData.price_open.toString();
+          usedClosePrice = false;
+        } else if (marketData.price) {
+          openPrice = marketData.price.toString();
+          usedClosePrice = true;
+        }
+        
+        if (openPrice) {
           priceDataDate = marketData.data_date;
           
           // Check if price data is from today (Denver time)
@@ -330,15 +337,16 @@ const TriggeredCandidatesDashboard = () => {
       console.error('Error fetching opening price:', error);
     }
     
-    // Calculate trade size using the actual fetched price
-    const currentPrice = openPrice ? parseFloat(openPrice) : undefined;
+    // Calculate trade size using the actual fetched price (must be valid number)
+    const currentPrice = openPrice && !isNaN(parseFloat(openPrice)) ? parseFloat(openPrice) : undefined;
     const size = getDefaultTradeSize(grade, currentPrice);
     const quantity = size.qty.toString();
     
     // Build notes with price data warning if stale
     let notesText = grade === 'Weak' ? `Weak confidence trade - paper trading recommended` : "";
     if (priceIsStale && priceDataDate) {
-      const warningText = `⚠️ Entry price from ${priceDataDate} (stale data - verify current price before trading)`;
+      const priceType = usedClosePrice ? 'close' : 'open';
+      const warningText = `⚠️ Entry price from ${priceDataDate} ${priceType} (stale data - verify current price before trading)`;
       notesText = notesText ? `${notesText}\n${warningText}` : warningText;
     }
 
