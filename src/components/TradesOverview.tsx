@@ -93,6 +93,18 @@ interface TradeMark {
   symbol: string;
   mode: string;
   qty: number;
+  catalyst_window_flags?: {
+    is_event_day?: boolean;
+    within_pre_3d?: boolean;
+    within_post_3d?: boolean;
+    events?: Array<{
+      event_date: string;
+      delta_days: number;
+      event_type: string;
+      source: string;
+    }>;
+  };
+  nearest_catalyst_days?: number;
 }
 
 interface DailyPnLSummary {
@@ -176,22 +188,30 @@ const TradesOverview = ({ onSymbolSelect, onOpenChat }: TradesOverviewProps) => 
   // Fetch trade marks for a specific trade and date
   const fetchTradeMarks = async (tradeId: string, date: string): Promise<TradeMark[]> => {
     try {
-      // Simulate daily_trade_marks data since the table might not be available
-      const mockMarks: TradeMark[] = [
-        {
-          trade_id: tradeId,
-          mark_date: date,
-          mark_price: toNumber(22.42),
-          realized_pnl: selectedTrade?.status === 'CLOSED' ? toNumber(150.75) : undefined,
-          unrealized_pnl: selectedTrade?.status === 'OPEN' ? toNumber(-25.30) : undefined,
-          status_on_mark: selectedTrade?.status || 'OPEN',
-          symbol: selectedTrade?.symbol || '',
-          mode: selectedTrade?.mode || 'paper',
-          qty: toNumber(1),
-        }
-      ];
+      const { data, error } = await supabase
+        .from('daily_trade_marks')
+        .select('*')
+        .eq('trade_id', tradeId)
+        .order('mark_date', { ascending: false });
 
-      return mockMarks;
+      if (error) {
+        console.error('Error fetching trade marks:', error);
+        return [];
+      }
+
+      return (data || []).map((mark: any) => ({
+        trade_id: mark.trade_id,
+        mark_date: mark.mark_date,
+        mark_price: mark.mark_price,
+        realized_pnl: mark.realized_pnl,
+        unrealized_pnl: mark.unrealized_pnl,
+        status_on_mark: mark.status_on_mark,
+        symbol: mark.symbol,
+        mode: mark.mode,
+        qty: mark.qty,
+        catalyst_window_flags: mark.catalyst_window_flags || {},
+        nearest_catalyst_days: mark.nearest_catalyst_days,
+      }));
     } catch (error) {
       console.error('Error fetching trade marks:', error);
       return [];
@@ -1534,6 +1554,94 @@ const TradesOverview = ({ onSymbolSelect, onOpenChat }: TradesOverviewProps) => 
                 )}
 
                 <Separator />
+
+                {/* Catalyst Context Section */}
+                {tradeDetailData?.tradeMarks && tradeDetailData.tradeMarks.length > 0 && (
+                  <>
+                    <div>
+                      <h3 className="text-lg font-semibold mb-3 flex items-center gap-2">
+                        <Calendar className="w-5 h-5" />
+                        Catalyst Context
+                      </h3>
+                      <div className="space-y-3">
+                        {tradeDetailData.tradeMarks.map((mark, index) => {
+                          const flags = mark.catalyst_window_flags;
+                          const hasNearbyEvent = flags?.is_event_day || flags?.within_pre_3d || flags?.within_post_3d;
+                          const events = flags?.events || [];
+                          
+                          if (!hasNearbyEvent && events.length === 0) return null;
+
+                          return (
+                            <Card key={index} className="p-4 border-amber-200/50 bg-amber-50/30 dark:border-amber-800/50 dark:bg-amber-950/20">
+                              <div className="flex items-start justify-between gap-3">
+                                <div className="flex-1">
+                                  <div className="flex items-center gap-2 mb-2">
+                                    <span className="text-sm font-medium">
+                                      {formatDateInDenver(mark.mark_date)}
+                                    </span>
+                                    {flags?.is_event_day && (
+                                      <Badge variant="default" className="bg-amber-600 hover:bg-amber-700">
+                                        Event Day
+                                      </Badge>
+                                    )}
+                                    {flags?.within_pre_3d && !flags?.is_event_day && (
+                                      <Badge variant="outline" className="border-amber-600 text-amber-700 dark:text-amber-400">
+                                        Pre-Event (±3d)
+                                      </Badge>
+                                    )}
+                                    {flags?.within_post_3d && !flags?.is_event_day && (
+                                      <Badge variant="outline" className="border-amber-600 text-amber-700 dark:text-amber-400">
+                                        Post-Event (±3d)
+                                      </Badge>
+                                    )}
+                                  </div>
+                                  
+                                  {typeof mark.nearest_catalyst_days === 'number' && (
+                                    <div className="text-sm text-muted-foreground mb-2">
+                                      {mark.nearest_catalyst_days === 0 
+                                        ? 'Event on this day' 
+                                        : `${Math.abs(mark.nearest_catalyst_days)} day${Math.abs(mark.nearest_catalyst_days) !== 1 ? 's' : ''} ${mark.nearest_catalyst_days < 0 ? 'before' : 'after'} event`
+                                      }
+                                    </div>
+                                  )}
+
+                                  {events.length > 0 && (
+                                    <TooltipProvider>
+                                      <Tooltip>
+                                        <TooltipTrigger asChild>
+                                          <Button variant="ghost" size="sm" className="h-auto p-0 text-xs text-primary hover:bg-transparent">
+                                            <Info className="w-3 h-3 mr-1" />
+                                            View {events.length} nearby event{events.length !== 1 ? 's' : ''}
+                                          </Button>
+                                        </TooltipTrigger>
+                                        <TooltipContent side="bottom" className="max-w-sm p-3">
+                                          <div className="space-y-2">
+                                            {events.map((event, idx) => (
+                                              <div key={idx} className="text-xs border-b last:border-0 pb-2 last:pb-0">
+                                                <div className="font-medium">{event.event_type}</div>
+                                                <div className="text-muted-foreground">
+                                                  {formatDateInDenver(event.event_date)} • {event.source}
+                                                  {event.delta_days !== 0 && (
+                                                    <span> • {Math.abs(event.delta_days)}d {event.delta_days < 0 ? 'before' : 'after'}</span>
+                                                  )}
+                                                </div>
+                                              </div>
+                                            ))}
+                                          </div>
+                                        </TooltipContent>
+                                      </Tooltip>
+                                    </TooltipProvider>
+                                  )}
+                                </div>
+                              </div>
+                            </Card>
+                          );
+                        })}
+                      </div>
+                    </div>
+                    <Separator />
+                  </>
+                )}
 
                 {/* Mentions Audit Section */}
                 <div>
