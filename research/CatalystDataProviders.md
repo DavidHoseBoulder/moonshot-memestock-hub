@@ -68,6 +68,12 @@ Quick scan of earnings, analyst, and corporate event data feeds we can evaluate 
   - [ ] Once validated, update `enhanced_market_data` in place with forward-filled volatility (`jsonb_set`) and retire the temporary view.
   - [ ] Port the warm-up/forward-fill logic into Polygon/Yahoo ingest functions so zero-vol rows stop appearing in fresh loads.
   - [ ] Add ticker-alias handling for symbols that rebrand (e.g., `PARA` → `PSKY`) so backfills pull continuous history.
+- [x] Promote Finnhub earnings ingest to a scheduled Supabase Edge cron (e.g., nightly UTC) so `catalyst_events` stays fresh without manual runs.
+- [x] Wire the new catalyst flags into Lovable’s trade detail UX so users can see ±3 day context on recommended trades.
+- [ ] Secure paid Finnhub (or alternate) calendar access and backfill 18+ months of history to unlock catalyst-segmented backtests.
+- [ ] Extend tests around `sp_refresh_trade_catalyst_flags` into the automated CI harness once the backfill is available.
+- [ ] Evaluate Finnhub’s `company-executive` endpoint for supplemental catalyst signals (exec moves, news blurbs) and scope how those events would flow into `catalyst_events` or a sibling table.
+- [ ] Design Finnhub company-news backfill plan (free tier supports ~1 year) so historical headlines can join the feature store for retrospective analysis.
 
 Maintain this sheet as we gather quotes or sample payloads.
 

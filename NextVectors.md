@@ -25,7 +25,7 @@ Shortlist of workstreams we want to actively pull this cycle. Each task is trace
 ## 2. Event-Driven Catalyst Layer
 - **Thesis:** Layer earnings/analyst-events calendar context onto social signals to time entries around known volatility pockets.
 - **Lift:** Ingest earnings dates, conference mentions, notable downgrades/upgrades. Tag trades that occur ±3 days from catalysts.
-- **Next Step:** Extend feature store to include catalyst proximity flag; rerun backtests segmented by catalyst windows.
+- **Next Step:** Catalyst schema is live and Finnhub earnings + headline ingest now cron nightly into `catalyst_events`; trade flags refresh after each run. Next sprint: secure paid backfill (earnings + historical news) so we can recompute proximity segments across the 18‑month window.
 - **Gate:** Positive expectancy uplift of ≥30 bps per trade vs. non-catalyst cohort.
 
 ## 3. Options Flow Confirmation
