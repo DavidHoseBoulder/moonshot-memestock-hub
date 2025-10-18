@@ -41,6 +41,7 @@ import { Slider } from '@/components/ui/slider';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
+import { CatalystIndicator } from './CatalystIndicator';
 
 interface TriggeredCandidate {
   symbol: string;
@@ -850,6 +851,11 @@ const TriggeredCandidatesDashboard = () => {
                         
                         <Badge variant="outline">{candidate.horizon}</Badge>
                         <Badge variant="outline">{candidate.side}</Badge>
+                        
+                        <CatalystIndicator 
+                          symbol={candidate.symbol} 
+                          variant="icon"
+                        />
                         
                         <div className="flex flex-col items-start gap-1">
                           <Tooltip>

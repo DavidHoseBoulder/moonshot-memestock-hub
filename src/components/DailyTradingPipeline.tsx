@@ -1,6 +1,7 @@
 import DataSourceStatus from "./DataSourceStatus";
 import PerformanceTracker from "./PerformanceTracker";
 import SentimentStackingEngine, { StackingVisualizer, StackingResult, DEFAULT_STACKING_CONFIG } from "./SentimentStackingEngine";
+import CatalystCalendar from "./CatalystCalendar";
 import { useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -16,6 +17,7 @@ import { calculateRSI, estimateRSIFromMomentum } from "@/utils/technicalIndicato
 import { aggregateSentiment, getSentimentLabel } from "@/utils/sentimentAggregator";
 import { useSentimentBlending, WeightPreset } from "@/hooks/useSentimentBlending";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import CatalystIndicator from "./CatalystIndicator";
 
 interface TradeSignal {
   ticker: string;
@@ -1217,6 +1219,9 @@ const DailyTradingPipeline = () => {
       {/* Data Source Status */}
       <DataSourceStatus />
 
+      {/* Catalyst Calendar */}
+      <CatalystCalendar daysAhead={7} />
+
       {/* Results */}
       <Tabs defaultValue="signals" className="space-y-4">
         <TabsList className="grid w-full grid-cols-4">
@@ -1251,6 +1256,10 @@ const DailyTradingPipeline = () => {
                           {signal.signal_type}
                         </Badge>
                         <Badge variant="outline">{signal.category}</Badge>
+                        <CatalystIndicator 
+                          symbol={signal.ticker} 
+                          variant="icon"
+                        />
                       </div>
                       <p className="text-sm text-muted-foreground mt-1">
                         {signal.reasoning}
