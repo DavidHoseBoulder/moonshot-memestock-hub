@@ -14,6 +14,7 @@ import { Drawer, DrawerContent, DrawerHeader, DrawerTitle, DrawerClose } from "@
 import { Separator } from "@/components/ui/separator";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
@@ -102,6 +103,12 @@ interface TradeMark {
       delta_days: number;
       event_type: string;
       source: string;
+      headline?: string;
+      publisher?: string;
+      url?: string;
+      fiscal_quarter?: number;
+      fiscal_year?: number;
+      report_time?: string;
     }>;
   };
   nearest_catalyst_days?: number;
@@ -1605,32 +1612,71 @@ const TradesOverview = ({ onSymbolSelect, onOpenChat }: TradesOverviewProps) => 
                                     </div>
                                   )}
 
-                                  {events.length > 0 && (
-                                    <TooltipProvider>
-                                      <Tooltip>
-                                        <TooltipTrigger asChild>
-                                          <Button variant="ghost" size="sm" className="h-auto p-0 text-xs text-primary hover:bg-transparent">
-                                            <Info className="w-3 h-3 mr-1" />
-                                            View {events.length} nearby event{events.length !== 1 ? 's' : ''}
-                                          </Button>
-                                        </TooltipTrigger>
-                                        <TooltipContent side="bottom" className="max-w-sm p-3">
-                                          <div className="space-y-2">
-                                            {events.map((event, idx) => (
-                                              <div key={idx} className="text-xs border-b last:border-0 pb-2 last:pb-0">
-                                                <div className="font-medium">{event.event_type}</div>
-                                                <div className="text-muted-foreground">
-                                                  {formatDateInDenver(event.event_date)} • {event.source}
-                                                  {event.delta_days !== 0 && (
-                                                    <span> • {Math.abs(event.delta_days)}d {event.delta_days < 0 ? 'before' : 'after'}</span>
+                                   {events.length > 0 && (
+                                    <Collapsible>
+                                      <CollapsibleTrigger asChild>
+                                        <Button variant="ghost" size="sm" className="h-auto p-0 text-xs text-primary hover:bg-transparent">
+                                          <Info className="w-3 h-3 mr-1" />
+                                          View {events.length} nearby event{events.length !== 1 ? 's' : ''}
+                                        </Button>
+                                      </CollapsibleTrigger>
+                                      <CollapsibleContent className="mt-3 space-y-2">
+                                        {events.map((event, idx) => (
+                                          <Card key={idx} className="p-3 bg-background/80">
+                                            <div className="space-y-2">
+                                              <div className="flex items-center justify-between gap-2">
+                                                <div className="flex items-center gap-2">
+                                                  <Badge variant={event.event_type === 'EARNINGS' ? 'default' : 'secondary'} className="text-xs">
+                                                    {event.event_type === 'EARNINGS' ? 'Earnings' : 'News'}
+                                                  </Badge>
+                                                  <span className="text-xs text-muted-foreground">{formatDateInDenver(event.event_date)}</span>
+                                                </div>
+                                                <Badge variant="outline" className="text-xs">
+                                                  {event.delta_days === 0 ? 'same day' : `${event.delta_days > 0 ? '+' : ''}${event.delta_days}d`}
+                                                </Badge>
+                                              </div>
+
+                                              {event.event_type === 'NEWS' && (
+                                                <div className="space-y-1.5">
+                                                  {event.headline && (
+                                                    <p className="text-xs font-medium leading-snug line-clamp-2">{event.headline}</p>
+                                                  )}
+                                                  <div className="flex items-center justify-between gap-2">
+                                                    {event.publisher && (
+                                                      <span className="text-xs text-muted-foreground">{event.publisher}</span>
+                                                    )}
+                                                    {event.url && (
+                                                      <a 
+                                                        href={event.url} 
+                                                        target="_blank" 
+                                                        rel="noopener noreferrer"
+                                                        className="text-xs text-primary hover:underline inline-flex items-center gap-1"
+                                                      >
+                                                        Read article
+                                                        <ExternalLink className="w-3 h-3" />
+                                                      </a>
+                                                    )}
+                                                  </div>
+                                                  {event.source && (
+                                                    <span className="text-xs text-muted-foreground">Source: {event.source}</span>
                                                   )}
                                                 </div>
-                                              </div>
-                                            ))}
-                                          </div>
-                                        </TooltipContent>
-                                      </Tooltip>
-                                    </TooltipProvider>
+                                              )}
+
+                                              {event.event_type === 'EARNINGS' && (
+                                                <div className="text-xs text-muted-foreground space-y-0.5">
+                                                  {event.fiscal_quarter && event.fiscal_year && (
+                                                    <div>Q{event.fiscal_quarter} {event.fiscal_year}</div>
+                                                  )}
+                                                  {event.report_time && <div>{event.report_time}</div>}
+                                                  {event.source && <div>Source: {event.source}</div>}
+                                                </div>
+                                              )}
+                                            </div>
+                                          </Card>
+                                        ))}
+                                      </CollapsibleContent>
+                                    </Collapsible>
                                   )}
                                 </div>
                               </div>
